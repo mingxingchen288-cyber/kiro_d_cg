@@ -22,7 +22,12 @@ modules =
 [importlinter:contract:layers]
 name = Only assembly imports business modules; business modules depend only on contracts
 type = layers
+# exhaustive: every direct child of cost_platform must be listed below, so a new
+# module outside these layers cannot bypass the rules.
+containers =
+    cost_platform
+exhaustive = true
 layers =
-    cost_platform.assembly
-    cost_platform.config | cost_platform.identity | cost_platform.authz | cost_platform.pipeline | cost_platform.approval | cost_platform.operations | cost_platform.delivery | cost_platform.realtime | cost_platform.queries | cost_platform.db_core | cost_platform.migration
-    cost_platform.contracts
+    assembly
+    config | identity | authz | pipeline | approval | operations | delivery | realtime | queries | db_core | migration
+    contracts
