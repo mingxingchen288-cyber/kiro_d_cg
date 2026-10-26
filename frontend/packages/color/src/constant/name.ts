@@ -1567,13 +1567,3 @@ export const colorNames: [hex: string, name: string][] = [
   ['#ffffff', 'White']
 ];
 
-/**
- * Map Of hex color values to color names
- *
- * - key: hex value
- * - value: color name
- */
-export const colorNameMap = colorNames.reduce<Record<string, string>>((acc, [hex, name]) => {
-  acc[hex] = name;
-  return acc;
-}, {});

@@ -6,11 +6,10 @@
   },
   "typesVersions": {
     "*": {
-      "*": ["./src/*"]
+      "*": [
+        "./src/*"
+      ]
     }
   },
-  "dependencies": {
-    "@sa/axios": "workspace:*",
-    "@sa/utils": "workspace:*"
-  }
+  "dependencies": {}
 }

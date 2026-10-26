@@ -12,7 +12,7 @@
 - 交付物：`D:\chonggou\my-project\cost-web` 当前工作状态的副本（不含 `.git`、`node_modules`、`dist`、测试报告、日志和 `.codex-*` 等临时文件）；`frontend/SOURCE.md` 记录复制时的提交号和未提交文件清单；删除无效代码后的工程。
 - 接入责任：T-CT-4、T-FS-2、T-AS-3 和其他前端任务在此基础上开发。
 - 验收标准：`pnpm install`、`pnpm build` 和类型检查通过；knip 报告没有未被引用的文件、导出和依赖；只保留布局、主题、登录、路由、请求工具和它们用到的组件；外壳布局能打开，外观与旧系统相同。
-- 状态与证据：未开始。
+- 状态与证据：进行中（验收待独立复核；外壳布局的截图对比待补）。2026-10-26：按当前状态复制 cost-web（提交 a95c00c 加 22 个未提交文件，清单见 `frontend/SOURCE.md`），复制后基线 `pnpm typecheck`、`pnpm build` 通过。清理分两轮（提交 d0bb7b3 及其后一次）：删除旧页面运行时 `src/v3`、元数据配置页、权限页、动态页、旧审批组件和通知中心、旧接口、SQL 追踪、示例首页（按用户要求首页暂时为空）、iframe 页、登录页的验证码/注册/找回密码/绑定微信，未使用的组件库 `packages/alova`，以及 knip 报告的未使用文件、导出和依赖；去掉会改写 git 钩子的 simple-git-hooks。结果：`pnpm typecheck` 通过、`pnpm build` 通过、`pnpm exec knip` 退出码 0 且无任何报告（配置 `frontend/knip.json`，例外：`ag-grid-vue3` 留给 frontend-page，`@elegant-router/types`、`uno.css` 是虚拟模块，`@iconify/json` 供图标插件按需加载，`npm-check-updates` 由脚本经 npx 调用）。登录页截图 `.reports/T-FS-1/login.png`：主题色、标题、布局与旧系统一致。主布局需要登录，截图对比在 T-FS-2 用模拟实现补做。原始输出在 `.reports/T-FS-1/`。
 
 ### T-FS-2 外壳与 ShellApi
 

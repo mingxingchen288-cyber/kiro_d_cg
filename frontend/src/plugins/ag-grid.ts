@@ -33,9 +33,3 @@ export async function setupAgGrid() {
   }
 }
 
-/**
- * 检查企业版是否可用
- */
-export function isEnterpriseEnabled(): boolean {
-  return window.__AG_GRID_ENTERPRISE__ === true;
-}

@@ -52,4 +52,3 @@ export function presetSoybeanAdmin(): Preset<Theme> {
   return preset;
 }
 
-export default presetSoybeanAdmin;

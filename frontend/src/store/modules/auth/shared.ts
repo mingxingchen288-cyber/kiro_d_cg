@@ -17,7 +17,7 @@ export function beginAuthShutdown() {
 }
 
 /** Clear auth teardown state after a new session is established. */
-export function endAuthShutdown() {
+function endAuthShutdown() {
   isAuthShutdown = false;
 }
 
@@ -67,7 +67,7 @@ export function markAuthActivity(force = false) {
 }
 
 /** Whether auth session is expired by inactivity */
-export function isAuthSessionExpiredByInactivity() {
+function isAuthSessionExpiredByInactivity() {
   const token = getRawToken();
   if (!token) return false;
 

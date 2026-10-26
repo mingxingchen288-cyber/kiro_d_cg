@@ -91,7 +91,7 @@ export function getTabByRoute(route: App.Global.TabRoute) {
  *
  * @param route
  */
-export function getRouteIcons(route: App.Global.TabRoute) {
+function getRouteIcons(route: App.Global.TabRoute) {
   // Set default value for icon at the beginning
   let icon: string = route?.meta?.icon || import.meta.env.VITE_MENU_ICON;
   let localIcon: string | undefined = route?.meta?.localIcon;
@@ -146,16 +146,6 @@ export function isTabInTabs(tabId: string, tabs: App.Global.Tab[]) {
 }
 
 /**
- * Filter tabs by id
- *
- * @param tabId
- * @param tabs
- */
-export function filterTabsById(tabId: string, tabs: App.Global.Tab[]) {
-  return tabs.filter(tab => tab.id !== tabId);
-}
-
-/**
  * Filter tabs by ids
  *
  * @param tabIds
@@ -184,7 +174,7 @@ export function extractTabsByAllRoutes(router: Router, tabs: App.Global.Tab[]) {
  *
  * @param tabs
  */
-export function getFixedTabs(tabs: App.Global.Tab[]) {
+function getFixedTabs(tabs: App.Global.Tab[]) {
   return tabs.filter(isFixedTab);
 }
 

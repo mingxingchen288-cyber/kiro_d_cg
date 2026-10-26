@@ -24,7 +24,7 @@ const darkColorCount = 4;
  * @param index - The color index of color palette (the main color index is 6)
  * @returns Hex color
  */
-export function getAntDPaletteColorByIndex(color: AnyColor, index: ColorIndex): string {
+function getAntDPaletteColorByIndex(color: AnyColor, index: ColorIndex): string {
   if (!isValidColor(color)) {
     throw new Error('invalid input color value');
   }

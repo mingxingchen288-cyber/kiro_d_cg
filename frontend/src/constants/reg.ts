@@ -17,9 +17,3 @@ export const REG_EMAIL = /^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$/;
 /** Six digit code reg */
 export const REG_CODE_SIX = /^\d{6}$/;
 
-/** Four digit code reg */
-export const REG_CODE_FOUR = /^\d{4}$/;
-
-/** Url reg */
-export const REG_URL =
-  /(((^https?:(?:\/\/)?)(?:[-;:&=+$,\w]+@)?[A-Za-z0-9.-]+(?::\d+)?|(?:www.|[-;:&=+$,\w]+@)[A-Za-z0-9.-]+)((?:\/[+~%/.\w-_]*)?\??(?:[-+=&;%@.\w_]*)#?(?:[\w]*))?)$/;
