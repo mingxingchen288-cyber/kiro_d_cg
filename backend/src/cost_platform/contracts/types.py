@@ -231,9 +231,9 @@ _HTTP_STATUS: dict[ErrorCode, int] = {
 
 
 class ErrorDetail(Wire):
-    """定位到行和字段的错误明细；被冻结时 `approval_id` 指明冻结它的审批。
+    """错误明细：定位到行和字段（被冻结时 `approval_id` 指明冻结它的审批），或定位到配置项和其中的位置。
 
-    构造时只需给出用到的字段；输出时 6 个字段总是出现，没有值的为 null（与 C03 的样例相同）。
+    构造时只需给出用到的字段；输出时 9 个字段总是出现，没有值的为 null（C03 第 1 节）。
     """
 
     message: str | None = None
@@ -242,6 +242,9 @@ class ErrorDetail(Wire):
     client_row_id: ClientRowId | None = None
     field: str | None = None
     approval_id: DecimalText | None = None
+    config_type: str | None = None
+    config_key: str | None = None
+    path: str | None = None
 
     @model_serializer(mode="wrap")
     def _every_key(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo) -> dict[str, Any]:
@@ -380,12 +383,13 @@ class DeletedRow(Wire):
 
 
 class Prompt(Wire):
-    """规则提示。"""
+    """规则提示；定位到行时，已保存的行用 row_key，新增行用 client_row_id。"""
 
     rule: Code
     message: str
     entity: Code | None = None
     row_key: Key | None = None
+    client_row_id: ClientRowId | None = None
     field: str | None = None
 
 
@@ -458,9 +462,23 @@ class ExecutionContext:
 
 # ============================================================ C05 页面视图
 
-class ViewLookup(Wire):
+class LookupFilter(Wire):
+    column: str
+    from_: Literal["row", "cell"] = Field(alias="from")
+    field: str | None = None
+
+
+class LookupSetting(Wire):
+    """Lookup 设置：C06 第 3 节页面配置和 C05 页面视图用同一写法。"""
+
     code: Code
     fill: dict[str, str]
+    multiple: Bool = False
+    filter: LookupFilter | None = None
+    fill_back: Bool = True
+
+
+ViewLookup = LookupSetting
 
 
 class ViewField(Wire):
@@ -686,20 +704,6 @@ class EntityConfig(Wire):
 
 
 # ---- 3. page
-
-class LookupFilter(Wire):
-    column: str
-    from_: Literal["row", "cell"] = Field(alias="from")
-    field: str | None = None
-
-
-class LookupSetting(Wire):
-    code: Code
-    fill: dict[str, str]
-    multiple: Bool = False
-    filter: LookupFilter | None = None
-    fill_back: Bool = True
-
 
 class FieldSetting(Wire):
     visible: Bool | None = None
@@ -1219,8 +1223,11 @@ class RowStyle(Wire):
 
 
 class EvalRowResult(Wire):
+    """一行的计算结果：已保存的行用 row_key，新增行用请求中的 client_row_id。"""
+
     entity: Code
-    row_key: Key
+    row_key: Key | None = None
+    client_row_id: ClientRowId | None = None
     computed: FieldValues
     fields: dict[str, FieldState]
     style: RowStyle
@@ -1232,6 +1239,7 @@ class PromptEffect(Wire):
     message: str
     entity: Code | None = None
     row_key: Key | None = None
+    client_row_id: ClientRowId | None = None
     field: str | None = None
 
 
@@ -1241,6 +1249,7 @@ class RejectEffect(Wire):
     message: str
     entity: Code | None = None
     row_key: Key | None = None
+    client_row_id: ClientRowId | None = None
     field: str | None = None
 
 
@@ -1667,6 +1676,8 @@ class ApprovalDetail(Wire):
     steps: list[ApprovalStep]
     view: ApprovalView
     fingerprint: str
+    params: list[FlowParam]
+    """当前用户这次通过要填写的人工参数（C06 7.1）；不需要填写时为空数组。"""
     actions: ApprovalActions
 
 

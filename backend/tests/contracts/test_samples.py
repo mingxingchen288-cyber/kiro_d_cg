@@ -59,6 +59,30 @@ def _command(document: Any) -> Any:
     return {"requestKey": _UUID, "page": "COST_PINGGU", "operation": "COST_PINGGU.save", "documents": [document], "params": {}}
 
 
+def _broken(path: list[Any], value: Any, base: Any) -> Any:
+    data = copy.deepcopy(base)
+    node = data
+    for key in path[:-1]:
+        node = node[key]
+    if value is _DELETE:
+        del node[path[-1]]
+    else:
+        node[path[-1]] = value
+    return data
+
+
+def _renamed(path: list[Any], old: str, new: str, base: Any) -> Any:
+    data = copy.deepcopy(base)
+    node = data
+    for key in path:
+        node = node[key]
+    node[new] = node.pop(old)
+    return data
+
+
+_DELETE = object()
+
+
 # 后端会输出或接收的样例：解析后按 dump_wire 输出，与样例逐字段相同。
 SAMPLES: list[tuple[str, Any, Any]] = [
     ("C02 页面保存", _json("C02", 0), t.Command),
@@ -70,8 +94,18 @@ SAMPLES: list[tuple[str, Any, Any]] = [
                              "details": [{"entity": "COST_MATERIAL", "op": "modify", "rowKey": "5001", "changes": {"PRICE": None}}]}), t.Command),
     ("C02 已写入", _json("C02", 2), t.CommandResult),
     ("C02 已提交审批", _json("C02", 3), t.CommandResult),
+    ("C02 新增行的提示", {"requestKey": _UUID, "outcome": "saved", "rows": [], "idMap": {}, "prompts": [
+        {"rule": "R_PRICE_LOW", "message": "单价偏低", "entity": "COST_MATERIAL", "clientRowId": _TMP, "field": "PRICE"}],
+        "skipped": [], "approvals": []}, t.CommandResult),
     ("C03 错误", _json("C03", 0), t.ErrorResponse),
+    ("C03 配置校验错误", {"code": "VALIDATION_FAILED", "message": "配置校验不通过", "details": [
+        {"message": "入口至少要有一个审批人", "entity": None, "rowKey": None, "clientRowId": None, "field": None, "approvalId": None,
+         "configType": "approvalFlow", "configKey": "GOODS_TO_COST", "path": "levels[0].entries[0].approvers"}]}, t.ErrorResponse),
     ("C05 页面视图", _json("C05", 0), t.PageView),
+    ("C05 带筛选的多选 Lookup", _broken(["details", 0, "fields", 0, "lookup"],
+                                   {"code": "GOODS", "fill": {"GOODSID": "GOODSID"}, "multiple": True,
+                                    "filter": {"column": "GOODSTYPE", "from": "row", "field": "PACKTYPE"}, "fillBack": False},
+                                   _json("C05", 0)), t.PageView),
     ("C06 配置项", _json("C06", 0), t.ConfigItem),
     ("C06 审批流样例一", FLOW_1, t.ConfigDraft),
     ("C06 审批流样例二", FLOW_2, t.ConfigDraft),
@@ -79,6 +113,10 @@ SAMPLES: list[tuple[str, Any, Any]] = [
     ("C07 求值请求", _json("C07", 1), t.EvaluationRequest),
     ("C07 求值结果", _json("C07", 2), t.EvaluationResult),
     ("C07 审批入口结果", {"ok": True, "satisfied": True}, t.EvaluationResult),
+    ("C07 新增行的结果", {"ok": True, "rows": [{"entity": "COST_MATERIAL", "clientRowId": _TMP, "computed": {"AMOUNT": "1.20"},
+                                                "fields": {}, "style": {"row": None, "cells": {}}}],
+                       "effects": [{"kind": "prompt", "rule": "R_PRICE_LOW", "message": "单价偏低", "entity": "COST_MATERIAL",
+                                    "clientRowId": _TMP, "field": "PRICE"}]}, t.EvaluationResult),
     ("C07 失败结果", {"ok": False, "error": {"code": "PACK_INVALID", "message": "规则包不能编译"}}, t.EvaluationResult),
     ("C09 列表请求", _json("C09", 0), t.ListRequest),
     ("C09 个人配置", _json("C09", 1), t.PersonalConfig),
@@ -183,33 +221,12 @@ def test_constructed_values_dump_in_sample_shape() -> None:
     assert t.dump_wire(t.MenuItem, menu) == {"key": "COST_PINGGU", "title": "成本核算", "kind": "page", "pageCode": "COST_PINGGU"}
     detail = t.ErrorDetail(message="PRICE 不能修改", field="PRICE")
     assert t.dump_wire(t.ErrorDetail, detail) == {"message": "PRICE 不能修改", "entity": None, "rowKey": None, "clientRowId": None,
-                                                  "field": "PRICE", "approvalId": None}
+                                                  "field": "PRICE", "approvalId": None, "configType": None, "configKey": None,
+                                                  "path": None}
     with pytest.raises(ValidationError):
         t.ResultRow(entity="COST_PINGGU", row_key="1001", values={})  # type: ignore[call-arg]  # 未冻结时也必须给出 frozen=None
 
 
-def _broken(path: list[Any], value: Any, base: Any) -> Any:
-    data = copy.deepcopy(base)
-    node = data
-    for key in path[:-1]:
-        node = node[key]
-    if value is _DELETE:
-        del node[path[-1]]
-    else:
-        node[path[-1]] = value
-    return data
-
-
-def _renamed(path: list[Any], old: str, new: str, base: Any) -> Any:
-    data = copy.deepcopy(base)
-    node = data
-    for key in path:
-        node = node[key]
-    node[new] = node.pop(old)
-    return data
-
-
-_DELETE = object()
 
 INVALID = [
     ("请求键不是 UUID", t.Command, _broken(["requestKey"], "abc", _json("C02", 0))),
@@ -257,6 +274,14 @@ INVALID = [
     ("审批状态未知", t.ApprovalSummary, _broken(["status"], "done", _json("C09", 2))),
     ("提交时间带时区", t.ApprovalSummary, _broken(["submittedAt"], "2026-10-24T09:30:00Z", _json("C09", 2))),
     ("审批详情缺少来源单据", t.ApprovalDetail, _broken(["source"], _DELETE, _json("C09", 3))),
+    ("审批详情缺少人工参数", t.ApprovalDetail, _broken(["params"], _DELETE, _json("C09", 3))),
+    ("人工参数类型未知", t.ApprovalDetail, _broken(["params"], [{"name": "d", "label": "日期", "type": "time", "source": "manual"}],
+                                            _json("C09", 3))),
+    ("Lookup 的取值来源未知", t.PageView, _broken(["details", 0, "fields", 0, "lookup", "filter"],
+                                          {"column": "GOODSTYPE", "from": "page"}, _json("C05", 0))),
+    ("新增行的临时编号格式不对", t.EvaluationResult, _broken(["rows", 0, "clientRowId"], "new-1",
+                                                     {"ok": True, "rows": [{"entity": "E", "computed": {}, "fields": {},
+                                                                            "style": {"row": None, "cells": {}}}]})),
     ("可勾选写成字符串", t.ApprovalDetail, _broken(["view", "details", 0, "targets", 0, "selectable"], "true", _json("C09", 3))),
     ("对比值不是十进制文本", t.DataRow,
      {**_ROW, "compare": {"PRICE": {"value": "3.5", "diff": "0.3", "percent": "8.57%"}}}),

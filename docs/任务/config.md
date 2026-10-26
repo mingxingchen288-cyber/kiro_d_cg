@@ -8,8 +8,8 @@
 
 - 归属与目标：实现 CF-01、CF-07–CF-09 和 `ConfigImporter`。
 - 前置输入：开始前 T-CT-1、T-CT-3；C06 经用户确认。验收前 T-DB-1、T-DB-2。
-- 负责范围：`backend/src/cost_platform/config/` 的配置模型、校验和存储；表 `PF_CONFIG_ITEM` 的迁移脚本。
-- 交付物：C06 全部配置类型的模型；C06 第 10 节的全部校验；配置项的读写。
+- 负责范围：`backend/src/cost_platform/config/` 的配置校验和存储；表 `PF_CONFIG_ITEM` 的迁移脚本。
+- 交付物：C06 第 10 节的全部校验（配置的数据结构使用 contracts 中的 C06 类型，见 contracts 的 CT-02）；配置项的读写。
 - 接入责任：frontend-config 经 T-CF-3 的接口使用；migration 经 `ConfigImporter` 使用，T-AS-8 联调。
 - 验收标准：模拟验证：C06 的每个样例都能保存；第 10 节每条校验各有一个通过和一个不通过的样例，不通过时什么都不写；真实验证：在 d_cg 上保存、读取、删除配置项。
 - 状态与证据：未开始。

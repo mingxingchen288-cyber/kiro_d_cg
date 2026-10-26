@@ -18,7 +18,7 @@ from .types import (
     Command,
     CommandResult,
     CommandState,
-    ConfigItem,
+    ConfigDraft,
     DocumentData,
     DocumentRef,
     EntityConfig,
@@ -135,8 +135,8 @@ class ConfigSnapshotReader(Protocol):
 
 
 class ConfigImporter(Protocol):
-    def import_items(self, items: list[ConfigItem]) -> ImportReport:
-        """与前端保存使用同一套校验。"""
+    def import_items(self, items: list[ConfigDraft]) -> ImportReport:
+        """导入还没有保存的配置项；与前端保存使用同一套校验。"""
         ...
 
 

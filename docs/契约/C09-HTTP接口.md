@@ -1,6 +1,6 @@
 # C09 HTTP 接口
 
-版本：v2。维护：contracts。状态：已确认。
+版本：v3。维护：contracts。状态：已确认。
 
 ## 1. 通用规则
 
@@ -46,7 +46,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 | GET | `/api/rules-packs/{packId}/{version}` | 无 | 规则包（[C07](C07-规则内核接口.md) 第 1 节）。同一版本内容不变，可以长期缓存 |
 | GET | `/api/config/items` | `?type=page` | `{"items": [{"type": "page", "key": "COST_PINGGU", "name": "成本核算", "version": 13, "updatedBy": "1", "updatedAt": "2026-10-24T10:00:00"}]}` |
 | GET | `/api/config/items/{type}/{key}` | 无 | 配置项（[C06](C06-配置模型.md)） |
-| PUT | `/api/config/items/{type}/{key}` | `{"name": "成本核算", "content": {}}` | `{"type": "page", "key": "COST_PINGGU", "version": 14}`。保存即生效；校验不通过返回 422 VALIDATION_FAILED，`details` 给出配置项和路径 |
+| PUT | `/api/config/items/{type}/{key}` | `{"name": "成本核算", "content": {}}` | `{"type": "page", "key": "COST_PINGGU", "version": 14}`。保存即生效；校验不通过返回 422 VALIDATION_FAILED，`details` 的 `configType`、`configKey`、`path` 给出配置项和位置（C03） |
 | DELETE | `/api/config/items/{type}/{key}` | 无 | 204；仍被其他配置引用时返回 422 VALIDATION_FAILED |
 | POST | `/api/config/validate` | `{"items": [配置项]}` | `{"ok": false, "errors": [C03 的 details 项]}`。只校验，不保存 |
 | POST | `/api/config/wizard/columns` | `{"readView": "T_COST_GOODS_PRICE_V", "table": "T_COST_GOODS"}` | `{"primaryKey": "GOODSID", "sequence": {"name": "T_COST_GOODS_SEQ", "exists": true}, "columns": [{"name": "ZX_PRICE", "type": "number", "label": "执行价", "inTable": true}]}`；只读取结构，不写任何东西 |
@@ -142,6 +142,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
       ]}]
   },
   "fingerprint": "sha256:5b1e0c6d9a3f47e28b1c6d0e9f3a2b4c5d6e7f8091a2b3c4d5e6f708192a3b4c",
+  "params": [],
   "actions": {"canPass": true, "canReject": true, "canWithdraw": false}
 }
 ```
@@ -150,10 +151,11 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 - 待办列表每个审批一行（`ApprovalSummary`）。详情分主表和从表：
   - 主表：来自页面（`pageTitle`、`operationLabel`）、提交时间（`submittedAt`）、提交人（`applicant`）、来源单据号（`source.recordKey`）。新增的单据在提交审批时已取得主键（approval AP-02），来源单据号总是有值。
   - 从表：`steps`，每个入口一项，按级别、再按审批流的 `createdSeq` 排列；`flow`、`flowName` 标出入口来自哪个审批流。只列已进入的入口，以及按当前数据推算后面会进入的入口（approval AP-08）。`status` 取 `passed`、`pending`（本级待处理）、`rejected`、`upcoming`（还没到，按当前数据推算会进入）。`members[].status` 取 `pending`、`passed`、`rejected`；`processedBy` 为实际处理的账号（`{"userId", "displayName"}`），按角色配置的成员由该角色的某个账号处理。
-- `view` 是按 C06 7.6 的 `display` 生成的"修改内容"：`master` 为主表，`details` 每张从表一项。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（`rowsFilter` 为 `all` 时未改动的行）。来源单据的行带 `flows`：这一行触发的审批流编码列表，为空表示随审批等待；一张单据命中多个审批流时，来源单据的主表和从表只返回一份，候选单据的从表每个审批流一张，带 `flow`（C06 7.6）。
+- `view` 是按 C06 7.6 的 `display` 生成的"修改内容"：`master` 为主表，`details` 每张从表一项。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（`rowsFilter` 为 `all` 时未改动的行）。来源单据的行带 `flows`：这一行触发的审批流编码列表，为空数组表示没有触发、随审批等待，没有值时省略（C01 第 1 节）；候选单据的行没有 `flows`；一张单据命中多个审批流时，来源单据的主表和从表只返回一份，候选单据的从表每个审批流一张，带 `flow`（C06 7.6）。
 - 从表的行来自候选单据时，`target` 标出这一行属于哪张单据，同一张单据的行连续排列；`mergedColumns` 是取自候选单据主表、需要在这组行上合并显示的列；`targets` 给出每张候选单据能否勾选、是否已勾选。按单据勾选，可以勾选（`selectable` 为 true）需同时满足：该审批流的 `selection` 为 `approverSelects`；当前用户是该审批流本级入口的待处理审批人；单据在该审批流上一级选中的范围内。`selection` 为 `all` 的审批流不返回候选单据。
 - 同一账号在本级多个入口中待处理时，通过一次即计入这些入口（approval AP-16）；通过请求的 `selectedObjects` 用 `flow` 分别给出各审批流的勾选。
 - 任何已登录的用户都能查看审批详情和进度，`actions` 给出当前用户能做的操作。
+- `params` 是当前用户这次通过要填写的人工参数，格式同 C06 7.1 的 `params`：取各审批流中 `source` 为 `manual`、`level` 为当前级别的参数；这次通过会使审批到达终点时，还包括不带 `level` 的参数。不是本级待处理的审批人，或者没有要填写的参数时，为空数组。
 - 打开详情之后结果发生变化时，通过返回 409 RECONFIRM_REQUIRED，前端重新读取详情。
 - 不是本级尚未处理的审批人提交通过或驳回，不是发起人提交撤回，或者已有人做过通过之后提交撤回，返回 403 PERMISSION_DENIED。
 
@@ -186,10 +188,3 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 
 - 后端生成的 OpenAPI 与本文的路径、方法、请求和响应字段一致。
 - contracts 提供的前端模拟实现，对每个接口返回本文的样例。
-
-## 10. 待确认
-
-- 配置保存和校验失败时，`details` 要给出"配置项和路径"，但 C03 的错误明细没有这两个字段。建议在 C03 的 `details` 中加可选的 `configType`、`configKey`、`path`。
-- 审批详情没有给出本次通过要填写的人工参数（frontend-approval 的 FA-08 需要）。建议加 `params`：当前用户本级要填的参数定义，格式同 C06 7.1 的 `params`；最终批准时还包括不带 `level` 的参数。
-- 审批详情的样例补上了正文要求的 `source`（来源单据号取自 `source.recordKey`），C09 仍为 v2。请确认这处改动；确认后版本号加一。
-- 正文说来源单据的行带 `flows`，样例中主表的行没有。T-CT-1 按样例实现：`flows` 可以省略。请确认。
