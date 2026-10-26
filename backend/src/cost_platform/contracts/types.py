@@ -607,6 +607,7 @@ class PageView(Wire):
 # ============================================================ C06 配置模型
 #
 # 管理员保存的配置内容原样存储；这里的模型用于读取和校验结构。保存时的其余校验见 C06 第 10 节，由 config 负责。
+# 哪些字段可以省略、省略时取什么值，按 C06 第 1.1 节：这里带默认值的字段与该节的表格逐项对应，其他字段都必须写出。
 
 CompareOp: TypeAlias = Literal["eq", "ne", "gt", "ge", "lt", "le", "like", "in", "isNull", "isNotNull"]
 Logic: TypeAlias = Literal["AND", "OR"]
@@ -747,10 +748,12 @@ class FieldSetting(Wire):
 
 
 class ButtonConfig(Wire):
+    """区域按钮：业务动作必须写 `operation` 和 `requires_selection`，内置动作两项都不写（C06 第 3 节，保存时由 config 检查）。"""
+
     action: Code
     label: str
     operation: Code | None = None
-    requires_selection: Bool = False
+    requires_selection: Bool | None = None
 
 
 class PageMasterConfig(Wire):
@@ -773,8 +776,8 @@ class PageDetailConfig(Wire):
 class PageConfig(Wire):
     title: str
     layout: PageLayout
-    detail_mode: DetailMode = "tabs"
-    audit: Bool = False
+    detail_mode: DetailMode
+    audit: Bool
     save_operation: Code
     master: PageMasterConfig
     details: list[PageDetailConfig] = []
@@ -859,7 +862,7 @@ class OperationConfig(Wire):
     impact: list[Code] = []
     actions: list[ActionStep] = []
     row_not_found: Literal["skip", "reject"] = "skip"
-    propagation: Literal["continue", "end"] = "continue"
+    propagation: Literal["continue", "end"]
     procedure: str | None = None
     writes: dict[str, list[str]] = {}
 
@@ -883,7 +886,7 @@ class RuleConfig(Wire):
     target: Code
     category: Literal["calc", "validate", "ui"]
     field: str | None = None
-    order: Int = 0
+    order: Int
     data_items: list[DataItem] = []
     when: Condition | None = None
     expression: str | None = None
@@ -896,7 +899,8 @@ class RuleConfig(Wire):
 # ---- 7. approvalFlow
 
 class Trigger(Wire):
-    operations: list[RowOp] = ["modify"]
+    operations: Annotated[list[RowOp], Field(min_length=1)] = ["modify"]
+    """省略时为 ["modify"]；写出空数组时拒绝（C06 7.1、第 10 节）。"""
     changed_fields: dict[str, list[str]] = {}
     when: Condition | None = None
     data_items: list[DataItem] = []
@@ -985,7 +989,7 @@ class FlowParam(Wire):
     label: str
     type: Literal["string", "number", "boolean", "date"]
     source: Literal["manual", "constant", "expression"]
-    required: Bool = False
+    required: Bool
     level: Int | None = None
     value: JsonValue = None
 
@@ -1043,7 +1047,7 @@ class RolePage(Wire):
 
 class RoleConfig(Wire):
     name: str
-    admin: Bool = False
+    admin: Bool
     pages: dict[Code, RolePage] = {}
 
 
@@ -1064,7 +1068,7 @@ class MenuConfig(Wire):
 class DictEntry(Wire):
     value: str
     label: str
-    order: Int = 0
+    order: Int
 
 
 class DictConfig(Wire):
@@ -1074,7 +1078,7 @@ class DictConfig(Wire):
 class LookupConfig(Wire):
     table: str
     columns: list[str]
-    keyword_columns: list[str] = []
+    keyword_columns: list[str]
     order_by: str | None = None
 
 

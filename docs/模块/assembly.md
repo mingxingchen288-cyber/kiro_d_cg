@@ -12,7 +12,7 @@
 | 类别 | 内容 |
 |---|---|
 | 代码 | `backend/src/cost_platform/assembly/`、`frontend/src/main.ts`、`frontend/src/assembly/` |
-| 配置 | `backend/pyproject.toml`、`.importlinter`、前端的 `vite.config.ts`、`package.json`、dependency-cruiser 配置 |
+| 配置 | `backend/pyproject.toml`、`.importlinter`、前端的 `vite.config.ts`、`package.json`、dependency-cruiser 配置；根目录的 `.env.example`、`.env.test`、`.env.prod` |
 | 测试 | `backend/tests/e2e/`、`frontend/tests/e2e/` |
 
 ## 3. 对外契约
@@ -27,6 +27,10 @@
 - AS-06：前端 `main.ts` 创建 HTTP 客户端、实时客户端（断线自动重连），并用 rules-core 交付的 `createCalcWorkerClient` 创建计算客户端，加载外壳，再注册各前端模块。前端服务的响应带 COOP 和 COEP 头，供 rules-core 的 WASM 使用。
 - AS-07：import-linter 和 dependency-cruiser 检查[架构第 3 节](../架构与组装.md)的依赖规则，违反时构建失败。
 - AS-08：提供系统时钟和编号生成的真实实现。
+- AS-09：前端只读取仓库根目录的环境文件。`vite.config.ts` 的 `envDir` 和其中调用的 `loadEnv()` 都指向仓库根目录，`frontend/` 下不放环境文件，以免出现两处读取位置。保留 Vite 默认的 `VITE_` 前缀：不修改 `envPrefix`，调用 `loadEnv()` 时也不传空前缀。这样只有 `VITE_` 开头的变量进入浏览器和构建产物，根目录 `.env` 中数据库、Redis 等 `PLATFORM_*` 变量不会暴露。各文件的用途如下：
+  - 根目录 `.env` 不进版本库，放密钥和本机配置，包括 AG Grid 授权 `VITE_AG_GRID_LICENSE_KEY`（frontend-shell 的 FS-05）。后端也只读这个文件。
+  - 根目录 `.env.test`、`.env.prod` 进版本库，只放前端的公开配置。`.env.test` 供 `--mode test` 使用（开发服务器和 `build:test`），`.env.prod` 供 `--mode prod` 使用（`build`）。
+  - 本机要覆盖公开配置时，写在 `.env.test.local`、`.env.prod.local` 中，这两个文件不进版本库。
 
 ## 4. 依赖
 

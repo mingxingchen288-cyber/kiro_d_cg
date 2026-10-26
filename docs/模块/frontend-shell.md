@@ -22,7 +22,7 @@
 - FS-02：账号只有一个角色时跳过选角色页；收到 401 或 `session.revoked` 时回到登录页。
 - FS-03：页签标记了未保存修改时，关闭前先确认。
 - FS-04：顶栏显示未读通知数：打开时读取一次（后台请求，C09 第 1 节），之后按 `notification` 事件更新，不轮询。点击通知按 `link` 跳转。
-- FS-05：AG Grid 企业版授权从 `VITE_AG_GRID_LICENSE_KEY` 读取，不写进代码。
+- FS-05：AG Grid 企业版授权从根目录 `.env` 的 `VITE_AG_GRID_LICENSE_KEY` 读取，不写进代码；为空时不调用 `setLicenseKey`。环境文件的读取位置由 assembly 的 AS-09 规定。
 
 ## 4. 依赖
 

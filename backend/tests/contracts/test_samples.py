@@ -234,7 +234,7 @@ _FLOW_EXAMPLES = {
                                                        "sourceKey": "COST_PINGGU.DOCID", "rows": "all"},
                                               "fieldMapping": [{"from": "params.effectiveDate", "to": "EFFECTIVE_DATE"}]}]}],
     "params": [{"name": "effectiveDate", "label": "生效日期", "type": "date", "source": "manual", "required": True, "level": 1},
-               {"name": "reason", "label": "原因", "type": "string", "source": "constant", "value": "调价"}],
+               {"name": "reason", "label": "原因", "type": "string", "source": "constant", "required": False, "value": "调价"}],
     "notify": [{"event": "submitted", "to": "levelApprovers"}, {"event": "passed", "to": {"users": ["111"]}},
                {"event": "rejected", "to": {"role": "COST_MANAGER"}}],
 }
@@ -332,19 +332,140 @@ def test_error_detail_keeps_one_key_style() -> None:
 
 
 def test_c06_documented_defaults() -> None:
-    """C06 写明的默认值：保存操作默认只有修改、从表默认只列有变化的行、Lookup 默认单选并回填、导出默认 Calibri 和每张主单一张明细表、
-    要修改的行已删除时默认跳过、审批流的传播边界固定为 end。"""
+    """C06 写明的默认值：保存操作省略时只有修改（写出空数组被拒绝）、从表默认只列有变化的行、Lookup 默认单选并回填且不筛选、
+    导出默认 Calibri 和每张主单一张明细表、要修改的行已删除时默认跳过、审批流的传播边界固定为 end、冻结省略时为空。"""
     assert t.parse_wire(t.Trigger, {}).operations == ["modify"]
+    with pytest.raises(ValidationError):
+        t.parse_wire(t.Trigger, {"operations": []})
     assert t.parse_wire(t.DisplayDetail, {"title": "原辅料", "rows": "source.COST_MATERIAL"}).rows_filter == "changed"
     lookup = t.parse_wire(t.LookupSetting, {"code": "GOODS", "fill": {}})
     assert (lookup.multiple, lookup.fill_back, lookup.filter) == (False, True, None)
     export = t.parse_wire(t.ExportConfig, {k: v for k, v in _json("C06", 14).items() if k not in ("font", "detailLayout")})
     assert (export.font, export.detail_layout) == ("Calibri", "perMaster")
-    assert t.parse_wire(t.OperationConfig, {"label": "保存", "kind": "save"}).row_not_found == "skip"
-    flow = {k: v for k, v in FLOW_1["content"].items() if k != "propagation"}
-    assert t.parse_wire(t.ApprovalFlowConfig, flow).propagation == "end"
+    assert t.parse_wire(t.OperationConfig, {"label": "保存", "kind": "save", "propagation": "continue"}).row_not_found == "skip"
+    flow = {k: v for k, v in FLOW_1["content"].items() if k not in ("propagation", "freeze")}
+    parsed = t.parse_wire(t.ApprovalFlowConfig, flow)
+    assert (parsed.propagation, parsed.freeze) == ("end", [])
     with pytest.raises(ValidationError):
         t.parse_wire(t.ApprovalFlowConfig, {**FLOW_1["content"], "propagation": "continue"})
+    button = t.parse_wire(t.ButtonConfig, {"action": "copyRow", "label": "复制"})
+    assert (button.operation, button.requires_selection) == (None, None)
+
+
+def _section_1_1() -> dict[str, dict[str, Any]]:
+    """C06 第 1.1 节的表格：每个结构可以省略的字段和省略时的值（"无"为 None，"空"为空数组或空对象，其余为 JSON 字面量）。"""
+    text = next(DOCS.glob("C06-*.md")).read_text(encoding="utf-8")
+    section = text.split("### 1.1 字段的省略", 1)[1].split("\n## ", 1)[0]
+    table: dict[str, dict[str, Any]] = {}
+    for line in section.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if not line.startswith("|") or len(cells) != 2 or cells[0] in ("结构", "---"):
+            continue
+        fields: dict[str, Any] = {}
+        for part in cells[1].split("；"):
+            names, _, value = part.partition("：")
+            parsed: Any
+            if value == "无":
+                parsed = None
+            elif value == "空":
+                parsed = "空"
+            else:
+                parsed = json.loads(value.strip("`"))
+            for name in re.findall(r"`([^`]+)`", names):
+                fields[name] = parsed
+        table[cells[0]] = fields
+    return table
+
+
+# C06 第 1.1 节表格的每一行对应的模型。
+_SECTION_1_1_MODELS: dict[str, tuple[Any, ...]] = {
+    "`entity` 的内容": (t.EntityConfig,),
+    "entity 的 `fields[]`": (t.EntityField,),
+    "entity 的 `approvalRequired[]`": (t.ApprovalRequiredRule,),
+    "`approvalRequired[].when.conditions[]`": (t.RequiredConditionItem,),
+    "字段的可见、可编辑、必填（entity 的 `fieldDefaults`，role 的 `columns`）": (t.FieldFlags,),
+    "`page` 的内容": (t.PageConfig,),
+    "page 的 `master`、`details[]`": (t.PageMasterConfig, t.PageDetailConfig),
+    "page 区域 `fields` 中的每个字段": (t.FieldSetting,),
+    "page 字段的 `lookup`": (t.LookupSetting,),
+    "page 字段的 `lookup.filter`": (t.LookupFilter,),
+    "page 区域的 `buttons[]`": (t.ButtonConfig,),
+    "`operation` 的内容": (t.OperationConfig,),
+    "`updateTargets` 的 `targets[]`": (t.TargetUpdate,),
+    "关联 SQL（7.2，也用于 `freeze` 和 `updateRecords`）": (t.SqlFinder,),
+    "`rule` 的内容": (t.RuleConfig,),
+    "可视化条件的 `conditions[]`（第 5 节）": (t.RuleConditionItem,),
+    "rule 的 `branches[]`": (t.Branch,),
+    "rule 的 `effect`": (t.UiEffect,),
+    "`dataItems[]`": (t.DataItem,),
+    "approvalFlow 的 `trigger`": (t.Trigger,),
+    "approvalFlow 的 `levels[].entries[]`": (t.LevelEntry,),
+    "SQL 审批人": (t.SqlApprover,),
+    "`approvalFlow` 的内容": (t.ApprovalFlowConfig,),
+    "approvalFlow 的 `params[]`": (t.FlowParam,),
+    "approvalFlow 的 `display`": (t.ApprovalDisplay,),
+    "`display.master`": (t.DisplayMaster,),
+    "`display.details[]`": (t.DisplayDetail,),
+    "`role` 的内容": (t.RoleConfig,),
+    "role `pages` 中的每个页面": (t.RolePage,),
+    "行权限可视化条件的 `conditions[]`（第 8 节）": (t.RowConditionItem,),
+    "menu 的 `items[]`（含 `children`）": (t.MenuItem,),
+    "`lookup` 的内容": (t.LookupConfig,),
+    "`export` 的内容": (t.ExportConfig,),
+}
+
+
+def _reachable_models(roots: Any) -> set[Any]:
+    """从各类配置内容的模型出发，经字段类型能到达的全部模型。"""
+    import typing
+
+    from pydantic import BaseModel
+
+    found: set[Any] = set()
+
+    def visit(tp: Any) -> None:
+        if isinstance(tp, type) and issubclass(tp, BaseModel):
+            if tp in found:
+                return
+            found.add(tp)
+            for info in tp.model_fields.values():
+                visit(info.annotation)
+            return
+        for arg in typing.get_args(tp):
+            visit(arg)
+
+    for root in roots:
+        visit(root)
+    return found
+
+
+def _omittable(model: Any) -> dict[str, Any]:
+    """模型中带默认值的字段（JSON 字段名）和默认值；空数组、空对象记为"空"。"""
+    result = {}
+    for name, info in model.model_fields.items():
+        if info.is_required():
+            continue
+        default = info.get_default(call_default_factory=True)
+        result[info.alias or name] = "空" if default in ([], {}) else default
+    return result
+
+
+def test_c06_omittable_fields_match_section_1_1() -> None:
+    """C06 第 1.1 节：表中列出的字段可以省略、省略时取表中的值；没有列出的字段都必须写出。"""
+    table = _section_1_1()
+    assert set(table) == set(_SECTION_1_1_MODELS)
+    problems = []
+    for label, models in _SECTION_1_1_MODELS.items():
+        for model in models:
+            if _omittable(model) != table[label]:
+                problems.append(f"{label}（{model.__name__}）：模型 {_omittable(model)}，文档 {table[label]}")
+    listed = {m for models in _SECTION_1_1_MODELS.values() for m in models}
+    for model in _reachable_models(t.CONFIG_CONTENT.values()) - listed:
+        if _omittable(model):
+            problems.append(f"{model.__name__} 有可以省略的字段 {_omittable(model)}，C06 第 1.1 节没有列出")
+    for model in listed - _reachable_models(t.CONFIG_CONTENT.values()):
+        problems.append(f"{model.__name__} 不属于任何配置内容")
+    assert problems == []
 
 
 def test_c04_c08_rules() -> None:
@@ -400,6 +521,17 @@ INVALID = [
     ("冻结方式未知", t.ApprovalFlowConfig, _broken(["freeze", 0, "kind"], "rows", FLOW_1["content"])),
     ("通用动作未知", t.ApprovalFlowConfig, _broken(["afterApproval", 0, "action"], "sync", FLOW_1["content"])),
     ("触发操作未知", t.ApprovalFlowConfig, _broken(["trigger", "operations"], ["upsert"], FLOW_1["content"])),
+    ("触发操作写成空数组", t.ApprovalFlowConfig, _broken(["trigger", "operations"], [], FLOW_1["content"])),
+    # C06 第 1.1 节中决定行为、必须写出的字段
+    ("页面缺少 audit", t.PageConfig, _broken(["audit"], _DELETE, _json("C06", 2))),
+    ("页面缺少 detailMode", t.PageConfig, _broken(["detailMode"], _DELETE, _json("C06", 2))),
+    ("操作缺少 propagation", t.OperationConfig, _broken(["propagation"], _DELETE, _json("C06", 3))),
+    ("规则缺少 order", t.RuleConfig, _broken(["order"], _DELETE, _json("C06", 4))),
+    ("审批流参数缺少 required", t.ApprovalFlowConfig, _broken(["params", 1, "required"], _DELETE, _FLOW_EXAMPLES)),
+    ("角色缺少 admin", t.RoleConfig, _broken(["admin"], _DELETE, _json("C06", 10))),
+    ("字典项缺少 order", t.DictConfig, _broken(["items", 0, "order"], _DELETE, _json("C06", 12))),
+    ("Lookup 缺少 keywordColumns", t.LookupConfig, _broken(["keywordColumns"], _DELETE, _json("C06", 13))),
+    ("Lookup 筛选写成空对象", t.PageConfig, _broken(["master", "fields", "GOODSID", "lookup", "filter"], {}, _PAGE_FIELD_EXAMPLES)),
     ("展示列的字段写法不对", t.ApprovalFlowConfig,
      _broken(["display", "details", 0, "columns", 0, "field"], "COST_MATERIAL.GOODSID", FLOW_1["content"])),
     ("求值阶段未知", t.EvaluationRequest, _broken(["phase"], "draft", _json("C07", 1))),
