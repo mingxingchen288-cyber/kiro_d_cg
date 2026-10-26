@@ -18,3 +18,14 @@ def test_import_rules_kept() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_every_source_directory_is_a_package() -> None:
+    """依赖检查跳过没有 __init__.py 的目录，而 Python 仍能把它当作命名空间包导入，所以每个源码目录都必须是包。"""
+    src = BACKEND / "src" / "cost_platform"
+    missing = sorted(
+        d.relative_to(src).as_posix()
+        for d in src.rglob("*")
+        if d.is_dir() and d.name != "__pycache__" and not (d / "__init__.py").exists()
+    )
+    assert missing == []

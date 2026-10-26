@@ -31,3 +31,13 @@ layers =
     assembly
     config | identity | authz | pipeline | approval | operations | delivery | realtime | queries | db_core | migration
     contracts
+
+[importlinter:contract:root-package]
+name = The root package imports no platform module
+type = forbidden
+# as_packages = False: the source is cost_platform/__init__.py only, not its sub-packages.
+source_modules =
+    cost_platform
+forbidden_modules =
+    cost_platform.**
+as_packages = False
