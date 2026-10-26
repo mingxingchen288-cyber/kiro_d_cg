@@ -67,7 +67,9 @@ function normalized(text: string): string {
 
 /** 先抽长度再生成数字串，让超过 28 位的长数稳定出现。 */
 function digits(min: number, max: number) {
-  return fc.integer({ min, max }).chain(n => fc.string({ unit: fc.constantFrom(...'0123456789'), minLength: n, maxLength: n }));
+  return fc
+    .integer({ min, max })
+    .chain(n => fc.string({ unit: fc.constantFrom(...'0123456789'), minLength: n, maxLength: n }));
 }
 
 const texts = fc
@@ -98,7 +100,7 @@ describe('C01 样例', () => {
   });
 
   // C01 第 2 节样例之外常见的不合法写法：换行、非 ASCII 数字、空串、只有符号、下划线分隔。
-  it.each(['1\n', '\n1', '\u0661\u0662', '\uff11', '1\n2', 'abc\n1', '', '-', '-.5', '1_000', ' 1', '1 '])(
+  it.each(['1\n', '\n1', '\u0661\u0662', '\uFF11', '1\n2', 'abc\n1', '', '-', '-.5', '1_000', ' 1', '1 '])(
     '不合法文本 %j 被拒绝',
     text => {
       expect(isDecimalText(text)).toBe(false);
@@ -194,8 +196,14 @@ describe('基于属性的测试', () => {
   });
 
   it('绝对值相同、正负号相反的数对，与参考实现结论相同', () => {
+    // 整数部分常取 0，并单独生成截断为零的数，让"只有截断为零的数不比较正负号"这条规则被随机数对覆盖
+    const numbers = fc.oneof(
+      texts,
+      digits(1, 30).map(fraction => `0.${fraction}`),
+      digits(0, 20).map(tail => `0.${'0'.repeat(15)}${tail}`)
+    );
     fc.assert(
-      fc.property(texts, a => {
+      fc.property(numbers, a => {
         const b = a.startsWith('-') ? a.slice(1) : `-${a}`;
         expect(numbersConsistent(a, b)).toBe(oracleKey(a) === oracleKey(b));
       })
@@ -260,7 +268,7 @@ describe('基于属性的测试', () => {
     const tails = fc.tuple(...[0, 1, 2].map(() => fc.stringMatching(/^[0-9]{0,10}$/)));
     const signs = fc.tuple(fc.boolean(), fc.boolean(), fc.boolean());
     fc.assert(
-      fc.property(heads, tails, signs, fc.boolean(), texts, (head, tail, sign, zero, other) => {
+      fc.property(fc.tuple(heads, tails, signs, fc.boolean(), texts), ([head, tail, sign, zero, other]) => {
         const [x, y, z] = tail.map((t, i) => (zero ? `${sign[i] ? '-' : ''}0.${'0'.repeat(15)}${t}` : head + t));
         expect(numbersConsistent(x, y) && numbersConsistent(y, z) && numbersConsistent(x, z)).toBe(true);
         for (const [a, b, c] of [
