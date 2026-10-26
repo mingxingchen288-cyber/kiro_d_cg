@@ -263,6 +263,7 @@ CONFIG_CONTENTS: list[tuple[str, Any, Any]] = [
     ("C06 menu", _json("C06", 11), t.MenuConfig),
     ("C06 dict", _json("C06", 12), t.DictConfig),
     ("C06 lookup", _json("C06", 13), t.LookupConfig),
+    ("C06 正文例子：不按关键字搜索的 Lookup", _broken(["keywordColumns"], [], _json("C06", 13)), t.LookupConfig),
     ("C06 export", _json("C06", 14), t.ExportConfig),
 ]
 
@@ -289,6 +290,11 @@ def test_password_is_masked_when_dumped() -> None:
     assert login.password.get_secret_value() == "secret"
     assert "secret" not in repr(login)
     assert t.dump_wire(t.LoginRequest, login)["password"] == "**********"
+    change = t.parse_wire(t.PasswordChange, {"password": "secret"})  # C09 重设密码的请求
+    assert change.password.get_secret_value() == "secret"
+    assert t.dump_wire(t.PasswordChange, change) == {"password": "**********"}
+    with pytest.raises(ValidationError):
+        t.parse_wire(t.PasswordChange, {"password": "secret", "oldPassword": "x"})
     account = t.parse_wire(t.AccountCreate, {"username": "zhangsan", "displayName": "张三", "departmentId": "10",
                                              "password": "secret", "roleCodes": ["COST_ACCOUNTANT"]})
     assert account.password.get_secret_value() == "secret"
@@ -466,6 +472,27 @@ def test_c06_omittable_fields_match_section_1_1() -> None:
     for model in listed - _reachable_models(t.CONFIG_CONTENT.values()):
         problems.append(f"{model.__name__} 不属于任何配置内容")
     assert problems == []
+
+
+# C06 中必须写、但值可以为 null 的字段：实体字段的 column 为 null 表示只在 readView 中存在（C06 第 2 节）。
+_C06_REQUIRED_NULLABLE = {"EntityField.column"}
+
+
+def test_c06_required_fields_reject_null() -> None:
+    """C06 第 1.1 节：必须写的字段（包括决定行为的字段）不能用 null 代替取值，只有正文写明可以为 null 的除外。"""
+    from pydantic import TypeAdapter
+
+    nullable = set()
+    for model in _reachable_models(t.CONFIG_CONTENT.values()):
+        for name, info in model.model_fields.items():
+            if not info.is_required():
+                continue
+            try:
+                TypeAdapter(info.annotation).validate_python(None)
+            except ValidationError:
+                continue
+            nullable.add(f"{model.__name__}.{name}")
+    assert nullable == _C06_REQUIRED_NULLABLE
 
 
 def test_c04_c08_rules() -> None:

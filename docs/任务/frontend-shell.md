@@ -17,7 +17,7 @@
 ### T-FS-2 外壳与 ShellApi
 
 - 归属与目标：实现 FS-01–FS-05 和 `ShellApi`（C11）。
-- 前置输入：开始前 T-FS-1、T-CT-4。
+- 前置输入：开始前 T-FS-1、T-CT-4。验收前 T-AS-3（FS-05 的验收需要先把环境文件迁到根目录）。
 - 负责范围：`frontend/src/modules/shell/`、`frontend/src/theme/`、`frontend/src/layouts/`。
 - 交付物：登录页、选角色页、菜单、页签、站内通知入口；`ShellApi`。
 - 接入责任：T-AS-3 加载外壳并注册其他模块；T-AS-7 与真实后端联调。
