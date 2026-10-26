@@ -191,3 +191,5 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 
 - 配置保存和校验失败时，`details` 要给出"配置项和路径"，但 C03 的错误明细没有这两个字段。建议在 C03 的 `details` 中加可选的 `configType`、`configKey`、`path`。
 - 审批详情没有给出本次通过要填写的人工参数（frontend-approval 的 FA-08 需要）。建议加 `params`：当前用户本级要填的参数定义，格式同 C06 7.1 的 `params`；最终批准时还包括不带 `level` 的参数。
+- 审批详情的样例补上了正文要求的 `source`（来源单据号取自 `source.recordKey`），C09 仍为 v2。请确认这处改动；确认后版本号加一。
+- 正文说来源单据的行带 `flows`，样例中主表的行没有。T-CT-1 按样例实现：`flows` 可以省略。请确认。

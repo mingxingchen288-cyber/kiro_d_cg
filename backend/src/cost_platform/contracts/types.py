@@ -2,8 +2,14 @@
 
 - 进出 JSON 的结构（C02、C03、C05、C06、C07、C09、C10）用 pydantic 模型：Python 中字段名为
   snake_case，JSON 中为 camelCase（C01 第 1 节）；不允许出现未定义的字段；模型创建后不可修改。
-- 后端模块之间传递的结构（C04、C08）用 dataclass。
-- 端口协议在 ports.py。
+- 后端模块之间传递的结构（C04、C08）用 dataclass。端口协议在 ports.py。
+
+外部数据一律经 `parse_wire` 解析，经 `dump_wire` 输出：
+- 解析只认 camelCase 字段名；整数和是非必须是 JSON 的数字和布尔；日期、日期时间必须是 C01 第 4 节的格式。
+- 输出时，契约写明总会出现的字段（含值为 null 的）总是输出；可选字段没有值时省略。
+
+本文件只表达契约的数据形状和 C01 规定的值格式。跨字段的规则（例如单表页没有明细、审批流的级别连续）
+由提供方模块校验（config 按 C06 第 10 节，其他见各模块说明），不在这里。
 
 按契约编号分节，每节开头注明对应的文档。
 """
@@ -12,7 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+import re
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from datetime import date, datetime
@@ -22,28 +28,36 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeAlias
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Discriminator,
     Field,
     JsonValue,
+    PlainSerializer,
     SecretStr,
+    SerializationInfo,
+    SerializerFunctionWrapHandler,
     StrictBool,
+    StrictFloat,
+    StrictInt,
     StrictStr,
     StringConstraints,
     Tag,
     TypeAdapter,
-    model_validator,
+    model_serializer,
 )
 from pydantic.alias_generators import to_camel
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from .ports import ConfigSnapshot
 
 
 # ============================================================ 基础（C01）
 
 class Wire(BaseModel):
-    """进出 JSON 的模型的基类。"""
+    """进出 JSON 的模型的基类。Python 代码可以按 snake_case 字段名构造；外部数据经 parse_wire 只按 camelCase 解析。"""
 
     model_config = ConfigDict(
         alias_generator=to_camel,
@@ -54,37 +68,6 @@ class Wire(BaseModel):
         frozen=True,
     )
 
-
-_UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-
-Uuid = Annotated[str, StringConstraints(pattern=rf"^{_UUID}$")]
-"""小写 UUID：requestKey、eventId、deliveryId（C01 第 5 节）。"""
-
-RequestKey = Uuid
-ClientRowId = Annotated[str, StringConstraints(pattern=rf"^tmp-{_UUID}$")]
-"""前端为新增行生成的临时编号：`tmp-` 加小写 UUID。"""
-
-DecimalText = Annotated[str, StringConstraints(pattern=r"^-?[0-9]+(\.[0-9]+)?$")]
-"""十进制文本（C01 第 2 节）。解析、格式化和一致判定见 decimal_text（T-CT-2）。"""
-
-IdText = Annotated[str, StringConstraints(pattern=r"^[0-9]+$")]
-"""十进制整数文本：approvalId、userId。"""
-
-Key = Annotated[str, StringConstraints(min_length=1)]
-"""rowKey、recordKey：主键列的值转成的文本。"""
-
-Code = Annotated[str, StringConstraints(min_length=1)]
-"""配置中的编码：实体、页面、操作、审批流、规则、角色等。"""
-
-Fingerprint = Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")]
-
-BusinessValue: TypeAlias = StrictStr | StrictBool | None
-"""业务字段在 JSON 中的值：精确数值和文本都是字符串（C01），是非为布尔，空为 null。"""
-
-FieldValues: TypeAlias = dict[str, BusinessValue]
-
-Value: TypeAlias = str | Decimal | bool | date | datetime | None
-"""业务字段在后端内部的值（C08 第 1 节）：精确数值为 Decimal。"""
 
 _adapters: dict[int, tuple[Any, TypeAdapter[Any]]] = {}
 
@@ -98,20 +81,88 @@ def adapter(tp: Any) -> TypeAdapter[Any]:
     return found[1]
 
 
-class RowOp(StrEnum):
-    """行操作，对应命令中各行的 `op` 和审批流 `trigger.operations`。"""
+def parse_wire(tp: Any, data: Any) -> Any:
+    """把外部数据（已由 JSON 解码为 dict、list 等）解析为契约类型；只认 camelCase 字段名。
 
-    ADD = "add"
-    MODIFY = "modify"
-    DELETE = "delete"
+    不符合契约时抛 pydantic.ValidationError。
+    """
+    return adapter(tp).validate_python(data, by_alias=True, by_name=False)
 
 
-FieldType = Literal["text", "number", "date", "datetime", "boolean"]
-ColumnSource = Literal["erp", "own"]
-FieldRole = Literal["input", "calculated", "system"]
-Pinned = Literal["left", "right"]
-PageLayout = Literal["single", "masterDetail"]
-DetailMode = Literal["tabs", "stack"]
+def dump_wire(tp: Any, value: Any) -> Any:
+    """把契约类型转为可以直接编码为 JSON 的数据：字段名为 camelCase，可选字段没有值时省略。"""
+    return adapter(tp).dump_python(value, mode="json", by_alias=True, exclude_defaults=True)
+
+
+_UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+
+Uuid = Annotated[str, StringConstraints(pattern=rf"^{_UUID}$")]
+"""小写 UUID：requestKey、eventId、deliveryId（C01 第 5 节）。"""
+
+RequestKey = Uuid
+ClientRowId = Annotated[str, StringConstraints(pattern=rf"^tmp-{_UUID}$")]
+"""前端为新增行生成的临时编号：`tmp-` 加小写 UUID。"""
+
+DecimalText = Annotated[str, StringConstraints(pattern=r"^-?[0-9]+(\.[0-9]+)?$")]
+"""十进制文本（C01 第 2 节）：精确数值、approvalId、userId。解析、格式化和一致判定见 decimal_text。"""
+
+Key = Annotated[str, StringConstraints(min_length=1)]
+"""rowKey、recordKey：主键列的值转成的文本。"""
+
+Code = Annotated[str, StringConstraints(min_length=1)]
+"""配置中的编码：实体、页面、操作、审批流、规则、角色等。"""
+
+Int: TypeAlias = StrictInt
+Bool: TypeAlias = StrictBool
+Millis: TypeAlias = StrictInt | StrictFloat
+
+BusinessValue: TypeAlias = StrictStr | StrictBool | None
+"""业务字段在 JSON 中的值：精确数值和文本都是字符串（C01），是非为布尔，空为 null。"""
+
+FieldValues: TypeAlias = dict[str, BusinessValue]
+
+_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+_DATETIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}")
+
+
+def _date_input(value: Any) -> Any:
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and _DATE.fullmatch(value):
+        return value
+    raise ValueError("日期的格式为 YYYY-MM-DD")
+
+
+def _datetime_input(value: Any) -> Any:
+    if isinstance(value, datetime) and value.tzinfo is None:
+        return value
+    if isinstance(value, str) and _DATETIME.fullmatch(value):
+        return value
+    raise ValueError("日期时间的格式为 YYYY-MM-DDTHH:mm:ss，不带时区")
+
+
+DateText = Annotated[date, BeforeValidator(_date_input)]
+"""C01 第 4 节的日期：`YYYY-MM-DD`。"""
+
+DateTimeText = Annotated[
+    datetime,
+    BeforeValidator(_datetime_input),
+    PlainSerializer(lambda v: v.strftime("%Y-%m-%dT%H:%M:%S"), return_type=str, when_used="json"),
+]
+"""C01 第 4 节的日期时间：`YYYY-MM-DDTHH:mm:ss`，按服务器时区，不带时区后缀；输出到秒。"""
+
+Value: TypeAlias = str | Decimal | bool | date | datetime | None
+"""业务字段在后端内部的值（C08 第 1 节）：精确数值为 Decimal。"""
+
+RowOp: TypeAlias = Literal["add", "modify", "delete"]
+"""行操作，对应命令中各行的 `op` 和审批流 `trigger.operations`。"""
+
+FieldType: TypeAlias = Literal["text", "number", "date", "datetime", "boolean"]
+ColumnSource: TypeAlias = Literal["erp", "own"]
+FieldRole: TypeAlias = Literal["input", "calculated", "system"]
+Pinned: TypeAlias = Literal["left", "right"]
+PageLayout: TypeAlias = Literal["single", "masterDetail"]
+DetailMode: TypeAlias = Literal["tabs", "stack"]
 
 
 class RecordRef(Wire):
@@ -180,20 +231,30 @@ _HTTP_STATUS: dict[ErrorCode, int] = {
 
 
 class ErrorDetail(Wire):
-    """定位到行和字段的错误明细；被冻结时 `approval_id` 指明冻结它的审批。"""
+    """定位到行和字段的错误明细；被冻结时 `approval_id` 指明冻结它的审批。
+
+    构造时只需给出用到的字段；输出时 6 个字段总是出现，没有值的为 null（与 C03 的样例相同）。
+    """
 
     message: str | None = None
     entity: Code | None = None
     row_key: Key | None = None
     client_row_id: ClientRowId | None = None
     field: str | None = None
-    approval_id: IdText | None = None
+    approval_id: DecimalText | None = None
+
+    @model_serializer(mode="wrap")
+    def _every_key(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo) -> dict[str, Any]:
+        data = handler(self)
+        for name, field_info in type(self).model_fields.items():
+            data.setdefault((field_info.alias or name) if info.by_alias else name, getattr(self, name))
+        return data
 
 
 class ErrorResponse(Wire):
     code: ErrorCode
     message: str
-    details: list[ErrorDetail] = []
+    details: list[ErrorDetail]
 
 
 class PlatformError(Exception):
@@ -272,25 +333,17 @@ class DocumentPatch(Wire):
 
     entity: Code
     master: MasterChange
-    details: list[DetailChange] = []
-
-    @model_validator(mode="after")
-    def _details_match_master(self) -> DocumentPatch:
-        if self.master.op == "add" and any(d.op != "add" for d in self.details):
-            raise ValueError("新增的单据只能新增明细")
-        if self.master.op == "delete" and any(d.op != "delete" for d in self.details):
-            raise ValueError("删除的单据不能新增或修改明细")
-        return self
+    details: list[DetailChange]
 
 
 class Command(Wire):
     """命令：业务数据唯一的写入形式。"""
 
     request_key: RequestKey
-    page: Code | None = None
+    page: Code | None
     operation: Code
-    documents: list[DocumentPatch] = []
-    params: dict[str, JsonValue] = {}
+    documents: list[DocumentPatch]
+    params: dict[str, JsonValue]
 
     def content_digest(self) -> str:
         """去掉 requestKey 的命令体，按键名排序、去掉空白后取 SHA-256（十六进制小写），用于判重。"""
@@ -299,36 +352,31 @@ class Command(Wire):
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-class Outcome(StrEnum):
-    SAVED = "saved"
-    UNCHANGED = "unchanged"
-    APPROVAL_SUBMITTED = "approvalSubmitted"
-    APPROVAL_PROCESSED = "approvalProcessed"
+Outcome: TypeAlias = Literal["saved", "unchanged", "approvalSubmitted", "approvalProcessed"]
 
 
 class FrozenMark(Wire):
     """行所在单据被冻结时，冻结它的审批。"""
 
-    approval_id: IdText
+    approval_id: DecimalText
 
 
 class ResultRow(Wire):
-    """命令结果中的受影响行：未删除的行给出实体的全部字段；删除的行只有 `deleted`。"""
+    """命令结果中写入的行或计算带出变化的行：给出实体的全部字段；未冻结时 `frozen` 为 null。"""
 
     entity: Code
     row_key: Key
     client_row_id: ClientRowId | None = None
-    values: FieldValues | None = None
-    frozen: FrozenMark | None = None
-    deleted: bool = False
+    values: FieldValues
+    frozen: FrozenMark | None
 
-    @model_validator(mode="after")
-    def _shape(self) -> ResultRow:
-        if self.deleted and (self.values is not None or self.frozen is not None):
-            raise ValueError("删除的行不带 values 和 frozen")
-        if not self.deleted and self.values is None:
-            raise ValueError("未删除的行必须给出 values")
-        return self
+
+class DeletedRow(Wire):
+    """命令结果中删除的行。"""
+
+    entity: Code
+    row_key: Key
+    deleted: Literal[True]
 
 
 class Prompt(Wire):
@@ -349,20 +397,16 @@ class SkippedRow(Wire):
     reason: Literal["ROW_NOT_FOUND"]
 
 
-class ApprovalStatus(StrEnum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    WITHDRAWN = "withdrawn"
+ApprovalStatus: TypeAlias = Literal["pending", "approved", "rejected", "withdrawn"]
 
 
 class ApprovalRef(Wire):
     """本命令提交或处理的审批。"""
 
-    approval_id: IdText
+    approval_id: DecimalText
     document: RecordRef
     status: ApprovalStatus
-    level: int = Field(ge=1)
+    level: Int
     flows: list[Code]
 
 
@@ -373,11 +417,11 @@ ApprovalState = ApprovalRef
 class CommandResult(Wire):
     request_key: RequestKey
     outcome: Outcome
-    rows: list[ResultRow] = []
-    id_map: dict[ClientRowId, Key] = {}
-    prompts: list[Prompt] = []
-    skipped: list[SkippedRow] = []
-    approvals: list[ApprovalRef] = []
+    rows: list[ResultRow | DeletedRow]
+    id_map: dict[ClientRowId, Key]
+    prompts: list[Prompt]
+    skipped: list[SkippedRow]
+    approvals: list[ApprovalRef]
 
 
 # ============================================================ C04 执行上下文
@@ -398,8 +442,8 @@ class Origin:
     approval_id: str | None = None
 
     def __post_init__(self) -> None:
-        if (self.kind == "approval") != (self.approval_id is not None):
-            raise ValueError("来源为审批时必须给出 approval_id，否则不能给出")
+        if self.kind == "approval" and self.approval_id is None:
+            raise ValueError("来源为审批时必须给出 approval_id")
 
 
 @dataclass(frozen=True)
@@ -423,13 +467,13 @@ class ViewField(Wire):
     name: str
     label: str
     type: FieldType
-    scale: int | None
+    scale: Int | None
     source: ColumnSource
-    calculated: bool
-    visible: bool
-    editable: bool
-    required: bool
-    width: int | None
+    calculated: Bool
+    visible: Bool
+    editable: Bool
+    required: Bool
+    width: Int | None
     pinned: Pinned | None
     dict_type: Code | None
     lookup: ViewLookup | None
@@ -440,29 +484,23 @@ class ViewButton(Wire):
     action: Code
     label: str
     operation: Code | None
-    requires_selection: bool
+    requires_selection: Bool
 
 
 class GridOptions(Wire):
-    side_bar: bool
-    cell_selection: bool
+    side_bar: Bool
+    cell_selection: Bool
     group_by: list[str]
 
 
 class FormCell(Wire):
-    """表单布局的一格：24 列网格，`x` 从 0 起。"""
+    """表单布局的一格：24 列网格，`x` 从 0 起；越界由 config 在保存时拒绝。"""
 
     field: str
-    x: int = Field(ge=0)
-    y: int = Field(ge=0)
-    w: int = Field(ge=1)
-    h: int = Field(ge=1)
-
-    @model_validator(mode="after")
-    def _within_grid(self) -> FormCell:
-        if self.x + self.w > 24:
-            raise ValueError("表单布局越出 24 列")
-        return self
+    x: Int
+    y: Int
+    w: Int
+    h: Int
 
 
 class ErpRow(Wire):
@@ -497,36 +535,32 @@ class ViewDetail(Wire):
 
 class PackRef(Wire):
     pack_id: Code
-    version: int
+    version: Int
 
 
-SystemButton = Literal["save", "addRow", "deleteRow", "advancedSearch"]
+SystemButton: TypeAlias = Literal["save", "addRow", "deleteRow", "advancedSearch"]
 
 
 class PageView(Wire):
     page_code: Code
     title: str
-    version: int
+    version: Int
     layout: PageLayout
     detail_mode: DetailMode
-    audit: bool
-    save_operation: Code | None
-    rules_pack: PackRef | None
+    audit: Bool
+    save_operation: Code
+    rules_pack: PackRef
     master: ViewMaster
     details: list[ViewDetail]
     system_buttons: list[SystemButton]
 
-    @model_validator(mode="after")
-    def _single_has_no_details(self) -> PageView:
-        if self.layout == "single" and self.details:
-            raise ValueError("单表页没有明细")
-        return self
-
 
 # ============================================================ C06 配置模型
+#
+# 管理员保存的配置内容原样存储；这里的模型用于读取和校验结构。保存时的其余校验见 C06 第 10 节，由 config 负责。
 
-CompareOp = Literal["eq", "ne", "gt", "ge", "lt", "le", "like", "in", "isNull", "isNotNull"]
-Logic = Literal["AND", "OR"]
+CompareOp: TypeAlias = Literal["eq", "ne", "gt", "ge", "lt", "le", "like", "in", "isNull", "isNotNull"]
+Logic: TypeAlias = Literal["AND", "OR"]
 
 
 class RuleConditionItem(Wire):
@@ -569,12 +603,12 @@ class BuiltinDefault(Wire):
 
 class OptionsDefault(Wire):
     type: Literal["options"]
-    value: list[str] = Field(min_length=1)
+    value: list[str]
 
 
 DefaultValue = Annotated[StaticDefault | BuiltinDefault | OptionsDefault, Field(discriminator="type")]
 
-CompareFormat = Literal["value", "percent", "both"]
+CompareFormat: TypeAlias = Literal["value", "percent", "both"]
 
 
 class FieldCompare(Wire):
@@ -591,7 +625,7 @@ class CompareKey(Wire):
 class QueryCompare(Wire):
     mode: Literal["query"]
     source: str
-    keys: list[CompareKey] = Field(min_length=1)
+    keys: list[CompareKey]
     field: str
     format: CompareFormat
 
@@ -604,7 +638,7 @@ class EntityField(Wire):
     column: str | None
     label: str
     type: FieldType
-    scale: int | None = None
+    scale: Int | None = None
     source: ColumnSource
     role: FieldRole
     default: DefaultValue | None = None
@@ -617,9 +651,9 @@ class DetailLink(Wire):
 
 
 class FieldFlags(Wire):
-    visible: bool | None = None
-    editable: bool | None = None
-    required: bool | None = None
+    visible: Bool | None = None
+    editable: Bool | None = None
+    required: Bool | None = None
 
 
 class RequiredConditionItem(Wire):
@@ -634,7 +668,7 @@ class RequiredCondition(Wire):
 
 
 class ApprovalRequiredRule(Wire):
-    fields: list[str] = Field(min_length=1)
+    fields: list[str]
     when: RequiredCondition | None = None
     source_pages: list[Code]
 
@@ -642,7 +676,7 @@ class ApprovalRequiredRule(Wire):
 class EntityConfig(Wire):
     table: str
     primary_key: str
-    freezable: bool
+    freezable: Bool
     read_view: str | None = None
     erp_row: ErpRow | None = None
     fields: list[EntityField]
@@ -662,16 +696,16 @@ class LookupFilter(Wire):
 class LookupSetting(Wire):
     code: Code
     fill: dict[str, str]
-    multiple: bool = False
+    multiple: Bool = False
     filter: LookupFilter | None = None
-    fill_back: bool = True
+    fill_back: Bool = True
 
 
 class FieldSetting(Wire):
-    visible: bool | None = None
-    editable: bool | None = None
-    required: bool | None = None
-    width: int | None = None
+    visible: Bool | None = None
+    editable: Bool | None = None
+    required: Bool | None = None
+    width: Int | None = None
     pinned: Pinned | None = None
     dict_type: Code | None = None
     lookup: LookupSetting | None = None
@@ -681,7 +715,7 @@ class ButtonConfig(Wire):
     action: Code
     label: str
     operation: Code | None = None
-    requires_selection: bool = False
+    requires_selection: Bool = False
 
 
 class PageMasterConfig(Wire):
@@ -705,16 +739,10 @@ class PageConfig(Wire):
     title: str
     layout: PageLayout
     detail_mode: DetailMode = "tabs"
-    audit: bool = False
-    save_operation: Code | None
+    audit: Bool = False
+    save_operation: Code
     master: PageMasterConfig
     details: list[PageDetailConfig] = []
-
-    @model_validator(mode="after")
-    def _single_has_no_details(self) -> PageConfig:
-        if self.layout == "single" and self.details:
-            raise ValueError("单表页没有明细")
-        return self
 
 
 # ---- 7.2 查找目标（通用动作 updateRecords 也使用）
@@ -723,7 +751,7 @@ class RelationKeyFinder(Wire):
     kind: Literal["relationKey"]
     entity: Code
     target_key: str
-    source_key: Annotated[str, StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$")]
+    source_key: str
     rows: Literal["changed", "all"]
 
 
@@ -762,18 +790,18 @@ class TargetUpdate(Wire):
     entity: Code
     detail_entity: Code | None = None
     match: dict[str, str] = {}
-    field_mapping: list[FieldMap] = Field(min_length=1)
+    field_mapping: list[FieldMap]
 
 
 class UpdateTargets(Wire):
     action: Literal["updateTargets"]
-    targets: list[TargetUpdate] = Field(min_length=1)
+    targets: list[TargetUpdate]
 
 
 class UpdateRecords(Wire):
     action: Literal["updateRecords"]
     find: TargetFinder
-    field_mapping: list[FieldMap] = Field(min_length=1)
+    field_mapping: list[FieldMap]
 
 
 class EscapeHatch(Wire):
@@ -809,8 +837,8 @@ class Branch(Wire):
 
 
 class UiEffect(Wire):
-    editable: bool | None = None
-    required: bool | None = None
+    editable: Bool | None = None
+    required: Bool | None = None
     row_style: JsonValue = None
     cell_style: JsonValue = None
 
@@ -820,7 +848,7 @@ class RuleConfig(Wire):
     target: Code
     category: Literal["calc", "validate", "ui"]
     field: str | None = None
-    order: int = 0
+    order: Int = 0
     data_items: list[DataItem] = []
     when: Condition | None = None
     expression: str | None = None
@@ -829,26 +857,11 @@ class RuleConfig(Wire):
     message: str | None = None
     effect: UiEffect | None = None
 
-    @model_validator(mode="after")
-    def _category_shape(self) -> RuleConfig:
-        if self.layer == "page" and self.category != "ui":
-            raise ValueError("页面规则只能是界面规则")
-        if self.category == "calc":
-            if not self.field:
-                raise ValueError("计算规则必须指定字段")
-            if (self.expression is None) == (self.branches is None):
-                raise ValueError("计算规则只能有 expression 或 branches 之一")
-        if self.category == "validate" and (self.level is None or not self.message):
-            raise ValueError("校验规则必须给出 level 和 message")
-        if self.category == "ui" and self.effect is None:
-            raise ValueError("界面规则必须给出 effect")
-        return self
-
 
 # ---- 7. approvalFlow
 
 class Trigger(Wire):
-    operations: list[RowOp] = Field(default=[RowOp.MODIFY], min_length=1)
+    operations: list[RowOp] = ["modify"]
     changed_fields: dict[str, list[str]] = {}
     when: Condition | None = None
     data_items: list[DataItem] = []
@@ -856,7 +869,7 @@ class Trigger(Wire):
 
 class UserApprover(Wire):
     type: Literal["user"]
-    user_id: IdText
+    user_id: DecimalText
 
 
 class RoleApprover(Wire):
@@ -877,16 +890,16 @@ class LevelEntry(Wire):
     name: str
     when: Condition | None = None
     mode: Literal["or", "and"]
-    approvers: list[Approver] = Field(min_length=1)
+    approvers: list[Approver]
 
 
 class FlowLevel(Wire):
-    level: int = Field(ge=1)
-    entries: list[LevelEntry] = Field(min_length=1)
+    level: Int
+    entries: list[LevelEntry]
 
 
 class FlowTargets(Wire):
-    find: list[TargetFinder] = Field(min_length=1)
+    find: list[TargetFinder]
     selection: Literal["all", "approverSelects"]
 
 
@@ -905,6 +918,7 @@ _IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 class DisplayColumn(Wire):
     label: str
     field: Annotated[str, StringConstraints(pattern=rf"^(source|target)(\.{_IDENT}){{1,2}}$")]
+    """`source.字段`、`source.<明细实体>.字段`、`target.字段` 或 `target.<明细实体>.字段`（C06 7.6）。"""
 
 
 class DisplayMaster(Wire):
@@ -914,15 +928,9 @@ class DisplayMaster(Wire):
 class DisplayDetail(Wire):
     title: str
     rows: Annotated[str, StringConstraints(pattern=rf"^(source\.{_IDENT}|target(\.{_IDENT})?)$")]
+    """`source.<明细实体>`、`target` 或 `target.<明细实体>`（C06 7.6）。"""
     rows_filter: Literal["changed", "all"] = "changed"
     columns: list[DisplayColumn] = []
-
-    @model_validator(mode="after")
-    def _fields_match_rows(self) -> DisplayDetail:
-        side = self.rows.split(".", 1)[0]
-        if any(not c.field.startswith(side + ".") for c in self.columns):
-            raise ValueError(f"rows 为 {self.rows} 的从表只能取 {side} 的字段")
-        return self
 
 
 class ApprovalDisplay(Wire):
@@ -933,8 +941,8 @@ class ApprovalDisplay(Wire):
 
 
 class LevelActions(Wire):
-    level: int = Field(ge=1)
-    steps: list[ActionStep] = Field(min_length=1)
+    level: Int
+    steps: list[ActionStep]
 
 
 class FlowParam(Wire):
@@ -942,13 +950,13 @@ class FlowParam(Wire):
     label: str
     type: Literal["string", "number", "boolean", "date"]
     source: Literal["manual", "constant", "expression"]
-    required: bool = False
-    level: int | None = Field(default=None, ge=1)
+    required: Bool = False
+    level: Int | None = None
     value: JsonValue = None
 
 
 class NotifyUsers(Wire):
-    users: list[IdText] = Field(min_length=1)
+    users: list[DecimalText]
 
 
 class NotifyRole(Wire):
@@ -961,10 +969,10 @@ class NotifyRule(Wire):
 
 
 class ApprovalFlowConfig(Wire):
-    created_seq: int = Field(ge=1)
+    created_seq: Int
     source_operation: Code
     trigger: Trigger
-    levels: list[FlowLevel] = Field(min_length=1)
+    levels: list[FlowLevel]
     targets: FlowTargets | None = None
     display: ApprovalDisplay | None = None
     freeze: list[FreezeSpec] = []
@@ -973,14 +981,6 @@ class ApprovalFlowConfig(Wire):
     params: list[FlowParam] = []
     propagation: Literal["end"] = "end"
     notify: list[NotifyRule] = []
-
-    @model_validator(mode="after")
-    def _structure(self) -> ApprovalFlowConfig:
-        if [lv.level for lv in self.levels] != list(range(1, len(self.levels) + 1)):
-            raise ValueError("审批流的级别必须从 1 开始连续")
-        if self.targets is None and any(f.kind == "targets" for f in self.freeze):
-            raise ValueError("没有配置 targets.find 的审批流不能冻结候选对象")
-        return self
 
 
 # ---- 8. role
@@ -1008,7 +1008,7 @@ class RolePage(Wire):
 
 class RoleConfig(Wire):
     name: str
-    admin: bool = False
+    admin: Bool = False
     pages: dict[Code, RolePage] = {}
 
 
@@ -1021,12 +1021,6 @@ class MenuItem(Wire):
     page_code: Code | None = None
     children: list[MenuItem] = []
 
-    @model_validator(mode="after")
-    def _page_has_code(self) -> MenuItem:
-        if self.kind == "page" and not self.page_code:
-            raise ValueError("页面菜单必须给出 pageCode")
-        return self
-
 
 class MenuConfig(Wire):
     items: list[MenuItem]
@@ -1035,7 +1029,7 @@ class MenuConfig(Wire):
 class DictEntry(Wire):
     value: str
     label: str
-    order: int = 0
+    order: Int = 0
 
 
 class DictConfig(Wire):
@@ -1044,7 +1038,7 @@ class DictConfig(Wire):
 
 class LookupConfig(Wire):
     table: str
-    columns: list[str] = Field(min_length=1)
+    columns: list[str]
     keyword_columns: list[str] = []
     order_by: str | None = None
 
@@ -1058,14 +1052,14 @@ class ExportMaster(Wire):
     sheet: str
     sql: str
     key_column: str
-    columns: list[ExportColumn] = Field(min_length=1)
+    columns: list[ExportColumn]
 
 
 class ExportDetail(Wire):
     sheet: str
     sql: str
     link_column: str
-    columns: list[ExportColumn] = Field(min_length=1)
+    columns: list[ExportColumn]
 
 
 class ExportConfig(Wire):
@@ -1080,7 +1074,7 @@ class ExportConfig(Wire):
 
 # ---- 1. 配置项
 
-ConfigType = Literal["entity", "page", "operation", "rule", "approvalFlow", "role", "menu", "dict", "lookup", "export"]
+ConfigType: TypeAlias = Literal["entity", "page", "operation", "rule", "approvalFlow", "role", "menu", "dict", "lookup", "export"]
 
 CONFIG_CONTENT: dict[str, type[Wire]] = {
     "entity": EntityConfig,
@@ -1097,6 +1091,11 @@ CONFIG_CONTENT: dict[str, type[Wire]] = {
 """各类配置项 `content` 的模型。"""
 
 
+def parse_config_content(config_type: str, content: Any) -> Wire:
+    """按配置项的类型解析 `content`；不符合 C06 的结构时抛 pydantic.ValidationError。"""
+    return parse_wire(CONFIG_CONTENT[config_type], content)
+
+
 class ConfigDraft(Wire):
     """要保存或校验的配置项：还没有版本号。"""
 
@@ -1105,33 +1104,25 @@ class ConfigDraft(Wire):
     name: str
     content: dict[str, JsonValue]
 
-    def parsed_content(self) -> Wire:
-        """按 `type` 解析 `content`；不符合 C06 时抛 pydantic.ValidationError。"""
-        return CONFIG_CONTENT[self.type].model_validate(self.content)
-
 
 class ConfigItemSummary(Wire):
     type: ConfigType
     key: Code
     name: str
-    version: int = Field(ge=1)
-    updated_by: IdText
-    updated_at: datetime
+    version: Int
+    updated_by: DecimalText
+    updated_at: DateTimeText
 
 
 class ConfigItem(ConfigItemSummary):
     content: dict[str, JsonValue]
-
-    def parsed_content(self) -> Wire:
-        """按 `type` 解析 `content`；不符合 C06 时抛 pydantic.ValidationError。"""
-        return CONFIG_CONTENT[self.type].model_validate(self.content)
 
 
 # ============================================================ C07 规则内核接口
 
 class PackField(Wire):
     type: FieldType
-    scale: int | None = None
+    scale: Int | None = None
     role: FieldRole
     source: ColumnSource
 
@@ -1144,22 +1135,14 @@ class PackRule(Wire):
     page: Code | None = None
     category: Literal["calc", "validate", "approvalTrigger", "ui"]
     flow: Code | None = None
-    order: int
-    server_only: bool
+    order: Int
+    server_only: Bool
     jdm: Code
-
-    @model_validator(mode="after")
-    def _target_matches_layer(self) -> PackRule:
-        if getattr(self, self.layer) is None:
-            raise ValueError(f"{self.layer} 层的规则必须给出 {self.layer}")
-        if (self.category == "approvalTrigger") != (self.flow is not None):
-            raise ValueError("只有审批条件规则带 flow，且必须带")
-        return self
 
 
 class PackApprovalEntry(Wire):
     flow: Code
-    level: int = Field(ge=1)
+    level: Int
     entry: str
     jdm: Code
 
@@ -1173,19 +1156,19 @@ class JdmGraph(Wire):
 
 class RulesPack(Wire):
     pack_id: Code
-    version: int
+    version: Int
     core_version: str
     fields: dict[str, dict[str, PackField]]
     rules: list[PackRule]
-    approval_entries: list[PackApprovalEntry] = []
+    approval_entries: list[PackApprovalEntry]
     jdm: dict[str, JdmGraph]
 
 
 class EvalContext(Wire):
-    user_id: IdText
+    user_id: DecimalText
     department_id: Key | None
     role: Code
-    today: date
+    today: DateText
     origin: Literal["user", "approval"]
 
 
@@ -1197,19 +1180,11 @@ class EvalRow(Wire):
     values: FieldValues
     old: FieldValues | None = None
 
-    @model_validator(mode="after")
-    def _one_identity(self) -> EvalRow:
-        if (self.row_key is None) == (self.client_row_id is None):
-            raise ValueError("rowKey 和 clientRowId 必须且只能给出一个")
-        if self.client_row_id is not None and self.old is not None:
-            raise ValueError("新增行没有 old")
-        return self
-
 
 class EvalDocument(Wire):
     entity: Code
     master: EvalRow
-    details: dict[str, list[EvalRow]] = {}
+    details: dict[str, list[EvalRow]]
 
 
 class ChangedRow(Wire):
@@ -1217,13 +1192,7 @@ class ChangedRow(Wire):
     row_key: Key | None = None
     client_row_id: ClientRowId | None = None
     op: RowOp
-    fields: list[str] = []
-
-    @model_validator(mode="after")
-    def _one_identity(self) -> ChangedRow:
-        if (self.row_key is None) == (self.client_row_id is None):
-            raise ValueError("rowKey 和 clientRowId 必须且只能给出一个")
-        return self
+    fields: list[str]
 
 
 class EvaluationRequest(Wire):
@@ -1232,35 +1201,29 @@ class EvaluationRequest(Wire):
     page: Code | None = None
     phase: Literal["preview", "commit"]
     flow: Code | None = None
-    level: int | None = Field(default=None, ge=1)
+    level: Int | None = None
     context: EvalContext
     document: EvalDocument
-    changed: list[ChangedRow] = []
-    data: dict[str, JsonValue] = {}
-
-    @model_validator(mode="after")
-    def _entry_has_flow(self) -> EvaluationRequest:
-        if self.purpose == "approvalEntry" and (self.flow is None or self.level is None):
-            raise ValueError("判断审批入口时必须给出 flow 和 level")
-        return self
+    changed: list[ChangedRow]
+    data: dict[str, JsonValue]
 
 
 class FieldState(Wire):
-    editable: bool | None = None
-    required: bool | None = None
+    editable: Bool | None = None
+    required: Bool | None = None
 
 
 class RowStyle(Wire):
-    row: JsonValue = None
-    cells: dict[str, JsonValue] = {}
+    row: JsonValue
+    cells: dict[str, JsonValue]
 
 
 class EvalRowResult(Wire):
     entity: Code
     row_key: Key
-    computed: FieldValues = {}
-    fields: dict[str, FieldState] = {}
-    style: RowStyle | None = None
+    computed: FieldValues
+    fields: dict[str, FieldState]
+    style: RowStyle
 
 
 class PromptEffect(Wire):
@@ -1296,19 +1259,13 @@ class EvalError(Wire):
 
 
 class EvaluationResult(Wire):
-    ok: bool
+    """计算结果为 `ok`、`rows`、`effects`；判断审批入口为 `ok`、`satisfied`；出错为 `ok` 为 false 和 `error`。"""
+
+    ok: Bool
     rows: list[EvalRowResult] = []
     effects: list[RuleEffect] = []
-    satisfied: bool | None = None
+    satisfied: Bool | None = None
     error: EvalError | None = None
-
-    @model_validator(mode="after")
-    def _ok_or_error(self) -> EvaluationResult:
-        if self.ok and self.error is not None:
-            raise ValueError("成功的结果不带 error")
-        if not self.ok and (self.error is None or self.rows or self.effects or self.satisfied is not None):
-            raise ValueError("失败的结果只带 error，不返回部分结果")
-        return self
 
 
 # ============================================================ C09 HTTP 接口
@@ -1316,7 +1273,7 @@ class EvaluationResult(Wire):
 # ---- 1. 共用类型
 
 class CurrentUser(Wire):
-    user_id: IdText
+    user_id: DecimalText
     username: str
     display_name: str
     department_id: Key | None
@@ -1325,7 +1282,7 @@ class CurrentUser(Wire):
 class RoleRef(Wire):
     code: Code
     name: str
-    admin: bool
+    admin: Bool
 
 
 class CompareResult(Wire):
@@ -1344,7 +1301,7 @@ class DataRow(Wire):
 # ---- 2. identity
 
 class LoginRequest(Wire):
-    username: str = Field(min_length=1)
+    username: str
     password: SecretStr
 
 
@@ -1367,37 +1324,37 @@ class MeResponse(Wire):
     user: CurrentUser
     role: RoleRef | None
     menus: list[MenuItem]
-    config_version: int
+    config_version: Int
     csrf_token: str
 
 
 class Account(Wire):
-    user_id: IdText
+    user_id: DecimalText
     username: str
     display_name: str
     department_id: Key | None
-    enabled: bool
+    enabled: Bool
     role_codes: list[Code]
 
 
 class AccountList(Wire):
     rows: list[Account]
-    total: int = Field(ge=0)
+    total: Int
 
 
 class AccountCreate(Wire):
-    username: str = Field(min_length=1)
-    display_name: str = Field(min_length=1)
+    username: str
+    display_name: str
     department_id: Key | None
     password: SecretStr
-    role_codes: list[Code] = []
+    role_codes: list[Code]
 
 
 class AccountUpdate(Wire):
-    display_name: str = Field(min_length=1)
+    display_name: str
     department_id: Key | None
     role_codes: list[Code]
-    enabled: bool
+    enabled: Bool
 
 
 class PasswordChange(Wire):
@@ -1421,40 +1378,40 @@ class ConfigItemList(Wire):
 
 
 class ConfigSaveRequest(Wire):
-    name: str = Field(min_length=1)
+    name: str
     content: dict[str, JsonValue]
 
 
 class ConfigSaveResponse(Wire):
     type: ConfigType
     key: Code
-    version: int = Field(ge=1)
+    version: Int
 
 
 class ConfigValidateRequest(Wire):
-    items: list[ConfigDraft] = Field(min_length=1)
+    items: list[ConfigDraft]
 
 
 class ConfigValidateResponse(Wire):
-    ok: bool
-    errors: list[ErrorDetail] = []
+    ok: Bool
+    errors: list[ErrorDetail]
 
 
 class WizardColumnsRequest(Wire):
     read_view: str | None = None
-    table: str = Field(min_length=1)
+    table: str
 
 
 class WizardSequence(Wire):
     name: str
-    exists: bool
+    exists: Bool
 
 
 class WizardColumn(Wire):
     name: str
     type: FieldType
     label: str
-    in_table: bool
+    in_table: Bool
 
 
 class WizardColumnsResponse(Wire):
@@ -1468,10 +1425,10 @@ class WizardGenerateRequest(Wire):
 
     parent_menu: Code
     page_code: Code
-    title: str = Field(min_length=1)
+    title: str
     layout: PageLayout
     master: dict[str, JsonValue]
-    details: list[dict[str, JsonValue]] = []
+    details: list[dict[str, JsonValue]]
 
 
 # ---- 4. queries-export
@@ -1498,23 +1455,17 @@ class AdvancedQuery(Wire):
 
 
 class ListRequest(Wire):
-    start_row: int = Field(ge=0)
-    end_row: int = Field(ge=0)
+    start_row: Int
+    end_row: Int
     sort_model: list[SortItem] = []
     filter_model: dict[str, dict[str, JsonValue]] = {}
     advanced: AdvancedQuery | None = None
 
-    @model_validator(mode="after")
-    def _range(self) -> ListRequest:
-        if self.end_row < self.start_row:
-            raise ValueError("endRow 不能小于 startRow")
-        return self
-
 
 class ListResponse(Wire):
     rows: list[DataRow]
-    total: int = Field(ge=0)
-    aggregates: FieldValues = {}
+    total: Int
+    aggregates: FieldValues
 
 
 class ByKeysRequest(Wire):
@@ -1528,7 +1479,7 @@ class RowsResponse(Wire):
 
 class RecordResponse(Wire):
     master: DataRow
-    details: dict[str, list[DataRow]] = {}
+    details: dict[str, list[DataRow]]
 
 
 class LookupSearchFilter(Wire):
@@ -1539,8 +1490,8 @@ class LookupSearchFilter(Wire):
 class LookupSearchRequest(Wire):
     keyword: str = ""
     filter: LookupSearchFilter | None = None
-    start_row: int = Field(default=0, ge=0)
-    end_row: int = Field(default=50, ge=0)
+    start_row: Int
+    end_row: Int
 
 
 class LookupRow(Wire):
@@ -1549,7 +1500,7 @@ class LookupRow(Wire):
 
 class LookupSearchResponse(Wire):
     rows: list[LookupRow]
-    total: int = Field(ge=0)
+    total: Int
 
 
 class DictItem(Wire):
@@ -1563,19 +1514,19 @@ class DictResponse(Wire):
 
 class PersonalColumn(Wire):
     field: str
-    width: int | None = None
-    pinned: Pinned | None = None
-    hide: bool = False
+    width: Int | None
+    pinned: Pinned | None
+    hide: Bool
 
 
 class PersonalGrid(Wire):
-    columns: list[PersonalColumn] = []
+    columns: list[PersonalColumn]
 
 
 class PersonalConfig(Wire):
-    """个人列配置：`grids` 的键为 `master` 或明细实体；没有保存过时各项为空。"""
+    """个人列配置：`grids` 的键为 `master` 或明细实体。保存时只含要替换的部分；没有保存过的部分不出现。"""
 
-    grids: dict[str, PersonalGrid] = {}
+    grids: dict[str, PersonalGrid] | None = None
     detail_mode: DetailMode | None = None
 
 
@@ -1591,7 +1542,7 @@ class ExportList(Wire):
 class PageExportRequest(Wire):
     mode: Literal["page"]
     request: ListRequest
-    columns: list[str] = Field(min_length=1)
+    columns: list[str]
 
 
 class ConfigExportRequest(Wire):
@@ -1607,7 +1558,7 @@ ExportRequest = Annotated[PageExportRequest | ConfigExportRequest, Field(discrim
 # ---- 6. approval
 
 class UserBrief(Wire):
-    user_id: IdText
+    user_id: DecimalText
     display_name: str
 
 
@@ -1618,21 +1569,21 @@ class SourceRef(Wire):
 
 
 class ApprovalSummary(Wire):
-    approval_id: IdText
+    approval_id: DecimalText
     page: Code
     page_title: str
     operation: Code
     operation_label: str
     source: SourceRef
     applicant: UserBrief
-    submitted_at: datetime
+    submitted_at: DateTimeText
     status: ApprovalStatus
-    level: int = Field(ge=1)
+    level: Int
 
 
 class ApprovalList(Wire):
     rows: list[ApprovalSummary]
-    total: int = Field(ge=0)
+    total: Int
 
 
 class StepMember(Wire):
@@ -1641,12 +1592,12 @@ class StepMember(Wire):
     name: str
     status: Literal["pending", "passed", "rejected"]
     processed_by: UserBrief | None
-    processed_at: datetime | None
+    processed_at: DateTimeText | None
     comment: str | None
 
 
 class ApprovalStep(Wire):
-    level: int = Field(ge=1)
+    level: Int
     flow: Code
     flow_name: str
     entry: str
@@ -1668,36 +1619,17 @@ class ViewRow(Wire):
     target: RecordRef | None = None
     flows: list[Code] | None = None
 
-    @model_validator(mode="after")
-    def _op_shape(self) -> ViewRow:
-        if self.op == "add" and any(c.before is not None for c in self.cells):
-            raise ValueError("新增行的 before 为 null")
-        if self.op == "delete" and any(c.after is not None for c in self.cells):
-            raise ValueError("删除行的 after 为 null")
-        return self
-
-
-def _check_cells(columns: list[str], rows: list[ViewRow]) -> None:
-    for row in rows:
-        if len(row.cells) != len(columns):
-            raise ValueError("每行的单元格数必须与列数相同")
-
 
 class ViewMasterTable(Wire):
     columns: list[str]
     rows: list[ViewRow]
 
-    @model_validator(mode="after")
-    def _cells(self) -> ViewMasterTable:
-        _check_cells(self.columns, self.rows)
-        return self
-
 
 class TargetChoice(Wire):
     entity: Code
     record_key: Key
-    selectable: bool
-    selected: bool
+    selectable: Bool
+    selected: Bool
 
 
 class ViewDetailTable(Wire):
@@ -1705,31 +1637,24 @@ class ViewDetailTable(Wire):
     flow: Code | None = None
     selection: Literal["all", "approverSelects"] | None = None
     columns: list[str]
-    merged_columns: list[int] = []
+    merged_columns: list[Int] = []
     targets: list[TargetChoice] = []
     rows: list[ViewRow]
-
-    @model_validator(mode="after")
-    def _cells(self) -> ViewDetailTable:
-        _check_cells(self.columns, self.rows)
-        if any(not 0 <= i < len(self.columns) for i in self.merged_columns):
-            raise ValueError("mergedColumns 超出列的范围")
-        return self
 
 
 class ApprovalView(Wire):
     master: ViewMasterTable
-    details: list[ViewDetailTable] = []
+    details: list[ViewDetailTable]
 
 
 class ApprovalActions(Wire):
-    can_pass: bool
-    can_reject: bool
-    can_withdraw: bool
+    can_pass: Bool
+    can_reject: Bool
+    can_withdraw: Bool
 
 
 class ApprovalDetail(Wire):
-    approval_id: IdText
+    approval_id: DecimalText
     status: ApprovalStatus
     page: Code
     page_title: str
@@ -1737,11 +1662,11 @@ class ApprovalDetail(Wire):
     operation_label: str
     source: SourceRef
     applicant: UserBrief
-    submitted_at: datetime
-    current_level: int = Field(ge=1)
+    submitted_at: DateTimeText
+    current_level: Int
     steps: list[ApprovalStep]
     view: ApprovalView
-    fingerprint: Fingerprint
+    fingerprint: str
     actions: ApprovalActions
 
 
@@ -1753,7 +1678,7 @@ class SelectedObject(Wire):
 
 class PassRequest(Wire):
     request_key: RequestKey
-    fingerprint: Fingerprint
+    fingerprint: str
     selected_objects: list[SelectedObject] = []
     comment: str | None = None
     params: dict[str, JsonValue] = {}
@@ -1778,38 +1703,38 @@ class InboxItem(Wire):
     title: str
     body: str
     link: str | None
-    created_at: datetime
-    read: bool
+    created_at: DateTimeText
+    read: Bool
 
 
 class InboxList(Wire):
     rows: list[InboxItem]
-    total: int = Field(ge=0)
-    unread: int = Field(ge=0)
+    total: Int
+    unread: Int
 
 
 class DeliveryRow(Wire):
     delivery_id: Uuid
-    recipient: IdText
+    recipient: DecimalText
     status: Literal["pending", "sent", "failed", "abandoned"]
-    attempts: int = Field(ge=0)
-    next_retry_at: datetime | None
+    attempts: Int
+    next_retry_at: DateTimeText | None
     last_error: str | None
 
 
 class DeliveryList(Wire):
     rows: list[DeliveryRow]
-    total: int = Field(ge=0)
+    total: Int
 
 
 # ---- 7a. 命令审查
 
 class SqlTrace(Wire):
     text: str
-    binds: dict[str, JsonValue] = {}
-    ms: float
-    rows: int | None = None
-    error: str | None = None
+    binds: dict[str, JsonValue]
+    ms: Millis
+    rows: Int | None
+    error: str | None
 
 
 class CommandLog(Wire):
@@ -1820,21 +1745,21 @@ class CommandLog(Wire):
     result: Literal["saved", "rejected", "failed"]
     error_code: ErrorCode | None
     message: str | None
-    started_at: datetime
-    duration_ms: float
-    sql_count: int = Field(ge=0)
-    sql_ms: float
+    started_at: DateTimeText
+    duration_ms: Millis
+    sql_count: Int
+    sql_ms: Millis
     sql: list[SqlTrace]
 
 
 class CommandReviewList(Wire):
-    enabled: bool
+    enabled: Bool
     rows: list[CommandLog]
-    total: int = Field(ge=0)
+    total: Int
 
 
 class CommandReviewToggle(Wire):
-    enabled: bool
+    enabled: Bool
 
 
 # ---- 8. assembly
@@ -1842,26 +1767,26 @@ class CommandReviewToggle(Wire):
 class HealthResponse(Wire):
     status: Literal["ok", "starting"]
     core_version: str | None = None
-    config_version: int | None = None
+    config_version: Int | None = None
 
 
 # ============================================================ C10 实时事件
 
 class PagesAudience(Wire):
-    pages: list[Code] = Field(min_length=1)
+    pages: list[Code]
 
 
 class UsersAudience(Wire):
-    users: list[IdText] = Field(min_length=1)
+    users: list[DecimalText]
 
 
 class SessionsAudience(Wire):
-    sessions: list[str] = Field(min_length=1)
+    sessions: list[str]
 
 
 class ConfigChangedPayload(Wire):
     pages: list[Code]
-    version: int
+    version: Int
 
 
 class NotificationPayload(Wire):
@@ -1980,7 +1905,7 @@ class Row:
 class DocumentData:
     ref: DocumentRef
     master: Row
-    details: dict[str, list[Row]] = dc_field(default_factory=dict)
+    details: dict[str, list[Row]]
 
 
 @dataclass(frozen=True)
@@ -1996,8 +1921,8 @@ class FreezeEntry:
 class TargetObject:
     entity: str
     record_key: str
-    row_keys: tuple[str, ...] = ()
-    display: dict[str, Value] = dc_field(default_factory=dict, hash=False)
+    row_keys: tuple[str, ...]
+    display: dict[str, Value] = dc_field(hash=False)
 
 
 @dataclass(frozen=True)
@@ -2012,7 +1937,7 @@ class NotificationIntent:
 @dataclass(frozen=True)
 class ImportReport:
     imported: int
-    skipped: tuple[tuple[str, str], ...] = ()
+    skipped: list[tuple[str, str]] = dc_field(hash=False)
 
 
 @dataclass(frozen=True)
@@ -2022,9 +1947,9 @@ class ColumnInfo:
     name: str
     data_type: str
     nullable: bool
-    length: int | None = None
-    precision: int | None = None
-    scale: int | None = None
+    length: int | None
+    precision: int | None
+    scale: int | None
 
 
 @dataclass(frozen=True)
@@ -2069,10 +1994,10 @@ class RoleAssignment:
 class AccountBatch:
     """migration 导入的账号（含 BCrypt 哈希）、角色、账号与角色的分配、部门。"""
 
-    accounts: tuple[ImportedAccount, ...] = ()
-    roles: tuple[ImportedRole, ...] = ()
-    assignments: tuple[RoleAssignment, ...] = ()
-    departments: tuple[ImportedDepartment, ...] = ()
+    accounts: list[ImportedAccount] = dc_field(hash=False)
+    roles: list[ImportedRole] = dc_field(hash=False)
+    assignments: list[RoleAssignment] = dc_field(hash=False)
+    departments: list[ImportedDepartment] = dc_field(hash=False)
 
 
 @dataclass(frozen=True)
@@ -2084,7 +2009,7 @@ class PersonalConfigEntry:
 
 @dataclass(frozen=True)
 class PersonalConfigBatch:
-    entries: tuple[PersonalConfigEntry, ...] = ()
+    entries: list[PersonalConfigEntry] = dc_field(hash=False)
 
 
 @dataclass(frozen=True)
@@ -2092,7 +2017,7 @@ class SqlCondition:
     """行权限的 SQL 条件：占位符已换成绑定变量名，`binds` 为绑定变量的值。"""
 
     sql: str
-    binds: dict[str, Value] = dc_field(default_factory=dict, hash=False)
+    binds: dict[str, Value] = dc_field(hash=False)
 
 
 PackHandle: TypeAlias = object
@@ -2109,10 +2034,10 @@ class RowChange:
     op: RowOp
     row_key: str | None
     """新增行在取得主键前为 None。"""
-    client_row_id: str | None = None
-    values: dict[str, Value] = dc_field(default_factory=dict)
+    client_row_id: str | None
+    values: dict[str, Value]
     """新增：要写入的字段；修改：有变化的字段的新值；删除：空。"""
-    old: dict[str, Value] = dc_field(default_factory=dict)
+    old: dict[str, Value]
     """修改：这些字段的旧值；删除：删除前的整行（审计用）；新增：空。"""
 
 
@@ -2125,7 +2050,10 @@ class ChangePlan:
 
 @dataclass
 class CommandState:
-    """管道阶段之间传递的数据；每个阶段只写 C08 第 6 节表中它负责的字段。"""
+    """管道阶段之间传递的数据；每个阶段只写 C08 第 6 节表中它负责的字段。
+
+    除 command 外各字段在命令开始时为空；outcome 在写入命令记录前由 write-pipeline 或触发审批阶段给出。
+    """
 
     command: Command
     involved: list[DocumentRef] = dc_field(default_factory=list)
@@ -2140,4 +2068,4 @@ class CommandState:
     prompts: list[Prompt] = dc_field(default_factory=list)
     skipped: list[SkippedRow] = dc_field(default_factory=list)
     pending_documents: set[DocumentRef] = dc_field(default_factory=set)
-    outcome: Outcome = Outcome.SAVED
+    outcome: Outcome | None = None
