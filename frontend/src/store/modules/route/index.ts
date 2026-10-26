@@ -1,4 +1,4 @@
-import { computed, nextTick, ref, shallowRef } from 'vue';
+import { nextTick, ref, shallowRef } from 'vue';
 import type { RouteRecordRaw } from 'vue-router';
 import { defineStore } from 'pinia';
 import { useBoolean } from '@sa/hooks';
@@ -13,13 +13,11 @@ import { useAuthStore } from '../auth';
 import { useTabStore } from '../tab';
 import {
   filterAuthRoutesByRoles,
-  getBreadcrumbsByRoute,
   getCacheRouteNames,
   getGlobalMenusByAuthRoutes,
   getSelectedMenuKeyPathByKey,
   isRouteExistByRouteName,
   sortRoutesByOrder,
-  transformMenuToSearchMenus,
   updateLocaleOfGlobalMenus
 } from './shared';
 
@@ -80,7 +78,6 @@ export const useRouteStore = defineStore(SetupStoreId.Route, () => {
 
   /** Global menus */
   const menus = ref<App.Global.Menu[]>([]);
-  const searchMenus = computed(() => transformMenuToSearchMenus(menus.value));
 
   /** Get global menus */
   function getGlobalMenus(routes: ElegantConstRoute[]) {
@@ -126,9 +123,6 @@ export const useRouteStore = defineStore(SetupStoreId.Route, () => {
 
     excludeCacheRoutes.value = [];
   }
-
-  /** Global breadcrumbs */
-  const breadcrumbs = computed(() => getBreadcrumbsByRoute(router.currentRoute.value, menus.value));
 
   /** Reset store */
   async function resetStore() {
@@ -334,12 +328,10 @@ export const useRouteStore = defineStore(SetupStoreId.Route, () => {
     resetStore,
     routeHome,
     menus,
-    searchMenus,
     updateGlobalMenusByLocale,
     cacheRoutes,
     excludeCacheRoutes,
     resetRouteCache,
-    breadcrumbs,
     initConstantRoute,
     isInitConstantRoute,
     initAuthRoute,

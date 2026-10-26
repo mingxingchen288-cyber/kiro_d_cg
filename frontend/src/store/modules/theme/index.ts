@@ -24,16 +24,6 @@ export const useThemeStore = defineStore(SetupStoreId.Theme, () => {
   /** Theme settings */
   const settings: Ref<App.Theme.ThemeSetting> = ref(initThemeSettings());
 
-  // 从localStorage恢复detailViewMode和masterDetailMode
-  const savedDetailViewMode = localStg.get('detailViewMode');
-  if (savedDetailViewMode) {
-    settings.value.detailViewMode = savedDetailViewMode;
-  }
-  const savedMasterDetailMode = localStg.get('masterDetailMode');
-  if (savedMasterDetailMode) {
-    settings.value.masterDetailMode = savedMasterDetailMode;
-  }
-
   /** Optional NaiveUI theme overrides from preset */
   const naiveThemeOverrides: Ref<App.Theme.NaiveUIThemeOverride | undefined> = ref(undefined);
 
@@ -220,26 +210,6 @@ export const useThemeStore = defineStore(SetupStoreId.Theme, () => {
     naiveThemeOverrides.value = overrides;
   }
 
-  /**
-   * Set detail view mode
-   *
-   * @param mode Detail view mode ('tab' or 'stack')
-   */
-  function setDetailViewMode(mode: 'tab' | 'stack') {
-    settings.value.detailViewMode = mode;
-    localStg.set('detailViewMode', mode);
-  }
-
-  /**
-   * Set master-detail mode
-   *
-   * @param mode Master-detail mode ('master-detail' or 'split')
-   */
-  function setMasterDetailMode(mode: 'master-detail' | 'split') {
-    settings.value.masterDetailMode = mode;
-    localStg.set('masterDetailMode', mode);
-  }
-
   /** Only run timer when watermark is visible and time display is enabled */
   function updateWatermarkTimer() {
     const { watermark } = settings.value;
@@ -327,8 +297,6 @@ export const useThemeStore = defineStore(SetupStoreId.Theme, () => {
     setThemeLayout,
     setWatermarkEnableUserName,
     setWatermarkEnableTime,
-    setNaiveThemeOverrides,
-    setDetailViewMode,
-    setMasterDetailMode
+    setNaiveThemeOverrides
   };
 });

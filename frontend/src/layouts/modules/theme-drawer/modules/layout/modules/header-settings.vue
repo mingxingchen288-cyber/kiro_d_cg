@@ -16,16 +16,6 @@ const themeStore = useThemeStore();
     <SettingItem key="1" :label="$t('theme.layout.header.height')">
       <NInputNumber v-model:value="themeStore.header.height" size="small" :step="1" class="w-120px" />
     </SettingItem>
-    <SettingItem key="2" :label="$t('theme.layout.header.breadcrumb.visible')">
-      <NSwitch v-model:value="themeStore.header.breadcrumb.visible" />
-    </SettingItem>
-    <SettingItem
-      v-if="themeStore.header.breadcrumb.visible"
-      key="3"
-      :label="$t('theme.layout.header.breadcrumb.showIcon')"
-    >
-      <NSwitch v-model:value="themeStore.header.breadcrumb.showIcon" />
-    </SettingItem>
   </TransitionGroup>
 </template>
 

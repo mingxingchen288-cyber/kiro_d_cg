@@ -43,20 +43,9 @@ declare namespace App {
       header: {
         /** Header height */
         height: number;
-        /** Header breadcrumb */
-        breadcrumb: {
-          /** Whether to show the breadcrumb */
-          visible: boolean;
-          /** Whether to show the breadcrumb icon */
-          showIcon: boolean;
-        };
         /** Multilingual */
         multilingual: {
           /** Whether to show the multilingual */
-          visible: boolean;
-        };
-        globalSearch: {
-          /** Whether to show the GlobalSearch */
           visible: boolean;
         };
       };
@@ -113,10 +102,6 @@ declare namespace App {
          */
         right: boolean;
       };
-      /** Detail view mode for master-detail layout */
-      detailViewMode: 'tab' | 'stack';
-      /** Master-detail display mode */
-      masterDetailMode: 'master-detail' | 'split';
       /** Watermark */
       watermark: {
         /** Whether to show the watermark */
@@ -232,10 +217,6 @@ declare namespace App {
       icon?: () => VNode;
       /** The menu children */
       children?: Menu[];
-    };
-
-    type Breadcrumb = Omit<Menu, 'children'> & {
-      options?: Breadcrumb[];
     };
 
     /** Tab route */
@@ -425,10 +406,6 @@ declare namespace App {
           header: {
             title: string;
             height: string;
-            breadcrumb: {
-              visible: string;
-              showIcon: string;
-            };
           };
           sider: {
             title: string;
@@ -457,16 +434,6 @@ declare namespace App {
             };
             fixedHeaderAndTab: string;
           };
-          detailViewMode: {
-            title: string;
-            tab: string;
-            stack: string;
-          };
-          masterDetailMode: {
-            title: string;
-            masterDetail: string;
-            split: string;
-          };
         };
         general: {
           title: string;
@@ -479,10 +446,6 @@ declare namespace App {
             timeFormat: string;
           };
           multilingual: {
-            title: string;
-            visible: string;
-          };
-          globalSearch: {
             title: string;
             visible: string;
           };
@@ -500,85 +463,22 @@ declare namespace App {
           common: {
             loginOrRegister: string;
             userNamePlaceholder: string;
-            phonePlaceholder: string;
-            codePlaceholder: string;
             passwordPlaceholder: string;
             confirmPasswordPlaceholder: string;
-            codeLogin: string;
-            confirm: string;
-            back: string;
-            validateSuccess: string;
             loginSuccess: string;
             welcomeBack: string;
           };
           pwdLogin: {
             title: string;
             rememberMe: string;
-            forgetPassword: string;
-            register: string;
-            otherAccountLogin: string;
-            otherLoginMode: string;
-            superAdmin: string;
-            admin: string;
-            user: string;
           };
-          codeLogin: {
-            title: string;
-            getCode: string;
-            reGetCode: string;
-            sendCodeSuccess: string;
-            imageCodePlaceholder: string;
-          };
-          register: {
-            title: string;
-            agreement: string;
-            protocol: string;
-            policy: string;
-          };
-          resetPwd: {
-            title: string;
-          };
-          bindWeChat: {
-            title: string;
-          };
-        };
-        home: {
-          branchDesc: string;
-          greeting: string;
-          weatherDesc: string;
-          projectCount: string;
-          todo: string;
-          message: string;
-          downloadCount: string;
-          registerCount: string;
-          schedule: string;
-          study: string;
-          work: string;
-          rest: string;
-          entertainment: string;
-          visitCount: string;
-          turnover: string;
-          dealCount: string;
-          projectNews: {
-            title: string;
-            moreNews: string;
-            desc1: string;
-            desc2: string;
-            desc3: string;
-            desc4: string;
-            desc5: string;
-          };
-          creativity: string;
         };
       };
       form: {
         required: string;
         userName: FormMsg;
-        phone: FormMsg;
         pwd: FormMsg;
         confirmPwd: FormMsg;
-        code: FormMsg;
-        email: FormMsg;
       };
       dropdown: Record<Global.DropdownKey, string>;
       icon: {
@@ -655,16 +555,6 @@ declare namespace App {
       msg: string;
       /** The backend service response data */
       data: T;
-    };
-
-    /** The demo backend service response data */
-    type DemoResponse<T = unknown> = {
-      /** The backend service response code */
-      status: string;
-      /** The backend service response message */
-      message: string;
-      /** The backend service response data */
-      result: T;
     };
   }
 }

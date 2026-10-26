@@ -6,13 +6,7 @@
   "themeRadius": 6,
   "header": {
     "height": 48,
-    "breadcrumb": {
-      "visible": false
-    },
     "multilingual": {
-      "visible": false
-    },
-    "globalSearch": {
       "visible": false
     }
   },

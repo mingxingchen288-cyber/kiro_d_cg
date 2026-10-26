@@ -34,8 +34,5 @@
   },
   "ignore": [
     "src/typings/**/*.d.ts"
-  ],
-  "ignoreBinaries": [
-    "githublogen"
   ]
 }

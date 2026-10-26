@@ -26,14 +26,7 @@
   },
   "header": {
     "height": 56,
-    "breadcrumb": {
-      "visible": true,
-      "showIcon": true
-    },
     "multilingual": {
-      "visible": true
-    },
-    "globalSearch": {
       "visible": true
     }
   },

@@ -6,8 +6,6 @@ import HeaderSettings from './modules/header-settings.vue';
 import SiderSettings from './modules/sider-settings.vue';
 import FooterSettings from './modules/footer-settings.vue';
 import ContentSettings from './modules/content-settings.vue';
-import DetailViewModeSettings from './modules/detail-view-mode-settings.vue';
-import MasterDetailModeSettings from './modules/master-detail-mode-settings.vue';
 
 defineOptions({
   name: 'LayoutSettings'
@@ -25,8 +23,6 @@ const themeStore = useThemeStore();
     <SiderSettings v-if="themeStore.layout.mode !== 'horizontal'" />
     <FooterSettings />
     <ContentSettings />
-    <DetailViewModeSettings />
-    <MasterDetailModeSettings />
   </div>
 </template>
 

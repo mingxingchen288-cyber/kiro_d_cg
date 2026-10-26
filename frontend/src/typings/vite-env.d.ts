@@ -110,6 +110,12 @@ declare namespace Env {
     readonly VITE_PROXY_LOG?: CommonType.YesOrNo;
     /** The launch editor */
     readonly VITE_DEVTOOLS_LAUNCH_EDITOR?: import('vite-plugin-vue-devtools').VitePluginVueDevToolsOptions['launchEditor'];
+    /**
+     * AG Grid enterprise license key
+     *
+     * When empty, the license key is not set
+     */
+    readonly VITE_AG_GRID_LICENSE_KEY?: string;
   }
 }
 

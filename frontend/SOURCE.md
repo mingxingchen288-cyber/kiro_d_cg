@@ -3,6 +3,7 @@
 - 来源：`D:\chonggou\my-project\cost-web`，仓库 `D:\chonggou\my-project` 的提交 `a95c00c1819e3db54f52dff42a861bee1b36e30f`，加上复制时的未提交改动（按用户要求按当前状态复制）。
 - 复制时间：2026-10-26 15:36。
 - 未复制：`.git`、`node_modules`、`dist`、`playwright-report`、`test-results`、`.codex-*`、`*.log`。
+- 与原样副本的差异：复制提交 036cc8a 中的 `package.json` 已去掉 `prepare` 脚本（`simple-git-hooks`）和 `simple-git-hooks` 配置，避免安装时改写本仓库的 git 钩子。
 - 复制时 cost-web 下有 22 个未提交的文件：
 
 | 文件 | 类型 |

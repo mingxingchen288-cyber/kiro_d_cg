@@ -23,14 +23,7 @@ export const themeSettings: App.Theme.ThemeSetting = {
   },
   header: {
     height: 28,
-    breadcrumb: {
-      visible: true,
-      showIcon: true
-    },
     multilingual: {
-      visible: true
-    },
-    globalSearch: {
       visible: true
     }
   },
@@ -57,8 +50,6 @@ export const themeSettings: App.Theme.ThemeSetting = {
     height: 48,
     right: true
   },
-  detailViewMode: 'stack',
-  masterDetailMode: 'master-detail',
   watermark: {
     visible: false,
     text: '华益低代码平台',

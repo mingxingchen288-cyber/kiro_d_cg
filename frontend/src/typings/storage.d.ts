@@ -45,9 +45,5 @@ declare namespace StorageType {
     };
     /** The last login user id */
     lastLoginUserId: string;
-    /** Detail view mode (tab or stack) */
-    detailViewMode: 'tab' | 'stack';
-    /** Master-detail mode (master-detail or split) */
-    masterDetailMode: 'master-detail' | 'split';
   }
 }

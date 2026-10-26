@@ -68,7 +68,6 @@
     "pinia": "3.0.4",
     "tailwind-merge": "3.4.0",
     "vue": "3.5.25",
-    "vue-draggable-plus": "0.6.0",
     "vue-i18n": "11.2.2",
     "vue-router": "4.6.3"
   },
@@ -102,7 +101,7 @@
     "eslint": "9.39.1",
     "eslint-plugin-vue": "10.6.2",
     "fast-check": "4.10.2",
-    "knip": "^5.88.1",
+    "knip": "5.88.1",
     "kolorist": "1.8.0",
     "sass": "1.94.2",
     "tsx": "4.21.0",

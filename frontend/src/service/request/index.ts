@@ -1,5 +1,5 @@
 import type { AxiosResponse } from 'axios';
-import { BACKEND_ERROR_CODE, createFlatRequest, createRequest } from '@sa/axios';
+import { BACKEND_ERROR_CODE, createFlatRequest } from '@sa/axios';
 import { useAuthStore } from '@/store/modules/auth';
 import { isAuthShuttingDown } from '@/store/modules/auth/shared';
 import { getServiceBaseURL } from '@/utils/service';
@@ -8,7 +8,7 @@ import { getAuthorization, handleExpiredRequest } from './shared';
 import type { RequestInstanceState } from './type';
 
 const isHttpProxy = import.meta.env.DEV && import.meta.env.VITE_HTTP_PROXY === 'Y';
-const { baseURL, otherBaseURL } = getServiceBaseURL(import.meta.env, isHttpProxy);
+const { baseURL } = getServiceBaseURL(import.meta.env, isHttpProxy);
 
 function getRequestPath(url: string) {
   if (!url) return '';
@@ -162,4 +162,3 @@ export const request = createFlatRequest(
     }
   }
 );
-

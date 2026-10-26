@@ -80,17 +80,6 @@ export function useRouterPush(inSetup = true) {
   }
 
   /**
-   * Toggle login module
-   *
-   * @param module
-   */
-  async function toggleLoginModule(module: UnionKey.LoginModule) {
-    const query = route.value.query as Record<string, string>;
-
-    return routerPushByKey('login', { query, params: { module } });
-  }
-
-  /**
    * Redirect from login
    *
    * @param [needRedirect=true] Whether to redirect after login. Default is `true`
@@ -111,7 +100,6 @@ export function useRouterPush(inSetup = true) {
     routerPushByKey,
     routerPushByKeyWithMetaQuery,
     toLogin,
-    toggleLoginModule,
     redirectFromLogin
   };
 }

@@ -15,10 +15,6 @@ const themeStore = useThemeStore();
   <SettingItem :label="$t('theme.general.multilingual.visible')">
     <NSwitch v-model:value="themeStore.header.multilingual.visible" />
   </SettingItem>
-
-  <SettingItem :label="$t('theme.general.globalSearch.visible')">
-    <NSwitch v-model:value="themeStore.header.globalSearch.visible" />
-  </SettingItem>
 </template>
 
 <style scoped>

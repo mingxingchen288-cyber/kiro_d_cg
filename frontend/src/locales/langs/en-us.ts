@@ -148,11 +148,7 @@ const local: App.I18n.Schema = {
       },
       header: {
         title: 'Header Settings',
-        height: 'Header Height',
-        breadcrumb: {
-          visible: 'Breadcrumb Visible',
-          showIcon: 'Breadcrumb Icon Visible'
-        }
+        height: 'Header Height'
       },
       sider: {
         title: 'Sider Settings',
@@ -195,16 +191,6 @@ const local: App.I18n.Schema = {
           }
         },
         fixedHeaderAndTab: 'Fixed Header And Tab'
-      },
-      detailViewMode: {
-        title: 'Detail View Mode',
-        tab: 'Tab Mode',
-        stack: 'Stack Mode'
-      },
-      masterDetailMode: {
-        title: 'Master-Detail Mode',
-        masterDetail: 'Row Expand',
-        split: 'Split View'
       }
     },
     general: {
@@ -220,10 +206,6 @@ const local: App.I18n.Schema = {
       multilingual: {
         title: 'Multilingual Settings',
         visible: 'Display multilingual button'
-      },
-      globalSearch: {
-        title: 'Global Search Settings',
-        visible: 'Display GlobalSearch button'
       }
     },
     configOperation: {
@@ -238,83 +220,22 @@ const local: App.I18n.Schema = {
     403: 'No Permission',
     404: 'Page Not Found',
     500: 'Server Error',
-    home: 'Home',
+    home: 'Home'
   },
   page: {
     login: {
       common: {
         loginOrRegister: 'Login / Register',
         userNamePlaceholder: 'Please enter user name',
-        phonePlaceholder: 'Please enter phone number',
-        codePlaceholder: 'Please enter verification code',
         passwordPlaceholder: 'Please enter password',
         confirmPasswordPlaceholder: 'Please enter password again',
-        codeLogin: 'Verification code login',
-        confirm: 'Confirm',
-        back: 'Back',
-        validateSuccess: 'Verification passed',
         loginSuccess: 'Login successfully',
         welcomeBack: 'Welcome back, {userName} !'
       },
       pwdLogin: {
         title: 'Password Login',
-        rememberMe: 'Remember me',
-        forgetPassword: 'Forget password?',
-        register: 'Register',
-        otherAccountLogin: 'Other Account Login',
-        otherLoginMode: 'Other Login Mode',
-        superAdmin: 'Super Admin',
-        admin: 'Admin',
-        user: 'User'
-      },
-      codeLogin: {
-        title: 'Verification Code Login',
-        getCode: 'Get verification code',
-        reGetCode: 'Reacquire after {time}s',
-        sendCodeSuccess: 'Verification code sent successfully',
-        imageCodePlaceholder: 'Please enter image verification code'
-      },
-      register: {
-        title: 'Register',
-        agreement: 'I have read and agree to',
-        protocol: '《User Agreement》',
-        policy: '《Privacy Policy》'
-      },
-      resetPwd: {
-        title: 'Reset Password'
-      },
-      bindWeChat: {
-        title: 'Bind WeChat'
+        rememberMe: 'Remember me'
       }
-    },
-    home: {
-      branchDesc:
-        'For the convenience of everyone in developing and updating the merge, we have streamlined the code of the main branch, only retaining the homepage menu, and the rest of the content has been moved to the example branch for maintenance. The preview address displays the content of the example branch.',
-      greeting: 'Good morning, {userName}, today is another day full of vitality!',
-      weatherDesc: 'Today is cloudy to clear, 20℃ - 25℃!',
-      projectCount: 'Project Count',
-      todo: 'Todo',
-      message: 'Message',
-      downloadCount: 'Download Count',
-      registerCount: 'Register Count',
-      schedule: 'Work and rest Schedule',
-      study: 'Study',
-      work: 'Work',
-      rest: 'Rest',
-      entertainment: 'Entertainment',
-      visitCount: 'Visit Count',
-      turnover: 'Turnover',
-      dealCount: 'Deal Count',
-      projectNews: {
-        title: 'Project News',
-        moreNews: 'More News',
-        desc1: 'Soybean created the open source project soybean-admin on May 28, 2021!',
-        desc2: 'Yanbowe submitted a bug to soybean-admin, the multi-tab bar will not adapt.',
-        desc3: 'Soybean is ready to do sufficient preparation for the release of soybean-admin!',
-        desc4: 'Soybean is busy writing project documentation for soybean-admin!',
-        desc5: 'Soybean just wrote some of the workbench pages casually, and it was enough to see!'
-      },
-      creativity: 'Creativity'
     }
   },
   form: {
@@ -323,10 +244,6 @@ const local: App.I18n.Schema = {
       required: 'Please enter user name',
       invalid: 'User name format is incorrect'
     },
-    phone: {
-      required: 'Please enter phone number',
-      invalid: 'Phone number format is incorrect'
-    },
     pwd: {
       required: 'Please enter password',
       invalid: '6-18 characters'
@@ -334,14 +251,6 @@ const local: App.I18n.Schema = {
     confirmPwd: {
       required: 'Please enter password again',
       invalid: 'The two passwords are inconsistent'
-    },
-    code: {
-      required: 'Please enter verification code',
-      invalid: 'Verification code format is incorrect'
-    },
-    email: {
-      required: 'Please enter email',
-      invalid: 'Email format is incorrect'
     }
   },
   dropdown: {
