@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cost-platform"
+version = "0.1.0"
+description = "配置驱动的成本业务平台（后端）"
+requires-python = ">=3.13,<3.14"
+license-files = ["THIRD_PARTY_NOTICES.md"]
+dependencies = [
+    "fastapi==0.143.2",
+    "pydantic==2.14.1",
+    "uvicorn==0.54.0",
+    "sqlalchemy==2.0.54",
+    "oracledb==26.0.1",
+    "alembic==1.20.0",
+    "redis==7.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+    "httpx==0.28.1",
+    "hypothesis==6.140.2",
+    "import-linter==2.15",
+]
+
+[project.scripts]
+platform = "cost_platform.assembly.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cost_platform = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "oracle: 需要真实 Oracle（d_cg）",
+    "redis: 需要真实 Redis",
+]

@@ -1,0 +1,190 @@
+# C09 HTTP 接口
+
+版本：v2。维护：contracts。状态：已确认。
+
+## 1. 通用规则
+
+- 会话 Cookie 名为 `cp_session`，HttpOnly、SameSite=Lax。会话标识不出现在 URL 和响应体中。
+- 写请求（POST、PUT、DELETE，登录除外）带 `X-CSRF-Token` 头，值取自登录响应或 `GET /api/me` 的 `csrfToken`。
+- 每个响应带 `X-Config-Version` 头。
+- 前端自动发起、不是用户操作直接引起的请求（例如配置变更后重新读取页面视图和规则包、读取未读通知数）带请求头 `X-Background-Request: 1`。会话只按用户自己的写入和查询请求顺延，这类请求不顺延会话。
+- 列表的 `startRow` 包含在内，`endRow` 不包含。
+- `/api/config/*` 和 `/api/admin/*` 只对管理员角色开放，其他角色返回 403 PERMISSION_DENIED。
+- 数据格式见 [C01](C01-数据格式.md)，错误见 [C03](C03-错误.md)。
+- 返回业务行时，行包含实体的全部字段，字段可见性由前端处理；查询、筛选、排序和高级查询只能使用可见字段，否则返回 422 VALIDATION_FAILED。
+
+共用类型：
+
+```ts
+type CurrentUser = { userId: string; username: string; displayName: string; departmentId: string | null }
+type RoleRef = { code: string; name: string; admin: boolean }
+type Menu = { key: string; title: string; kind: 'group' | 'page' | 'config' | 'admin'; pageCode?: string; children?: Menu[] }
+type DataRow = { rowKey: string; values: Record<string, string | boolean | null>; frozen: { approvalId: string; fields: string[] } | null; compare?: Record<string, { value: string | null; diff: string | null; percent: string | null }> }
+```
+
+## 2. identity
+
+| 方法 | 路径 | 请求 | 响应 |
+|---|---|---|---|
+| POST | `/api/auth/login` | `{"username": "admin", "password": "…"}` | `{"user": CurrentUser, "roles": [RoleRef], "selectedRole": RoleRef 或 null, "csrfToken": "…"}`。只有一个角色时自动选定；失败返回 401 LOGIN_FAILED |
+| POST | `/api/auth/role` | `{"roleCode": "COST_ACCOUNTANT"}` | `{"selectedRole": RoleRef}`；角色不属于该账号时返回 403 PERMISSION_DENIED |
+| POST | `/api/auth/logout` | 无 | 204 |
+| GET | `/api/me` | 无 | `{"user": CurrentUser, "role": RoleRef 或 null, "menus": [Menu], "configVersion": 13, "csrfToken": "…"}` |
+| GET | `/api/admin/accounts` | `?keyword=&startRow=0&endRow=50` | `{"rows": [Account], "total": 120}` |
+| POST | `/api/admin/accounts` | `{"username": "zhangsan", "displayName": "张三", "departmentId": "10", "password": "…", "roleCodes": ["COST_ACCOUNTANT"]}` | `Account`；账号名重复时返回 422 VALIDATION_FAILED |
+| PUT | `/api/admin/accounts/{userId}` | `{"displayName": "张三", "departmentId": "10", "roleCodes": [], "enabled": false}` | `Account`；停用或撤销角色后，该账号的会话立即失效 |
+| POST | `/api/admin/accounts/{userId}/password` | `{"password": "…"}` | 204 |
+| GET | `/api/admin/departments` | 无 | `{"items": [{"departmentId": "10", "name": "成本部", "parentId": null}]}` |
+
+`Account` 为 `{"userId", "username", "displayName", "departmentId", "enabled", "roleCodes"}`。
+
+## 3. config
+
+| 方法 | 路径 | 请求 | 响应 |
+|---|---|---|---|
+| GET | `/api/pages/{pageCode}/view` | 无 | 页面视图（[C05](C05-页面视图.md)）；页面不存在返回 404，无权访问返回 403 |
+| GET | `/api/rules-packs/{packId}/{version}` | 无 | 规则包（[C07](C07-规则内核接口.md) 第 1 节）。同一版本内容不变，可以长期缓存 |
+| GET | `/api/config/items` | `?type=page` | `{"items": [{"type": "page", "key": "COST_PINGGU", "name": "成本核算", "version": 13, "updatedBy": "1", "updatedAt": "2026-10-24T10:00:00"}]}` |
+| GET | `/api/config/items/{type}/{key}` | 无 | 配置项（[C06](C06-配置模型.md)） |
+| PUT | `/api/config/items/{type}/{key}` | `{"name": "成本核算", "content": {}}` | `{"type": "page", "key": "COST_PINGGU", "version": 14}`。保存即生效；校验不通过返回 422 VALIDATION_FAILED，`details` 给出配置项和路径 |
+| DELETE | `/api/config/items/{type}/{key}` | 无 | 204；仍被其他配置引用时返回 422 VALIDATION_FAILED |
+| POST | `/api/config/validate` | `{"items": [配置项]}` | `{"ok": false, "errors": [C03 的 details 项]}`。只校验，不保存 |
+| POST | `/api/config/wizard/columns` | `{"readView": "T_COST_GOODS_PRICE_V", "table": "T_COST_GOODS"}` | `{"primaryKey": "GOODSID", "sequence": {"name": "T_COST_GOODS_SEQ", "exists": true}, "columns": [{"name": "ZX_PRICE", "type": "number", "label": "执行价", "inTable": true}]}`；只读取结构，不写任何东西 |
+| POST | `/api/config/wizard/generate` | `{"parentMenu": "cost", "pageCode": "GOODS_PRICE_MANAGE", "title": "物料清单及成本", "layout": "single", "master": {实体}, "details": []}` | 生成的实体、页面、菜单配置项，以及 ADMIN 角色的 `*` 权限，作为一次保存写入（config CF-14）；序列不存在时返回 422，提示用户先建序列 |
+
+表单布局是页面配置的一部分，随 `PUT /api/config/items/page/{pageCode}` 保存。两个管理员同时编辑同一配置项时，后保存的覆盖先保存的。
+
+## 4. queries-export
+
+| 方法 | 路径 | 请求 | 响应 |
+|---|---|---|---|
+| POST | `/api/pages/{pageCode}/rows` | `ListRequest` | `{"rows": [DataRow], "total": 1234, "aggregates": {"TOTAL_COST": "98765.43"}}` |
+| POST | `/api/pages/{pageCode}/rows/by-keys` | `{"entity": "COST_PINGGU", "rowKeys": ["1001", "1002"]}` | `{"rows": [DataRow]}`；不存在或超出行权限的行不返回 |
+| GET | `/api/pages/{pageCode}/records/{recordKey}` | 无 | `{"master": DataRow, "details": {"COST_MATERIAL": [DataRow]}}`；不存在或超出行权限返回 404 |
+| POST | `/api/lookups/{lookupCode}/search` | `{"keyword": "胶", "filter": {"column": "GOODSTYPE", "value": "瓶"}, "startRow": 0, "endRow": 50}`，`filter` 可选；`column` 必须是该 Lookup 的列，否则返回 422 | `{"rows": [{"values": {"GOODSID": "115", "NAME": "胶囊壳"}}], "total": 3}` |
+| GET | `/api/dicts/{dictType}` | 无 | `{"items": [{"value": "1", "label": "启用"}]}`；类型不存在时 `items` 为空 |
+| GET | `/api/pages/{pageCode}/personal` | 无 | `PersonalConfig`；没有保存过时各项为空 |
+| PUT | `/api/pages/{pageCode}/personal` | `PersonalConfig`，只含要替换的部分 | `PersonalConfig` |
+| GET | `/api/pages/{pageCode}/exports` | 无 | `{"items": [{"exportCode": "cost-pinggu-export", "name": "物料成本核算表导出"}]}`，只含当前角色可用的导出配置 |
+| POST | `/api/pages/{pageCode}/export` | 默认导出当前页面：`{"mode": "page", "request": ListRequest, "columns": ["DOCID", "GOODSNAME"]}`；按导出配置：`{"mode": "config", "exportCode": "cost-pinggu-export", "scope": "current", "request": ListRequest}`，`scope` 为 `current`（按当前查询条件）或 `all`（行权限内的全部行） | xlsx 文件，`Content-Disposition: attachment`，数值写成文本单元格；默认导出的列必须对当前角色可见；角色没有该导出配置时返回 403 |
+
+```json
+{
+  "startRow": 0,
+  "endRow": 100,
+  "sortModel": [{"colId": "DOCID", "sort": "desc"}],
+  "filterModel": {"GOODSNAME": {"filterType": "text", "type": "contains", "filter": "胶囊"}},
+  "advanced": {"op": "and", "conditions": [{"field": "TOTAL_COST", "operator": ">=", "value": "100"}, {"entity": "COST_MATERIAL", "group": "g1", "field": "GOODSID", "operator": "=", "value": "115"}, {"entity": "COST_MATERIAL", "group": "g1", "logic": "and", "field": "PRICE", "operator": ">", "value": "3"}]}
+}
+```
+
+`ListRequest` 的 `sortModel`、`filterModel` 沿用 AG Grid 服务端行模型的格式；没有排序时按主键排序。
+高级查询的条件不写 `entity` 时属于主表。写了明细实体的条件，同一明细实体的条件合成一个 `EXISTS`，必须由同一条明细行同时满足，`group` 和 `logic` 用于组内的且、或；不同明细实体的条件之间是且。上例查的是"含有物料 115 且该行价格大于 3 的明细"的成本单。
+
+```json
+{
+  "grids": {"master": {"columns": [{"field": "DOCID", "width": 120, "pinned": "left", "hide": false}]}, "COST_MATERIAL": {"columns": []}},
+  "detailMode": "tabs"
+}
+```
+
+`PersonalConfig` 的 `columns` 按数组顺序排列。
+
+## 5. write-pipeline（由 assembly 挂载）
+
+| 方法 | 路径 | 请求 | 响应 |
+|---|---|---|---|
+| POST | `/api/commands` | 命令（[C02](C02-命令与结果.md)） | 命令结果（C02） |
+
+## 6. approval
+
+| 方法 | 路径 | 请求 | 响应 |
+|---|---|---|---|
+| GET | `/api/approvals` | `?box=todo` 或 `?box=mine`，以及 `startRow`、`endRow` | `{"rows": [ApprovalSummary], "total": 7}` |
+| GET | `/api/approvals/{approvalId}` | 无 | `ApprovalDetail`；只读，不加锁 |
+| POST | `/api/approvals/{approvalId}/pass` | `{"requestKey": "…", "fingerprint": "sha256:…", "selectedObjects": [{"flow": "GOODS_TO_COST", "entity": "COST_PINGGU", "recordKey": "2550"}], "comment": "价格已核对", "params": {"effectiveDate": "2026-11-01"}}`，`params` 为本次通过要填写的人工参数（C06 7.1） | 命令结果（C02），`outcome` 为 `approvalProcessed`；必填的人工参数没有填写时返回 422 |
+| POST | `/api/approvals/{approvalId}/reject` | `{"requestKey": "…", "comment": "价格偏高"}`，`comment` 为驳回原因，必填 | 命令结果；没填原因返回 422 VALIDATION_FAILED |
+| POST | `/api/approvals/{approvalId}/withdraw` | `{"requestKey": "…", "comment": "录入有误"}`，`comment` 可以不填 | 命令结果 |
+
+```json
+{"approvalId": "203", "page": "GOODS_PRICE_MANAGE", "pageTitle": "物料清单及成本", "operation": "COST_GOODS_PRICE.save", "operationLabel": "保存", "source": {"entity": "COST_GOODS_PRICE", "recordKey": "115", "label": "硬脂酸镁"}, "applicant": {"userId": "112", "displayName": "杨娜"}, "submittedAt": "2026-10-24T09:30:00", "status": "pending", "level": 1, "queuedBehind": 0}
+```
+
+```json
+{
+  "approvalId": "203",
+  "status": "pending",
+  "page": "GOODS_PRICE_MANAGE",
+  "pageTitle": "物料清单及成本",
+  "operation": "COST_GOODS_PRICE.save",
+  "operationLabel": "保存",
+  "applicant": {"userId": "112", "displayName": "杨娜"},
+  "submittedAt": "2026-10-24T09:30:00",
+  "currentLevel": 1,
+  "steps": [
+    {"level": 1, "flow": "GOODS_TO_COST", "flowName": "物料清单改价 → 勾选成本单", "entry": "逐成本单确认同步", "mode": "or", "status": "pending",
+     "members": [{"type": "user", "id": "111", "name": "系统管理员", "status": "pending", "processedBy": null, "processedAt": null, "comment": null}]},
+    {"level": 1, "flow": "GOODS_PRICE_AUDIT", "flowName": "物料改价复核", "entry": "采购复核", "mode": "or", "status": "pending",
+     "members": [{"type": "user", "id": "111", "name": "系统管理员", "status": "pending", "processedBy": null, "processedAt": null, "comment": null}]},
+    {"level": 2, "flow": "GOODS_PRICE_AUDIT", "flowName": "物料改价复核", "entry": "管理员复核", "mode": "or", "status": "upcoming",
+     "members": [{"type": "role", "id": "ADMIN", "name": "系统管理员", "status": "pending", "processedBy": null, "processedAt": null, "comment": null}]}
+  ],
+  "view": {
+    "master": {"columns": ["物料ID", "名称", "价格变化"],
+      "rows": [{"op": "modify", "cells": [{"before": "115", "after": "115"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}]}]},
+    "details": [{"title": "受影响的成本单", "flow": "GOODS_TO_COST", "selection": "approverSelects",
+      "columns": ["单据号", "产品", "物料", "单价", "金额", "每盒成本", "千片加工费"], "mergedColumns": [0, 1, 5, 6],
+      "targets": [{"entity": "COST_PINGGU", "recordKey": "2550", "selectable": true, "selected": false}, {"entity": "COST_PINGGU", "recordKey": "2551", "selectable": true, "selected": false}],
+      "rows": [
+        {"op": "modify", "target": {"entity": "COST_PINGGU", "recordKey": "2550"}, "cells": [{"before": "2550", "after": "2550"}, {"before": "250mg乙酰唑胺片", "after": "250mg乙酰唑胺片"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}, {"before": "1500", "after": "1200"}, {"before": "1.2034", "after": "1.1987"}, {"before": "30.50", "after": "30.21"}]},
+        {"op": "modify", "target": {"entity": "COST_PINGGU", "recordKey": "2551"}, "cells": [{"before": "2551", "after": "2551"}, {"before": "500mg乙酰唑胺片", "after": "500mg乙酰唑胺片"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}, {"before": "3000", "after": "2400"}, {"before": "0.9821", "after": "0.9790"}, {"before": "28.10", "after": "27.95"}]}
+      ]}]
+  },
+  "queuedBehind": 0,
+  "fingerprint": "sha256:5b1e…",
+  "actions": {"canPass": true, "canReject": true, "canWithdraw": false}
+}
+```
+
+- 每个审批对应一张单据：主从页为一行主表及其明细，单表页为一行；一张单据命中多个审批流时合成一个审批（[approval](../模块/approval.md) AP-01、AP-09）。样例中的页面、物料、成本单、账号和角色取自旧系统的真实数据（经 d_cg 读取 CMX）；旧系统没有会同时命中同一张单据的两个审批流，`GOODS_PRICE_AUDIT` 是为说明合并展示假设的第二个审批流，C06 中没有定义。
+- 待办列表每个审批一行（`ApprovalSummary`）。详情分主表和从表：
+  - 主表：来自页面（`pageTitle`、`operationLabel`）、提交时间（`submittedAt`）、提交人（`applicant`）、来源单据号（`source.recordKey`）。新增的单据在提交审批时已取得主键（approval AP-02），来源单据号总是有值。
+  - 从表：`steps`，每个入口一项，按级别、再按审批流的 `createdSeq` 排列；`flow`、`flowName` 标出入口来自哪个审批流。只列已进入的入口，以及按当前数据推算后面会进入的入口（approval AP-08）。`status` 取 `passed`、`pending`（本级待处理）、`rejected`、`upcoming`（还没到，按当前数据推算会进入）。`members[].status` 取 `pending`、`passed`、`rejected`；`processedBy` 为实际处理的账号（`{"userId", "displayName"}`），按角色配置的成员由该角色的某个账号处理。
+- `view` 是按 C06 7.6 的 `display` 生成的"修改内容"：`master` 为主表，`details` 每张从表一项。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（`rowsFilter` 为 `all` 时未改动的行）。来源单据的行带 `flows`：这一行触发的审批流编码列表，为空表示随审批等待；一张单据命中多个审批流时，来源单据的主表和从表只返回一份，候选单据的从表每个审批流一张，带 `flow`（C06 7.6）。
+- 从表的行来自候选单据时，`target` 标出这一行属于哪张单据，同一张单据的行连续排列；`mergedColumns` 是取自候选单据主表、需要在这组行上合并显示的列；`targets` 给出每张候选单据能否勾选、是否已勾选。按单据勾选，可以勾选（`selectable` 为 true）需同时满足：该审批流的 `selection` 为 `approverSelects`；当前用户是该审批流本级入口的待处理审批人；单据在该审批流上一级选中的范围内。`selection` 为 `all` 的审批流不返回候选单据。
+- 同一账号在本级多个入口中待处理时，通过一次即计入这些入口（approval AP-16）；通过请求的 `selectedObjects` 用 `flow` 分别给出各审批流的勾选。
+- 任何已登录的用户都能查看审批详情和进度，`actions` 给出当前用户能做的操作。
+- `queuedBehind` 大于 0 时，通过返回 409 APPROVAL_QUEUED。
+- 打开详情之后结果发生变化时，通过返回 409 RECONFIRM_REQUIRED，前端重新读取详情。
+- 不是本级尚未处理的审批人提交通过或驳回，不是发起人提交撤回，或者已有人做过通过之后提交撤回，返回 403 PERMISSION_DENIED。
+
+## 7. delivery
+
+| 方法 | 路径 | 请求 | 响应 |
+|---|---|---|---|
+| GET | `/api/inbox` | `?unread=true&startRow=0&endRow=20` | `{"rows": [{"deliveryId": "…", "title": "…", "body": "…", "link": "/approval/203", "createdAt": "2026-10-24T09:30:01", "read": false}], "total": 3, "unread": 2}` |
+| POST | `/api/inbox/{deliveryId}/read` | 无 | 204 |
+| GET | `/api/admin/deliveries` | `?status=abandoned&startRow=0&endRow=50` | `{"rows": [{"deliveryId": "…", "recipient": "111", "status": "abandoned", "attempts": 5, "nextRetryAt": null, "lastError": "…"}], "total": 1}`；`status` 取 `pending`、`sent`、`failed`、`abandoned` |
+| POST | `/api/admin/deliveries/{deliveryId}/requeue` | 无 | 204；不是 `abandoned` 状态时返回 422 VALIDATION_FAILED |
+
+## 7a. 命令审查（write-pipeline）
+
+| 方法 | 路径 | 请求 | 响应 |
+|---|---|---|---|
+| GET | `/api/admin/command-review` | `?startRow=0&endRow=50&user=&result=` | `{"enabled": true, "rows": [CommandLog], "total": 12}` |
+| PUT | `/api/admin/command-review` | `{"enabled": false}` | 204；关闭时清除全部已记录的内容 |
+
+`CommandLog` 为 `{"requestKey", "user", "page", "operation", "result": "saved|rejected|failed", "errorCode", "message", "startedAt", "durationMs", "sqlCount", "sqlMs", "sql": [{"text", "binds", "ms", "rows", "error"}]}`。
+
+## 8. realtime 与 assembly
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/ws` | WebSocket，消息见 [C10](C10-实时事件.md) |
+| GET | `/health` | 预热完成后返回 200 `{"status": "ok", "coreVersion": "0.1.0", "configVersion": 13}`；预热完成前返回 503 `{"status": "starting"}`。不需要会话 |
+
+## 9. 契约测试
+
+- 后端生成的 OpenAPI 与本文的路径、方法、请求和响应字段一致。
+- contracts 提供的前端模拟实现，对每个接口返回本文的样例。
+

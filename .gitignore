@@ -1,0 +1,45 @@
+# 本地环境与密钥：连接信息只放在 .env，不进版本库
+.env
+.env.*
+!.env.example
+# 前端的 Vite 环境文件只有公开配置，没有密钥（AG Grid 授权放在根目录 .env）
+!frontend/.env
+!frontend/.env.prod
+!frontend/.env.test
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.import_linter_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# 测试与追踪产物
+.reports/
+backend/.reports/
+
+# Node / 前端
+node_modules/
+dist/
+.vite/
+coverage/
+playwright-report/
+test-results/
+
+# Rust
+rules-core/target/
+rules-core/pkg/
+
+# 本地工具链（经同意后下载，不进版本库）
+.tools/
+
+# 编辑器
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp

@@ -1,0 +1,9 @@
+dist
+node_modules
+.git
+.idea
+.vscode
+playwright-report
+test-results
+frontend-dev.log
+

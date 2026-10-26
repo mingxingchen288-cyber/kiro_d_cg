@@ -1,0 +1,48 @@
+@import './reset.css';
+@import './nprogress.css';
+@import './transition.css';
+
+html,
+body,
+#app {
+  height: 100%;
+  text-autospace: normal;
+}
+
+html {
+  overflow-x: hidden;
+  color: rgb(var(--base-text-color));
+}
+
+/* Lookup 字段高亮样式 */
+.ag-cell.lookup-field {
+  color: #1890ff;
+  cursor: pointer;
+}
+
+.ag-cell.lookup-field:hover {
+  text-decoration: underline;
+}
+
+/* AG Grid 筛选按钮统一在右边 */
+.ag-header-cell .ag-cell-label-container {
+  flex-direction: row !important;
+}
+
+.ag-header-cell .ag-header-cell-filter-button {
+  order: 99 !important;
+}
+
+.ag-header-cell.ag-right-aligned-header .ag-header-cell-label {
+  justify-content: flex-end;
+}
+
+/* AG Grid Side Bar 图标栏宽度 */
+.ag-side-buttons {
+  width: 20px !important;
+}
+
+.ag-side-button-button {
+  min-width: 20px !important;
+  padding: 8px 2px !important;
+}

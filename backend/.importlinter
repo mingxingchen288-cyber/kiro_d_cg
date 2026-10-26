@@ -1,0 +1,28 @@
+# Dependency rules: see docs section 3 of the architecture document.
+# Keep this file ASCII-only: import-linter reads it with the system locale encoding.
+[importlinter]
+root_package = cost_platform
+
+[importlinter:contract:business-modules-independent]
+name = Business modules do not import each other
+type = independence
+modules =
+    cost_platform.config
+    cost_platform.identity
+    cost_platform.authz
+    cost_platform.pipeline
+    cost_platform.approval
+    cost_platform.operations
+    cost_platform.delivery
+    cost_platform.realtime
+    cost_platform.queries
+    cost_platform.db_core
+    cost_platform.migration
+
+[importlinter:contract:layers]
+name = Only assembly imports business modules; business modules depend only on contracts
+type = layers
+layers =
+    cost_platform.assembly
+    cost_platform.config | cost_platform.identity | cost_platform.authz | cost_platform.pipeline | cost_platform.approval | cost_platform.operations | cost_platform.delivery | cost_platform.realtime | cost_platform.queries | cost_platform.db_core | cost_platform.migration
+    cost_platform.contracts
