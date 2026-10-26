@@ -45,6 +45,7 @@ from pydantic import (
     Tag,
     TypeAdapter,
     model_serializer,
+    model_validator,
 )
 from pydantic.alias_generators import to_camel
 
@@ -115,6 +116,19 @@ Code = Annotated[str, StringConstraints(min_length=1)]
 Int: TypeAlias = StrictInt
 Bool: TypeAlias = StrictBool
 Millis: TypeAlias = StrictInt | StrictFloat
+
+def _exactly(expected: bool) -> Any:
+    def check(value: Any) -> Any:
+        if value is not expected:
+            raise ValueError(f"必须是 JSON 的 {str(expected).lower()}")
+        return value
+    return BeforeValidator(check)
+
+
+TrueValue = Annotated[Literal[True], _exactly(True)]
+"""只能是 JSON 的 true（不接受 1、1.0）。"""
+FalseValue = Annotated[Literal[False], _exactly(False)]
+"""只能是 JSON 的 false（不接受 0、0.0）。"""
 
 BusinessValue: TypeAlias = StrictStr | StrictBool | None
 """业务字段在 JSON 中的值：精确数值和文本都是字符串（C01），是非为布尔，空为 null。"""
@@ -249,8 +263,11 @@ class ErrorDetail(Wire):
     @model_serializer(mode="wrap")
     def _every_key(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo) -> dict[str, Any]:
         data = handler(self)
-        for name, field_info in type(self).model_fields.items():
-            data.setdefault((field_info.alias or name) if info.by_alias else name, getattr(self, name))
+        fields = type(self).model_fields
+        # 沿用处理函数输出的键名风格；Wire 默认按别名输出，只有明确传 by_alias=False 时才用字段名
+        use_alias = info.by_alias is not False
+        for name, field_info in fields.items():
+            data.setdefault((field_info.alias or name) if use_alias else name, getattr(self, name))
         return data
 
 
@@ -379,7 +396,19 @@ class DeletedRow(Wire):
 
     entity: Code
     row_key: Key
-    deleted: Literal[True]
+    deleted: TrueValue
+
+
+def _at_most_one_row_identity(model: Any) -> Any:
+    if model.row_key is not None and model.client_row_id is not None:
+        raise ValueError("rowKey 和 clientRowId 最多给出一个")
+    return model
+
+
+def _exactly_one_row_identity(model: Any) -> Any:
+    if (model.row_key is None) == (model.client_row_id is None):
+        raise ValueError("rowKey 和 clientRowId 必须且只能给出一个")
+    return model
 
 
 class Prompt(Wire):
@@ -391,6 +420,8 @@ class Prompt(Wire):
     row_key: Key | None = None
     client_row_id: ClientRowId | None = None
     field: str | None = None
+
+    check_row_identity = model_validator(mode="after")(_at_most_one_row_identity)
 
 
 class SkippedRow(Wire):
@@ -443,7 +474,7 @@ class Identity:
 @dataclass(frozen=True)
 class Origin:
     kind: Literal["user", "approval"]
-    approval_id: str | None = None
+    approval_id: str | None
 
     def __post_init__(self) -> None:
         if self.kind == "approval" and self.approval_id is None:
@@ -1184,6 +1215,8 @@ class EvalRow(Wire):
     values: FieldValues
     old: FieldValues | None = None
 
+    check_row_identity = model_validator(mode="after")(_exactly_one_row_identity)
+
 
 class EvalDocument(Wire):
     entity: Code
@@ -1232,6 +1265,8 @@ class EvalRowResult(Wire):
     fields: dict[str, FieldState]
     style: RowStyle
 
+    check_row_identity = model_validator(mode="after")(_exactly_one_row_identity)
+
 
 class PromptEffect(Wire):
     kind: Literal["prompt"]
@@ -1242,6 +1277,8 @@ class PromptEffect(Wire):
     client_row_id: ClientRowId | None = None
     field: str | None = None
 
+    check_row_identity = model_validator(mode="after")(_at_most_one_row_identity)
+
 
 class RejectEffect(Wire):
     kind: Literal["reject"]
@@ -1251,6 +1288,8 @@ class RejectEffect(Wire):
     row_key: Key | None = None
     client_row_id: ClientRowId | None = None
     field: str | None = None
+
+    check_row_identity = model_validator(mode="after")(_at_most_one_row_identity)
 
 
 class ApproveEffect(Wire):
@@ -1267,14 +1306,39 @@ class EvalError(Wire):
     message: str
 
 
-class EvaluationResult(Wire):
-    """计算结果为 `ok`、`rows`、`effects`；判断审批入口为 `ok`、`satisfied`；出错为 `ok` 为 false 和 `error`。"""
+class EvalComputed(Wire):
+    """计算和规则的结果（`purpose` 为 `operation`）：`rows`、`effects` 总会出现，没有时为空数组。"""
 
-    ok: Bool
-    rows: list[EvalRowResult] = []
-    effects: list[RuleEffect] = []
-    satisfied: Bool | None = None
-    error: EvalError | None = None
+    ok: TrueValue
+    rows: list[EvalRowResult]
+    effects: list[RuleEffect]
+
+
+class EvalEntry(Wire):
+    """判断审批入口的结果（`purpose` 为 `approvalEntry`）。"""
+
+    ok: TrueValue
+    satisfied: Bool
+
+
+class EvalFailure(Wire):
+    """规则包或请求本身有问题；不返回部分结果。"""
+
+    ok: FalseValue
+    error: EvalError
+
+
+def _evaluation_tag(value: Any) -> str | None:
+    if isinstance(value, dict):
+        return "failure" if "error" in value else "entry" if "satisfied" in value else "computed"
+    return {EvalComputed: "computed", EvalEntry: "entry", EvalFailure: "failure"}.get(type(value))
+
+
+EvaluationResult = Annotated[
+    Annotated[EvalComputed, Tag("computed")] | Annotated[EvalEntry, Tag("entry")] | Annotated[EvalFailure, Tag("failure")],
+    Discriminator(_evaluation_tag),
+]
+"""C07 第 3 节的求值结果，三种形状之一。"""
 
 
 # ============================================================ C09 HTTP 接口
@@ -1646,8 +1710,10 @@ class ViewDetailTable(Wire):
     flow: Code | None = None
     selection: Literal["all", "approverSelects"] | None = None
     columns: list[str]
-    merged_columns: list[Int] = []
-    targets: list[TargetChoice] = []
+    merged_columns: list[Int] | None = None
+    """候选单据的从表才有；没有要合并的列时为空数组。"""
+    targets: list[TargetChoice] | None = None
+    """候选单据的从表才有；没有候选单据时为空数组。"""
     rows: list[ViewRow]
 
 

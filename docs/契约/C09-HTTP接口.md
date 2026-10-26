@@ -132,7 +132,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
   ],
   "view": {
     "master": {"columns": ["物料ID", "名称", "价格变化"],
-      "rows": [{"op": "modify", "cells": [{"before": "115", "after": "115"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}]}]},
+      "rows": [{"op": "modify", "flows": ["GOODS_TO_COST", "GOODS_PRICE_AUDIT"], "cells": [{"before": "115", "after": "115"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}]}]},
     "details": [{"title": "受影响的成本单", "flow": "GOODS_TO_COST", "selection": "approverSelects",
       "columns": ["单据号", "产品", "物料", "单价", "金额", "每盒成本", "千片加工费"], "mergedColumns": [0, 1, 5, 6],
       "targets": [{"entity": "COST_PINGGU", "recordKey": "2550", "selectable": true, "selected": false}, {"entity": "COST_PINGGU", "recordKey": "2551", "selectable": true, "selected": false}],
@@ -151,7 +151,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 - 待办列表每个审批一行（`ApprovalSummary`）。详情分主表和从表：
   - 主表：来自页面（`pageTitle`、`operationLabel`）、提交时间（`submittedAt`）、提交人（`applicant`）、来源单据号（`source.recordKey`）。新增的单据在提交审批时已取得主键（approval AP-02），来源单据号总是有值。
   - 从表：`steps`，每个入口一项，按级别、再按审批流的 `createdSeq` 排列；`flow`、`flowName` 标出入口来自哪个审批流。只列已进入的入口，以及按当前数据推算后面会进入的入口（approval AP-08）。`status` 取 `passed`、`pending`（本级待处理）、`rejected`、`upcoming`（还没到，按当前数据推算会进入）。`members[].status` 取 `pending`、`passed`、`rejected`；`processedBy` 为实际处理的账号（`{"userId", "displayName"}`），按角色配置的成员由该角色的某个账号处理。
-- `view` 是按 C06 7.6 的 `display` 生成的"修改内容"：`master` 为主表，`details` 每张从表一项。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（`rowsFilter` 为 `all` 时未改动的行）。来源单据的行带 `flows`：这一行触发的审批流编码列表，为空数组表示没有触发、随审批等待，没有值时省略（C01 第 1 节）；候选单据的行没有 `flows`；一张单据命中多个审批流时，来源单据的主表和从表只返回一份，候选单据的从表每个审批流一张，带 `flow`（C06 7.6）。
+- `view` 是按 C06 7.6 的 `display` 生成的"修改内容"：`master` 为主表，`details` 每张从表一项。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（`rowsFilter` 为 `all` 时未改动的行）。来源单据的行总带 `flows`：这一行触发的审批流编码列表，为空数组表示没有触发、随审批等待；候选单据的行没有这个值，按 C01 第 1 节省略；一张单据命中多个审批流时，来源单据的主表和从表只返回一份，候选单据的从表每个审批流一张，带 `flow`（C06 7.6）。
 - 从表的行来自候选单据时，`target` 标出这一行属于哪张单据，同一张单据的行连续排列；`mergedColumns` 是取自候选单据主表、需要在这组行上合并显示的列；`targets` 给出每张候选单据能否勾选、是否已勾选。按单据勾选，可以勾选（`selectable` 为 true）需同时满足：该审批流的 `selection` 为 `approverSelects`；当前用户是该审批流本级入口的待处理审批人；单据在该审批流上一级选中的范围内。`selection` 为 `all` 的审批流不返回候选单据。
 - 同一账号在本级多个入口中待处理时，通过一次即计入这些入口（approval AP-16）；通过请求的 `selectedObjects` 用 `flow` 分别给出各审批流的勾选。
 - 任何已登录的用户都能查看审批详情和进度，`actions` 给出当前用户能做的操作。

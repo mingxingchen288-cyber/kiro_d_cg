@@ -19,9 +19,9 @@
 - 归属与目标：实现 AS-01–AS-05、AS-08。
 - 前置输入：开始前 T-AS-1、T-CT-3。
 - 负责范围：`backend/src/cost_platform/assembly/`。
-- 交付物：`create_app(settings)`；请求中间件；阶段注册；启动初始化和后台任务的调度；命令行入口 `platform`；系统时钟和编号生成；`GET /health`。
+- 交付物：`create_app(settings)`；请求中间件；请求体和响应的统一处理（请求体经 contracts 的 `parse_wire` 解析，响应经 `dump_wire` 输出，满足 C01 第 1 节；路由不直接用契约类型声明请求体和 `response_model`）；阶段注册；启动初始化和后台任务的调度；命令行入口 `platform`；系统时钟和编号生成；`GET /health`。
 - 接入责任：本任务只用 contracts 的替代实现组装；各模块的真实实现在 T-AS-4–T-AS-6 中接入。
-- 验收标准（模拟验证，`PLATFORM_BACKEND=memory`）：没有会话的请求返回 401；写请求缺 CSRF 令牌返回 403；跨站 Origin 返回 ORIGIN_REJECTED；每个响应带 `X-Config-Version`；带 `X-Background-Request: 1` 的请求以 `touch=False` 认证；阶段按架构第 7 节的顺序调用；`platform --help` 只列出 `db` 和 `migrate`；预热完成前 `/health` 返回 503、业务请求返回 CONFIG_UNAVAILABLE，完成后 `/health` 返回 200。
+- 验收标准（模拟验证，`PLATFORM_BACKEND=memory`）：没有会话的请求返回 401；写请求缺 CSRF 令牌返回 403；跨站 Origin 返回 ORIGIN_REJECTED；每个响应带 `X-Config-Version`；带 `X-Background-Request: 1` 的请求以 `touch=False` 认证；阶段按架构第 7 节的顺序调用；`platform --help` 只列出 `db` 和 `migrate`；用 snake_case 字段名或字符串形式的整数提交命令被拒绝，响应中可选字段没有值时不出现；预热完成前 `/health` 返回 503、业务请求返回 CONFIG_UNAVAILABLE，完成后 `/health` 返回 200。
 - 状态与证据：未开始。
 
 ### T-AS-3 前端组装

@@ -53,6 +53,8 @@ _UUID = "3f2b6c1e-8a4d-4c2e-9b1a-0d6e5f7a8b9c"
 _TMP = "tmp-6a1f2c3d-0b4e-4f5a-8c7d-9e0f1a2b3c4d"
 _FP = "sha256:5b1e0c6d9a3f47e28b1c6d0e9f3a2b4c5d6e7f8091a2b3c4d5e6f708192a3b4c"
 _ROW = {"rowKey": "1001", "values": {"QTY": "12"}, "frozen": None}
+_USER = {"userId": "112", "username": "yangna", "displayName": "杨娜", "departmentId": "10"}
+_ROLE = {"code": "COST_ACCOUNTANT", "name": "成本会计", "admin": False}
 
 
 def _command(document: Any) -> Any:
@@ -164,10 +166,92 @@ INLINE: list[tuple[str, Any, Any]] = [
     ("C09 命令审查开关", {"enabled": False}, t.CommandReviewToggle),
     ("C09 健康检查 ok", {"status": "ok", "coreVersion": "0.1.0", "configVersion": 13}, t.HealthResponse),
     ("C09 健康检查 starting", {"status": "starting"}, t.HealthResponse),
+    ("C09 登录响应", {"user": _USER, "roles": [_ROLE], "selectedRole": _ROLE, "csrfToken": "c"}, t.LoginResponse),
+    ("C09 登录响应（多个角色未选定）", {"user": _USER, "roles": [_ROLE, _ROLE], "selectedRole": None, "csrfToken": "c"}, t.LoginResponse),
+    ("C09 选角色响应", {"selectedRole": _ROLE}, t.SelectRoleResponse),
+    ("C09 当前用户", {"user": _USER, "role": _ROLE, "menus": [{"key": "cost", "title": "成本", "kind": "group", "children": [
+        {"key": "COST_PINGGU", "title": "成本核算", "kind": "page", "pageCode": "COST_PINGGU"}]}], "configVersion": 13, "csrfToken": "c"},
+     t.MeResponse),
+    ("C09 账号列表", {"rows": [{"userId": "112", "username": "yangna", "displayName": "杨娜", "departmentId": "10", "enabled": True,
+                               "roleCodes": ["COST_ACCOUNTANT"]}], "total": 120}, t.AccountList),
+    ("C09 配置校验请求", {"items": [FLOW_1]}, t.ConfigValidateRequest),
+    ("C09 配置校验响应", {"ok": False, "errors": [{"message": "入口至少要有一个审批人", "entity": None, "rowKey": None, "clientRowId": None,
+                                                 "field": None, "approvalId": None, "configType": "approvalFlow",
+                                                 "configKey": "GOODS_TO_COST", "path": "levels[0].entries[0].approvers"}]},
+     t.ConfigValidateResponse),
+    ("C09 按主键读行响应", {"rows": [_ROW, {**_ROW, "rowKey": "1002", "frozen": {"approvalId": "203"},
+                                       "compare": {"PRICE": {"value": "3.50", "diff": "0.30", "percent": "8.57"}}}]}, t.RowsResponse),
+    ("C09 待办列表", {"rows": [_json("C09", 2)], "total": 7}, t.ApprovalList),
+    ("C09 命令审查记录", {"enabled": True, "rows": [{
+        "requestKey": _UUID, "user": "admin", "page": "COST_PINGGU", "operation": "COST_PINGGU.save", "result": "rejected",
+        "errorCode": "RULE_REJECTED", "message": "价格超出范围", "startedAt": "2026-10-24T09:30:00", "durationMs": 35, "sqlCount": 2,
+        "sqlMs": 4.5, "sql": [{"text": "SELECT 1 FROM DUAL", "binds": {}, "ms": 1.2, "rows": 1, "error": None}]}], "total": 12},
+     t.CommandReviewList),
+    ("C10 通知事件", {"eventId": _UUID, "topic": "notification", "audience": {"users": ["111"]},
+                      "payload": {"deliveryId": _UUID, "title": "您有来自于物料清单及成本页面，业务单据为115的审批", "body": "",
+                                  "link": "/approval/203"}}, t.ChannelEvent),
+    ("C10 会话失效事件（按用户）", {"eventId": _UUID, "topic": "session.revoked", "audience": {"users": ["112"]},
+                                   "payload": {"reason": "accountDisabled"}}, t.ChannelEvent),
+    ("C10 会话失效事件（按会话）", {"eventId": _UUID, "topic": "session.revoked", "audience": {"sessions": ["s1"]},
+                                   "payload": {"reason": "loggedOut"}}, t.ChannelEvent),
+    ("C09 审批详情的来源行没有触发审批", _broken(["view", "master", "rows", 0, "flows"], [], _json("C09", 3)), t.ApprovalDetail),
 ]
 
 # C06 的配置内容由管理员编写，原样保存；模型只用于读取和校验结构，所以只比较解析时给出的字段（exclude_unset）。
+_ENTITY_EXAMPLES = {
+    "table": "T_COST_GOODS", "readView": "T_COST_GOODS_PRICE_V", "primaryKey": "GOODSID", "freezable": True,
+    "erpRow": {"column": "ISERP", "value": "1", "localValue": "0"},
+    "fields": [
+        {"name": "GOODSID", "column": "GOODSID", "label": "物料", "type": "number", "scale": 0, "source": "own", "role": "system"},
+        {"name": "UNIT", "column": "UNIT", "label": "单位", "type": "text", "source": "own", "role": "input",
+         "default": {"type": "static", "value": "1"}},
+        {"name": "CREATE_BY", "column": "CREATE_BY", "label": "创建人", "type": "text", "source": "own", "role": "input",
+         "default": {"type": "builtin", "value": "currentUserId"}},
+        {"name": "STATUS", "column": "STATUS", "label": "状态", "type": "text", "source": "own", "role": "input",
+         "default": {"type": "options", "value": ["A", "B"]}},
+        {"name": "PRICE", "column": "PRICE", "label": "价格", "type": "number", "scale": 4, "source": "erp", "role": "input",
+         "compare": {"mode": "field", "field": "LAST_PRICE", "format": "both"}},
+        {"name": "ZX_PRICE", "column": None, "label": "执行价", "type": "number", "scale": 4, "source": "own", "role": "input",
+         "compare": {"mode": "query", "source": "T_COST_GOODS_HIS_V", "keys": [{"current": "GOODSID", "compare": "GOODSID"}],
+                     "field": "PRICE", "format": "percent"}},
+    ],
+    "approvalRequired": [{"fields": ["ZX_PRICE"], "when": {"logic": "AND", "conditions": [{"field": "ISERP", "op": "eq", "value": "1"}]},
+                          "sourcePages": ["GOODS_PRICE_MANAGE"]}],
+}
+_FLOW_EXAMPLES = {
+    **FLOW_1["content"],
+    "trigger": {"operations": ["modify", "add"], "changedFields": {"COST_MATERIAL": ["PRICE"]}, "when": "PRICE > old.PRICE",
+                "dataItems": [{"name": "usage", "sql": "SELECT USAGE FROM T_COST_GOODS WHERE GOODSID = :goodsId", "binds": {"goodsId": "GOODSID"}}]},
+    "levels": [
+        {"level": 1, "entries": [{"name": "主管审核", "when": None, "mode": "and", "approvers": [
+            {"type": "role", "role": "COST_MANAGER"},
+            {"type": "sql", "sql": "SELECT USER_ID FROM T_COST_DEPT_LEADER WHERE DEPT_ID = :deptId", "binds": {"deptId": "DEPT_ID"}}]}]},
+    ],
+    "freeze": [{"kind": "targets"}, {"kind": "sql", "entity": "COST_PINGGU", "sql": "SELECT DOCID FROM T_COST_PINGGU_DTL WHERE GOODSID = :g",
+                                      "binds": {"g": "COST_MATERIAL.GOODSID"}, "recordKeyColumn": "DOCID"}],
+    "levelActions": [{"level": 1, "steps": [{"action": "updateRecords",
+                                              "find": {"kind": "relationKey", "entity": "COST_PINGGU", "targetKey": "DOCID",
+                                                       "sourceKey": "COST_PINGGU.DOCID", "rows": "all"},
+                                              "fieldMapping": [{"from": "params.effectiveDate", "to": "EFFECTIVE_DATE"}]}]}],
+    "params": [{"name": "effectiveDate", "label": "生效日期", "type": "date", "source": "manual", "required": True, "level": 1},
+               {"name": "reason", "label": "原因", "type": "string", "source": "constant", "value": "调价"}],
+    "notify": [{"event": "submitted", "to": "levelApprovers"}, {"event": "passed", "to": {"users": ["111"]}},
+               {"event": "rejected", "to": {"role": "COST_MANAGER"}}],
+}
+_OPERATION_EXAMPLES = {"label": "同步价格", "kind": "action", "writableFields": {"COST_PINGGU": ["PRICE"]}, "impact": ["COST_PINGGU"],
+                       "actions": [{"action": "escapeHatch", "operation": "COST_PINGGU.recalc_proc"}], "rowNotFound": "reject",
+                       "propagation": "end"}
+_PAGE_FIELD_EXAMPLES = _broken(["master", "fields"], {"GOODSID": {"lookup": {
+    "code": "GOODS", "fill": {"GOODSID": "GOODSID", "GOODSNAME": "NAME"}, "multiple": False,
+    "filter": {"column": "GOODSTYPE", "from": "row", "field": "PACKTYPE"}, "fillBack": True}, "dictType": "GOODS_TYPE"}}, _json("C06", 2))
+_ROLE_SQL_ROWS = _broken(["pages", "COST_PINGGU", "rows"], "CREATE_BY = ${username}", _json("C06", 10))
+
 CONFIG_CONTENTS: list[tuple[str, Any, Any]] = [
+    ("C06 正文例子：entity", _ENTITY_EXAMPLES, t.EntityConfig),
+    ("C06 正文例子：审批流", _FLOW_EXAMPLES, t.ApprovalFlowConfig),
+    ("C06 正文例子：operation", _OPERATION_EXAMPLES, t.OperationConfig),
+    ("C06 正文例子：页面字段的 Lookup", _PAGE_FIELD_EXAMPLES, t.PageConfig),
+    ("C06 正文例子：自定义 SQL 行权限", _ROLE_SQL_ROWS, t.RoleConfig),
     ("C06 entity", _json("C06", 1), t.EntityConfig),
     ("C06 page", _json("C06", 2), t.PageConfig),
     ("C06 operation", _json("C06", 3), t.OperationConfig),
@@ -225,6 +309,55 @@ def test_constructed_values_dump_in_sample_shape() -> None:
                                                   "path": None}
     with pytest.raises(ValidationError):
         t.ResultRow(entity="COST_PINGGU", row_key="1001", values={})  # type: ignore[call-arg]  # 未冻结时也必须给出 frozen=None
+    assert t.dump_wire(t.ViewRow, t.ViewRow(op="modify", cells=[], flows=[])) == {"op": "modify", "cells": [], "flows": []}
+    assert t.dump_wire(t.ViewRow, t.ViewRow(op="modify", cells=[])) == {"op": "modify", "cells": []}
+    table = t.ViewDetailTable(title="受影响的成本单", columns=[], merged_columns=[], targets=[], rows=[])
+    assert t.dump_wire(t.ViewDetailTable, table) == {"title": "受影响的成本单", "columns": [], "mergedColumns": [], "targets": [], "rows": []}
+    assert t.dump_wire(t.EvaluationResult, t.EvalComputed(ok=True, rows=[], effects=[])) == {"ok": True, "rows": [], "effects": []}
+
+
+def test_datetime_is_dumped_to_seconds() -> None:
+    from datetime import datetime
+
+    item = t.ConfigItemSummary(type="page", key="COST_PINGGU", name="成本核算", version=13, updated_by="1",
+                               updated_at=datetime(2026, 10, 24, 10, 0, 0, 500000))
+    assert t.dump_wire(t.ConfigItemSummary, item)["updatedAt"] == "2026-10-24T10:00:00"
+
+
+def test_error_detail_keeps_one_key_style() -> None:
+    detail = t.ErrorDetail(message="x", field="F")
+    assert set(detail.model_dump()) == set(t.dump_wire(t.ErrorDetail, detail))
+    assert len(detail.model_dump()) == 9
+    assert set(detail.model_dump(by_alias=False)) == set(t.ErrorDetail.model_fields)
+
+
+def test_c06_documented_defaults() -> None:
+    """C06 写明的默认值：保存操作默认只有修改、从表默认只列有变化的行、Lookup 默认单选并回填、导出默认 Calibri 和每张主单一张明细表、
+    要修改的行已删除时默认跳过、审批流的传播边界固定为 end。"""
+    assert t.parse_wire(t.Trigger, {}).operations == ["modify"]
+    assert t.parse_wire(t.DisplayDetail, {"title": "原辅料", "rows": "source.COST_MATERIAL"}).rows_filter == "changed"
+    lookup = t.parse_wire(t.LookupSetting, {"code": "GOODS", "fill": {}})
+    assert (lookup.multiple, lookup.fill_back, lookup.filter) == (False, True, None)
+    export = t.parse_wire(t.ExportConfig, {k: v for k, v in _json("C06", 14).items() if k not in ("font", "detailLayout")})
+    assert (export.font, export.detail_layout) == ("Calibri", "perMaster")
+    assert t.parse_wire(t.OperationConfig, {"label": "保存", "kind": "save"}).row_not_found == "skip"
+    flow = {k: v for k, v in FLOW_1["content"].items() if k != "propagation"}
+    assert t.parse_wire(t.ApprovalFlowConfig, flow).propagation == "end"
+    with pytest.raises(ValidationError):
+        t.parse_wire(t.ApprovalFlowConfig, {**FLOW_1["content"], "propagation": "continue"})
+
+
+def test_c04_c08_rules() -> None:
+    """C04、C08 写明的规则：来源为审批时必须有 approval_id；CommandState 开始时除 command 外都为空、outcome 为 None。"""
+    with pytest.raises(ValueError):
+        t.Origin(kind="approval", approval_id=None)
+    assert t.Origin(kind="approval", approval_id="203").approval_id == "203"
+    state = t.CommandState(command=t.parse_wire(t.Command, _json("C02", 0)))
+    assert state.outcome is None
+    assert (state.involved, state.current, state.actions, state.effects, state.approvals, state.pending_documents) == ([], {}, [], [], [], set())
+    assert state.changes == t.ChangePlan(rows=[])
+    assert t.ImportReport(1, [("a", "b")]) == t.ImportReport(1, [("a", "b")])
+    assert t.ApprovalState is t.ApprovalRef
 
 
 
@@ -250,6 +383,9 @@ INVALID = [
     ("审批级别写成布尔", t.CommandResult, _broken(["approvals", 0, "level"], True, _json("C02", 3))),
     ("审批编号不是十进制文本", t.CommandResult, _broken(["approvals", 0, "approvalId"], "A203", _json("C02", 3))),
     ("缺少 skipped", t.CommandResult, _broken(["skipped"], _DELETE, _json("C02", 2))),
+    ("删除标记写成 1", t.CommandResult, _broken(["rows", 2, "deleted"], 1, _json("C02", 2))),
+    ("删除标记写成 false", t.CommandResult, _broken(["rows", 2, "deleted"], False, _json("C02", 2))),
+    ("提示同时给出 rowKey 和 clientRowId", t.CommandResult, _broken(["prompts", 0, "clientRowId"], _TMP, _json("C02", 2))),
     ("错误码不存在", t.ErrorResponse, _broken(["code"], "NO_SUCH_CODE", _json("C03", 0))),
     ("页面布局未知", t.PageView, _broken(["layout"], "grid", _json("C05", 0))),
     ("页面版本写成字符串", t.PageView, _broken(["version"], "13", _json("C05", 0))),
@@ -270,6 +406,16 @@ INVALID = [
     ("求值日期带时间", t.EvaluationRequest, _broken(["context", "today"], "2026-10-24T00:00:00", _json("C07", 1))),
     ("求值日期是时间戳", t.EvaluationRequest, _broken(["context", "today"], 1792800000, _json("C07", 1))),
     ("效果种类未知", t.EvaluationResult, _broken(["effects", 0, "kind"], "warn", _json("C07", 2))),
+    ("计算结果缺少 effects", t.EvaluationResult, _broken(["effects"], _DELETE, _json("C07", 2))),
+    ("计算结果只有 ok", t.EvaluationResult, {"ok": True}),
+    ("ok 写成 1", t.EvaluationResult, _broken(["ok"], 1, _json("C07", 2))),
+    ("失败结果的 ok 为 true", t.EvaluationResult, {"ok": True, "error": {"code": "PACK_INVALID", "message": "x"}}),
+    ("失败结果缺少 error", t.EvaluationResult, {"ok": False}),
+    ("结果行两种定位都没有", t.EvaluationResult, _broken(["rows", 0, "rowKey"], _DELETE, _json("C07", 2))),
+    ("结果行两种定位都有", t.EvaluationResult, _broken(["rows", 0, "clientRowId"], _TMP, _json("C07", 2))),
+    ("拒绝效果两种定位都有", t.EvaluationResult, _broken(["effects", 1, "clientRowId"], _TMP, _json("C07", 2))),
+    ("请求的行两种定位都没有", t.EvaluationRequest, _broken(["document", "master", "rowKey"], _DELETE, _json("C07", 1))),
+    ("请求的行两种定位都有", t.EvaluationRequest, _broken(["document", "details", "COST_MATERIAL", 1, "rowKey"], "5009", _json("C07", 1))),
     ("列表起始行写成字符串", t.ListRequest, _broken(["startRow"], "0", _json("C09", 0))),
     ("审批状态未知", t.ApprovalSummary, _broken(["status"], "done", _json("C09", 2))),
     ("提交时间带时区", t.ApprovalSummary, _broken(["submittedAt"], "2026-10-24T09:30:00Z", _json("C09", 2))),
@@ -360,6 +506,67 @@ def test_c04_c08_types_and_ports_defined() -> None:
     assert len(names) > 40
     missing = sorted(n for n in names if not hasattr(t, n) and not hasattr(ports, n))
     assert missing == []
+
+
+def _normalized_annotation(text: str) -> str:
+    text = text.replace("sqlalchemy.engine.Connection", "Connection").replace("AbstractContextManager", "ContextManager")
+    text = re.sub(r"Literal\[['\"]saved['\"], ['\"]unchanged['\"], ['\"]approvalSubmitted['\"], ['\"]approvalProcessed['\"]\]", "Outcome", text)
+    text = re.sub(r"Literal\[['\"]add['\"], ['\"]modify['\"], ['\"]delete['\"]\]", "RowOp", text)
+    return text
+
+
+def _class_members(node: Any) -> tuple[dict[str, tuple[str, str | None]], dict[str, tuple[list[tuple[str, str]], list[str], str]]]:
+    import ast
+
+    fields, methods = {}, {}
+    for s in node.body:
+        if isinstance(s, ast.AnnAssign) and isinstance(s.target, ast.Name):
+            fields[s.target.id] = (_normalized_annotation(ast.unparse(s.annotation)), None if s.value is None else ast.unparse(s.value))
+        elif isinstance(s, ast.FunctionDef) and not s.name.startswith("_"):
+            params = [(a.arg, _normalized_annotation(ast.unparse(a.annotation)) if a.annotation else "") for a in s.args.args[1:]]
+            methods[s.name] = (params, [ast.unparse(d) for d in s.args.defaults],
+                               _normalized_annotation(ast.unparse(s.returns)) if s.returns else "")
+    return fields, methods
+
+
+def _ast_classes(sources: list[str]) -> dict[str, Any]:
+    import ast
+
+    return {n.name: n for src in sources for n in ast.parse(src).body if isinstance(n, ast.ClassDef)}
+
+
+# 实现中允许带默认值的字段：dataclass 的 field() 只设 repr/hash/compare 时没有默认值；CommandState、ChangePlan 的初始值见 C08 第 6 节的注释。
+_ALLOWED_DEFAULTS = {"CommandState", "ChangePlan"}
+
+
+def test_c04_c08_annotations_and_defaults_match() -> None:
+    from cost_platform.contracts import ports
+
+    contracts_dir = Path(t.__file__).parent
+    impl = _ast_classes([(contracts_dir / f).read_text(encoding="utf-8") for f in ("types.py", "ports.py")])
+    documented = _ast_classes(_blocks("C04", "python") + _blocks("C08", "python"))
+    problems = []
+    for name, node in documented.items():
+        if name == "PlatformError":
+            continue  # 属性在 __init__ 中赋值，参数名由 test_c04_c08_fields_and_signatures_match 检查
+        if name not in impl:
+            alias = getattr(t, name, None) or getattr(ports, name, None)
+            if alias is None or alias.__name__ not in impl:
+                problems.append(f"{name} 没有实现")
+            continue
+        doc_fields, doc_methods = _class_members(node)
+        impl_fields, impl_methods = _class_members(impl[name])
+        for field, (annotation, _) in doc_fields.items():
+            actual, default = impl_fields.get(field, (None, None))
+            if actual != annotation:
+                problems.append(f"{name}.{field} 的类型 {actual} 与文档 {annotation} 不同")
+            if default is not None and name not in _ALLOWED_DEFAULTS and not re.fullmatch(
+                    r"dc_field\((?:(?:repr|hash|compare)=\w+(?:, )?)+\)", default):
+                problems.append(f"{name}.{field} 有文档没有写的默认值 {default}")
+        for method, signature in doc_methods.items():
+            if impl_methods.get(method) != signature:
+                problems.append(f"{name}.{method} 的签名 {impl_methods.get(method)} 与文档 {signature} 不同")
+    assert problems == []
 
 
 def _documented_classes() -> dict[str, tuple[list[str], dict[str, list[str]]]]:
