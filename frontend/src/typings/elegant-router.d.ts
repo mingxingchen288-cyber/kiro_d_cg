@@ -20,12 +20,8 @@ declare module "@elegant-router/types" {
     "403": "/403";
     "404": "/404";
     "500": "/500";
-    "dynamic": "/dynamic";
     "home": "/home";
-    "iframe-page": "/iframe-page/:url";
     "login": "/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?";
-    "meta-config": "/meta-config";
-    "permission": "/permission";
   };
 
   /**
@@ -60,12 +56,8 @@ declare module "@elegant-router/types" {
     | "403"
     | "404"
     | "500"
-    | "dynamic"
     | "home"
-    | "iframe-page"
     | "login"
-    | "meta-config"
-    | "permission"
   >;
 
   /**
@@ -85,11 +77,7 @@ declare module "@elegant-router/types" {
     | "403"
     | "404"
     | "500"
-    | "dynamic"
-    | "iframe-page"
     | "login"
-    | "meta-config"
-    | "permission"
     | "home"
   >;
 

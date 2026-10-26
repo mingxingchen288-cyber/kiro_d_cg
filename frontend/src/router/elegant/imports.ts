@@ -18,10 +18,6 @@ export const views: Record<LastLevelRouteKey, RouteComponent | (() => Promise<Ro
   403: () => import("@/views/_builtin/403/index.vue"),
   404: () => import("@/views/_builtin/404/index.vue"),
   500: () => import("@/views/_builtin/500/index.vue"),
-  dynamic: () => import("@/views/_builtin/dynamic/index.vue"),
-  "iframe-page": () => import("@/views/_builtin/iframe-page/[url].vue"),
   login: () => import("@/views/_builtin/login/index.vue"),
-  "meta-config": () => import("@/views/_builtin/meta-config/index.vue"),
-  permission: () => import("@/views/_builtin/permission/index.vue"),
   home: () => import("@/views/home/index.vue"),
 };

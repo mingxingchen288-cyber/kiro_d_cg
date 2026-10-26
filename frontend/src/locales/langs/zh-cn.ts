@@ -234,11 +234,7 @@ const local: App.I18n.Schema = {
     403: '无权限',
     404: '页面不存在',
     500: '服务器错误',
-    'iframe-page': '外链页面',
     home: '首页',
-    dynamic: '动态页面',
-    'meta-config': '元数据配置',
-    permission: '权限管理'
   },
   page: {
     login: {

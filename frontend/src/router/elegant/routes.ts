@@ -40,15 +40,6 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
-    name: 'dynamic',
-    path: '/dynamic',
-    component: 'layout.base$view.dynamic',
-    meta: {
-      title: 'dynamic',
-      i18nKey: 'route.dynamic'
-    }
-  },
-  {
     name: 'home',
     path: '/home',
     component: 'layout.base$view.home',
@@ -57,19 +48,6 @@ export const generatedRoutes: GeneratedRoute[] = [
       i18nKey: 'route.home',
       icon: 'mdi:monitor-dashboard',
       order: 1
-    }
-  },
-  {
-    name: 'iframe-page',
-    path: '/iframe-page/:url',
-    component: 'layout.base$view.iframe-page',
-    props: true,
-    meta: {
-      title: 'iframe-page',
-      i18nKey: 'route.iframe-page',
-      constant: true,
-      hideInMenu: true,
-      keepAlive: true
     }
   },
   {
@@ -82,24 +60,6 @@ export const generatedRoutes: GeneratedRoute[] = [
       i18nKey: 'route.login',
       constant: true,
       hideInMenu: true
-    }
-  },
-  {
-    name: 'meta-config',
-    path: '/meta-config',
-    component: 'layout.base$view.meta-config',
-    meta: {
-      title: 'meta-config',
-      i18nKey: 'route.meta-config'
-    }
-  },
-  {
-    name: 'permission',
-    path: '/permission',
-    component: 'layout.base$view.permission',
-    meta: {
-      title: 'permission',
-      i18nKey: 'route.permission'
     }
   }
 ];

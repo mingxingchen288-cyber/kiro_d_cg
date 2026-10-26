@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useAuthStore } from '@/store/modules/auth';
-import { useRouterPush } from '@/hooks/common/router';
 import { useFormRules, useNaiveForm } from '@/hooks/common/form';
 import { $t } from '@/locales';
 
@@ -12,7 +11,6 @@ defineOptions({
 const REMEMBER_KEY = 'cost_remember_user';
 
 const authStore = useAuthStore();
-const { toggleLoginModule } = useRouterPush();
 const { formRef, validate } = useNaiveForm();
 
 interface FormModel {
@@ -75,15 +73,9 @@ async function handleSubmit() {
     <NSpace vertical :size="24">
       <div class="flex-y-center justify-between">
         <NCheckbox v-model:checked="rememberMe">{{ $t('page.login.pwdLogin.rememberMe') }}</NCheckbox>
-        <NButton quaternary @click="toggleLoginModule('reset-pwd')">
-          {{ $t('page.login.pwdLogin.forgetPassword') }}
-        </NButton>
       </div>
       <NButton type="primary" size="large" round block :loading="authStore.loginLoading" @click="handleSubmit">
         {{ $t('common.confirm') }}
-      </NButton>
-      <NButton class="w-full" block @click="toggleLoginModule('register')">
-        {{ $t('page.login.register.title') }}
       </NButton>
     </NSpace>
   </NForm>

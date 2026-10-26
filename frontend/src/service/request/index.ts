@@ -1,12 +1,10 @@
 import type { AxiosResponse } from 'axios';
 import { BACKEND_ERROR_CODE, createFlatRequest, createRequest } from '@sa/axios';
 import { useAuthStore } from '@/store/modules/auth';
-import { useSqlTraceStore } from '@/store/modules/sql-trace';
 import { isAuthShuttingDown } from '@/store/modules/auth/shared';
 import { getServiceBaseURL } from '@/utils/service';
 import { $t } from '@/locales';
 import { getAuthorization, handleExpiredRequest } from './shared';
-import { showErrorDialog } from '@/v3/utils/errorDialog';
 import type { RequestInstanceState } from './type';
 
 const isHttpProxy = import.meta.env.DEV && import.meta.env.VITE_HTTP_PROXY === 'Y';
@@ -33,9 +31,7 @@ function shouldSilenceLoggedOutRequestError(url: string) {
 
   return (
     path.startsWith('/api/') ||
-    path.startsWith('/role-manage/') ||
     path.startsWith('/route/') ||
-    path.startsWith('/meta-config/') ||
     path === '/auth/getUserInfo' ||
     path === '/auth/changePassword'
   );
@@ -55,13 +51,11 @@ export const request = createFlatRequest(
       refreshTokenPromise: null
     } as RequestInstanceState,
     transform(response: AxiosResponse<App.Service.Response<any>>) {
-      useSqlTraceStore().afterResponse(response);
       return response.data.data;
     },
     async onRequest(config) {
       const Authorization = getAuthorization();
       Object.assign(config.headers, { Authorization });
-      useSqlTraceStore().beforeRequest(config);
 
       return config;
     },
@@ -71,7 +65,6 @@ export const request = createFlatRequest(
       return String(response.data.code) === import.meta.env.VITE_SERVICE_SUCCESS_CODE;
     },
     async onBackendFail(response, instance) {
-      useSqlTraceStore().afterResponse(response, response.data?.msg);
       const authStore = useAuthStore();
       const responseCode = String(response.data.code);
       const requestUrl = response.config.url || '';
@@ -146,8 +139,6 @@ export const request = createFlatRequest(
         message = error.response?.data?.msg || message;
         backendErrorCode = String(error.response?.data?.code || '');
       }
-      useSqlTraceStore().afterResponse(error.response, message);
-      useSqlTraceStore().afterError(error.config, message);
 
       // the error message is displayed in the modal
       const modalLogoutCodes = import.meta.env.VITE_SERVICE_MODAL_LOGOUT_CODES?.split(',') || [];
@@ -167,23 +158,7 @@ export const request = createFlatRequest(
         return;
       }
 
-      // 向导生成接口自己处理错误弹窗，跳过全局 toast
-      if (requestUrl.includes('/wizard/generate')) {
-        return;
-      }
-
-      // 提取后端返回的 detail（ORA 码、SQL 等）
-      const responseDetail = error.response?.data?.data;
-      if (responseDetail && (responseDetail.oraCode || responseDetail.sql)) {
-        // 有数据库错误详情，构建带详情的消息
-        const parts: string[] = [message];
-        if (responseDetail.oraCode) parts.push(`ORA错误码: ${responseDetail.oraCode}`);
-        if (responseDetail.sql) parts.push(`报错SQL: ${responseDetail.sql}`);
-        if (responseDetail.rootCause) parts.push(`根因: ${responseDetail.rootCause}`);
-        showErrorDialog(parts.join('\n'));
-      } else {
-        showErrorDialog(message);
-      }
+      window.$message?.error(message);
     }
   }
 );
