@@ -19,7 +19,7 @@
 type CurrentUser = { userId: string; username: string; displayName: string; departmentId: string | null }
 type RoleRef = { code: string; name: string; admin: boolean }
 type Menu = { key: string; title: string; kind: 'group' | 'page' | 'config' | 'admin'; pageCode?: string; children?: Menu[] }
-type DataRow = { rowKey: string; values: Record<string, string | boolean | null>; frozen: { approvalId: string; fields: string[] } | null; compare?: Record<string, { value: string | null; diff: string | null; percent: string | null }> }
+type DataRow = { rowKey: string; values: Record<string, string | boolean | null>; frozen: { approvalId: string } | null; compare?: Record<string, { value: string | null; diff: string | null; percent: string | null }> }
 ```
 
 ## 2. identity
@@ -107,7 +107,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 | POST | `/api/approvals/{approvalId}/withdraw` | `{"requestKey": "…", "comment": "录入有误"}`，`comment` 可以不填 | 命令结果 |
 
 ```json
-{"approvalId": "203", "page": "GOODS_PRICE_MANAGE", "pageTitle": "物料清单及成本", "operation": "COST_GOODS_PRICE.save", "operationLabel": "保存", "source": {"entity": "COST_GOODS_PRICE", "recordKey": "115", "label": "硬脂酸镁"}, "applicant": {"userId": "112", "displayName": "杨娜"}, "submittedAt": "2026-10-24T09:30:00", "status": "pending", "level": 1, "queuedBehind": 0}
+{"approvalId": "203", "page": "GOODS_PRICE_MANAGE", "pageTitle": "物料清单及成本", "operation": "COST_GOODS_PRICE.save", "operationLabel": "保存", "source": {"entity": "COST_GOODS_PRICE", "recordKey": "115", "label": "硬脂酸镁"}, "applicant": {"userId": "112", "displayName": "杨娜"}, "submittedAt": "2026-10-24T09:30:00", "status": "pending", "level": 1}
 ```
 
 ```json
@@ -140,8 +140,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
         {"op": "modify", "target": {"entity": "COST_PINGGU", "recordKey": "2551"}, "cells": [{"before": "2551", "after": "2551"}, {"before": "500mg乙酰唑胺片", "after": "500mg乙酰唑胺片"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}, {"before": "3000", "after": "2400"}, {"before": "0.9821", "after": "0.9790"}, {"before": "28.10", "after": "27.95"}]}
       ]}]
   },
-  "queuedBehind": 0,
-  "fingerprint": "sha256:5b1e…",
+  "fingerprint": "sha256:5b1e0c6d9a3f47e28b1c6d0e9f3a2b4c5d6e7f8091a2b3c4d5e6f708192a3b4c",
   "actions": {"canPass": true, "canReject": true, "canWithdraw": false}
 }
 ```
@@ -154,7 +153,6 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 - 从表的行来自候选单据时，`target` 标出这一行属于哪张单据，同一张单据的行连续排列；`mergedColumns` 是取自候选单据主表、需要在这组行上合并显示的列；`targets` 给出每张候选单据能否勾选、是否已勾选。按单据勾选，可以勾选（`selectable` 为 true）需同时满足：该审批流的 `selection` 为 `approverSelects`；当前用户是该审批流本级入口的待处理审批人；单据在该审批流上一级选中的范围内。`selection` 为 `all` 的审批流不返回候选单据。
 - 同一账号在本级多个入口中待处理时，通过一次即计入这些入口（approval AP-16）；通过请求的 `selectedObjects` 用 `flow` 分别给出各审批流的勾选。
 - 任何已登录的用户都能查看审批详情和进度，`actions` 给出当前用户能做的操作。
-- `queuedBehind` 大于 0 时，通过返回 409 APPROVAL_QUEUED。
 - 打开详情之后结果发生变化时，通过返回 409 RECONFIRM_REQUIRED，前端重新读取详情。
 - 不是本级尚未处理的审批人提交通过或驳回，不是发起人提交撤回，或者已有人做过通过之后提交撤回，返回 403 PERMISSION_DENIED。
 
