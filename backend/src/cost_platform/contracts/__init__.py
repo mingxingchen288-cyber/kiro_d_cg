@@ -1,6 +1,6 @@
-"""契约：单据聚合、Patch、变更计划、命令信封、结果与错误码、端口。
+"""契约：模块之间共用的类型（types.py）和端口协议（ports.py），定义见 docs/契约/。
 
-本包只依赖标准库和 pydantic。各模块按需从子模块导入，例如：
-    from cost_platform.contracts.patch import Patch
+本包只依赖标准库和 pydantic。各模块这样导入：
+    from cost_platform.contracts.types import Command, CommandResult
     from cost_platform.contracts.ports import UnitOfWorkFactory
 """

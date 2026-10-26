@@ -12,7 +12,7 @@
 - 交付物：类型和端口代码；样例测试 `backend/tests/contracts/test_samples.py`。
 - 接入责任：供全部后端模块使用；不含接线。
 - 验收标准：C02、C05、C07、C09 的每个 JSON 样例都能解析成类型再转回 JSON，内容不变；格式不合法的样例被拒绝；C08 列出的端口和类型都有定义。
-- 状态与证据：进行中。`contracts/` 下已有未测试的草稿，与 C08 不一致，需要重写。
+- 状态与证据：进行中（验收已通过，待独立复核）。模拟验证：`uv run pytest` 83 个全部通过，其中契约测试 70 个：C02、C03、C05、C06、C07、C09、C10 的 36 个样例解析后再转回 JSON 内容不变；30 个格式不合法的样例都被拒绝；错误码与 HTTP 状态的对应、内容摘要、C04 和 C08 代码块中出现的 59 个类型和端口名都已定义（`.reports/T-CT-1/pytest.txt`）；删掉其中一个类型后这项测试失败（`.reports/T-CT-1/probe-missing-type.txt`）；`uv run lint-imports` 2 条规则都保持（`.reports/T-CT-1/lint-imports.txt`）。旧草稿和 `backend/src/cost_platform/adapters/` 已删除。C09 审批详情的样例补上了正文要求的 `source`。实现中发现的契约缺口列在 C05、C07、C08、C09 末尾的"待确认"中，暂按现有定义实现。
 
 ### T-CT-2 十进制文本与数值一致判定
 

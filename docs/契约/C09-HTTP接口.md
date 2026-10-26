@@ -118,6 +118,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
   "pageTitle": "物料清单及成本",
   "operation": "COST_GOODS_PRICE.save",
   "operationLabel": "保存",
+  "source": {"entity": "COST_GOODS_PRICE", "recordKey": "115", "label": "硬脂酸镁"},
   "applicant": {"userId": "112", "displayName": "杨娜"},
   "submittedAt": "2026-10-24T09:30:00",
   "currentLevel": 1,
@@ -186,3 +187,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 - 后端生成的 OpenAPI 与本文的路径、方法、请求和响应字段一致。
 - contracts 提供的前端模拟实现，对每个接口返回本文的样例。
 
+## 10. 待确认
+
+- 配置保存和校验失败时，`details` 要给出"配置项和路径"，但 C03 的错误明细没有这两个字段。建议在 C03 的 `details` 中加可选的 `configType`、`configKey`、`path`。
+- 审批详情没有给出本次通过要填写的人工参数（frontend-approval 的 FA-08 需要）。建议加 `params`：当前用户本级要填的参数定义，格式同 C06 7.1 的 `params`；最终批准时还包括不带 `level` 的参数。
