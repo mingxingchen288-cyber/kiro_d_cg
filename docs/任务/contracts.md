@@ -22,7 +22,7 @@
 - 交付物：两端的解析、格式化和数值一致判定函数。
 - 接入责任：供全部模块使用；不含接线。
 - 验收标准：C01 第 2、3 节的全部样例在两端结论相同；基于属性的测试（Hypothesis、fast-check）：任意合法十进制文本格式化后再解析数值相等，判定满足自反、对称、传递。
-- 状态与证据：未开始。
+- 状态与证据：进行中（验收已通过，待独立复核）。模拟验证：两端测试都直接读取 C01 的样例（3 个合法、6 个不合法、9 组判定），先写测试并确认因缺少实现而失败（`.reports/T-CT-2/red-pytest.txt`、`red-vitest.txt`）。后端 `uv run pytest tests/contracts/test_decimal_text.py` 42 个通过（`pytest.txt`），前端 `pnpm test` 37 个通过（`vitest.txt`），都含格式化后再解析、与按 15 位小数向零截断的参考实现比较、第 15/16 位边界、自反、对称、传递的属性测试。3000 组随机样例由两端分别判定，结论和格式化结果 0 处不同（`cross-pairs.json`、`cross-compare.txt`）。把比较位数改成 14 后两端各有 2 个测试失败（`probe-14-places-*.txt`）。前端用 BigInt 表示十进制数，没有引入十进制库；新增开发依赖 vitest 5.0.5、fast-check 4.10.2。`pnpm typecheck`、`pnpm exec knip`、`pnpm build` 都通过，后端全部 125 个测试通过。
 
 ### T-CT-3 后端替代实现与契约测试
 

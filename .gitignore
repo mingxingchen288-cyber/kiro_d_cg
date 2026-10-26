@@ -13,6 +13,7 @@ __pycache__/
 .venv/
 *.egg-info/
 .pytest_cache/
+.hypothesis/
 .import_linter_cache/
 .ruff_cache/
 .mypy_cache/
