@@ -33,14 +33,14 @@ def parse_decimal(text: str) -> Decimal:
 
 
 def format_decimal(value: Decimal) -> str:
-    """把 Decimal 格式化为十进制文本：不用指数，保留原有的小数位，零不带负号。"""
+    """把 Decimal 格式化为十进制文本：不用指数，保留原有的小数位，零不带负号，没有小数位的零为 "0"。"""
     if not isinstance(value, Decimal) or not value.is_finite():
         raise ValueError(f"不能格式化为十进制文本：{value!r}")
     sign, digits, exponent = value.as_tuple()
     assert isinstance(exponent, int)
     text = "".join(str(d) for d in digits)
     if exponent >= 0:
-        text += "0" * exponent
+        text = text + "0" * exponent if any(digits) else "0"
     else:
         places = -exponent
         text = text.rjust(places + 1, "0")
@@ -62,5 +62,8 @@ def _consistency_key(text: str) -> tuple[bool, str, str]:
 def numbers_consistent(a: str | None, b: str | None) -> bool:
     """C01 第 3 节：两个数值是否一致。都为空时一致，一方为空时不一致；文本格式不合法时抛 ValueError。"""
     if a is None or b is None:
+        for side in (a, b):
+            if side is not None:
+                _match(side)
         return a is None and b is None
     return _consistency_key(a) == _consistency_key(b)

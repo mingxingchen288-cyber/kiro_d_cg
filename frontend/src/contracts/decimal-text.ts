@@ -23,7 +23,8 @@ export class DecimalTextError extends Error {
   }
 }
 
-export function isDecimalText(value: unknown): value is string {
+/** 返回 boolean 而不是类型谓词：不合法的字符串返回 false 时，不能把 `string | null` 收窄成 `null`。 */
+export function isDecimalText(value: unknown): boolean {
   return typeof value === 'string' && PATTERN.test(value);
 }
 
@@ -63,6 +64,10 @@ function consistencyKey(text: string): string {
 
 /** C01 第 3 节：两个数值是否一致。都为空时一致，一方为空时不一致；文本格式不合法时抛 DecimalTextError。 */
 export function numbersConsistent(a: string | null, b: string | null): boolean {
-  if (a === null || b === null) return a === null && b === null;
+  if (a === null || b === null) {
+    if (a !== null) match(a);
+    if (b !== null) match(b);
+    return a === null && b === null;
+  }
   return consistencyKey(a) === consistencyKey(b);
 }
