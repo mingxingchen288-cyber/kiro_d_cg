@@ -65,6 +65,19 @@ def test_invalid_text_rejected(text: str) -> None:
         parse_decimal(text)
 
 
+# C01 第 2 节样例之外常见的不合法写法：换行、非 ASCII 数字、空串、只有符号、下划线分隔。
+MALFORMED = ["1\n", "\n1", "\u0661\u0662", "\uff11", "1\n2", "abc\n1", "", "-", "-.5", "1_000", " 1", "1 "]
+
+
+@pytest.mark.parametrize("text", MALFORMED, ids=[repr(s) for s in MALFORMED])
+def test_malformed_text_rejected(text: str) -> None:
+    assert not is_decimal_text(text)
+    with pytest.raises(ValueError):
+        parse_decimal(text)
+    with pytest.raises(ValueError):
+        numbers_consistent(text, "1")
+
+
 @pytest.mark.parametrize("value", [1, 1.5, None, True, b"1"])
 def test_non_text_rejected(value: object) -> None:
     assert not is_decimal_text(value)
@@ -101,6 +114,14 @@ BOUNDARY = [
     ("123.4567890123456789", "123.456789012345679", False),
     ("0.0000000000000009", "-0.0000000000000009", True),
     ("1.0000000000000001", "1.0000000000000009", True),
+    # 正负号：只有截断到 15 位后为零的数不比较正负号
+    ("-0.5", "0.5", False),
+    ("-0.000000000000001", "0.000000000000001", False),
+    ("007", "7", True),
+    # 长数：超过 28 位有效数字的部分也参与判定
+    ("1" + "0" * 40, "1" + "0" * 39 + "1", False),
+    ("1" * 30 + ".000000000000001", "1" * 30, False),
+    ("1" * 30 + ".0000000000000001", "1" * 30, True),
 ]
 
 
@@ -199,11 +220,26 @@ def test_consistency_matches_truncation_oracle(a: str, b: str) -> None:
     assert numbers_consistent(a, b) is (_oracle_key(a) == _oracle_key(b))
 
 
+def _negated(text: str) -> str:
+    return text[1:] if text.startswith("-") else "-" + text
+
+
+@given(TEXTS)
+def test_negated_pairs_match_truncation_oracle(a: str) -> None:
+    """绝对值相同、正负号相反的数对：只有截断到 15 位后为零时才一致。"""
+    b = _negated(a)
+    assert numbers_consistent(a, b) is (_oracle_key(a) == _oracle_key(b))
+
+
 @st.composite
 def _near_pairs(draw: st.DrawFn) -> tuple[str, str]:
-    """只在小数第 10–20 位中的某一位不同的两个数，覆盖第 15、16 位的边界。"""
-    a = draw(st.from_regex(r"-?[0-9]{1,20}\.[0-9]{20}", fullmatch=True))
-    pos = a.index(".") + draw(st.integers(10, 20))
+    """只有一位数字不同的两个数：整数部分可以超过 28 位，被改的一位可以在整数部分，也可以在小数第 1–20 位。"""
+    negative = draw(st.booleans())
+    integer = draw(_digits(1, 45))
+    fraction = draw(_digits(20, 20))
+    a = ("-" if negative else "") + integer + "." + fraction
+    start = 1 if negative else 0
+    pos = draw(st.sampled_from([i for i in range(start, len(a)) if a[i] != "."]))
     digit = str((int(a[pos]) + draw(st.integers(1, 9))) % 10)
     return a, a[:pos] + digit + a[pos + 1:]
 

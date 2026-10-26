@@ -97,6 +97,16 @@ describe('C01 样例', () => {
     expect(() => parseDecimal(text)).toThrow(DecimalTextError);
   });
 
+  // C01 第 2 节样例之外常见的不合法写法：换行、非 ASCII 数字、空串、只有符号、下划线分隔。
+  it.each(['1\n', '\n1', '\u0661\u0662', '\uff11', '1\n2', 'abc\n1', '', '-', '-.5', '1_000', ' 1', '1 '])(
+    '不合法文本 %j 被拒绝',
+    text => {
+      expect(isDecimalText(text)).toBe(false);
+      expect(() => parseDecimal(text)).toThrow(DecimalTextError);
+      expect(() => numbersConsistent(text, '1')).toThrow(DecimalTextError);
+    }
+  );
+
   it.each([1, 1.5, null, true, undefined])('非文本 %j 被拒绝', value => {
     expect(isDecimalText(value)).toBe(false);
     expect(() => parseDecimal(value as unknown as string)).toThrow(DecimalTextError);
@@ -126,7 +136,15 @@ describe('C01 样例', () => {
     ['-0.9999999999999999', '-1', false],
     ['123.4567890123456789', '123.456789012345679', false],
     ['0.0000000000000009', '-0.0000000000000009', true],
-    ['1.0000000000000001', '1.0000000000000009', true]
+    ['1.0000000000000001', '1.0000000000000009', true],
+    // 正负号：只有截断到 15 位后为零的数不比较正负号
+    ['-0.5', '0.5', false],
+    ['-0.000000000000001', '0.000000000000001', false],
+    ['007', '7', true],
+    // 长数：超过 28 位有效数字的部分也参与判定
+    [`1${'0'.repeat(40)}`, `1${'0'.repeat(39)}1`, false],
+    [`${'1'.repeat(30)}.000000000000001`, '1'.repeat(30), false],
+    [`${'1'.repeat(30)}.0000000000000001`, '1'.repeat(30), true]
   ] as const)('边界 %j 与 %j 一致为 %j', (a, b, expected) => {
     expect(numbersConsistent(a, b)).toBe(expected);
     expect(numbersConsistent(b, a)).toBe(expected);
@@ -175,11 +193,23 @@ describe('基于属性的测试', () => {
     );
   });
 
-  it('只在小数第 10–20 位中的某一位不同时，与参考实现结论相同', () => {
-    const heads = fc.stringMatching(/^-?[0-9]{1,20}\.[0-9]{20}$/);
+  it('绝对值相同、正负号相反的数对，与参考实现结论相同', () => {
     fc.assert(
-      fc.property(heads, fc.integer({ min: 10, max: 20 }), fc.integer({ min: 1, max: 9 }), (a, place, step) => {
-        const pos = a.indexOf('.') + place;
+      fc.property(texts, a => {
+        const b = a.startsWith('-') ? a.slice(1) : `-${a}`;
+        expect(numbersConsistent(a, b)).toBe(oracleKey(a) === oracleKey(b));
+      })
+    );
+  });
+
+  it('只有一位数字不同时（整数部分可以超过 28 位），与参考实现结论相同', () => {
+    const numbers = fc
+      .tuple(fc.boolean(), digits(1, 45), digits(20, 20))
+      .map(([negative, integer, fraction]) => `${negative ? '-' : ''}${integer}.${fraction}`);
+    fc.assert(
+      fc.property(numbers, fc.nat(), fc.integer({ min: 1, max: 9 }), (a, pick, step) => {
+        const positions = [...a].map((c, i) => (/[0-9]/.test(c) ? i : -1)).filter(i => i >= 0);
+        const pos = positions[pick % positions.length];
         const b = a.slice(0, pos) + String((Number(a[pos]) + step) % 10) + a.slice(pos + 1);
         expect(numbersConsistent(a, b)).toBe(oracleKey(a) === oracleKey(b));
       })
