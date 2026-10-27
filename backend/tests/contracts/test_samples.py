@@ -321,6 +321,9 @@ def test_constructed_values_dump_in_sample_shape() -> None:
         t.ResultRow(entity="COST_PINGGU", row_key="1001", values={})  # type: ignore[call-arg]  # 未冻结时也必须给出 frozen=None
     assert t.dump_wire(t.ViewRow, t.ViewRow(op="modify", cells=[], flows=[])) == {"op": "modify", "cells": [], "flows": []}
     assert t.dump_wire(t.ViewRow, t.ViewRow(op="modify", cells=[])) == {"op": "modify", "cells": []}
+    lost = t.ViewRow(op="none", cells=[t.ViewCell(before=None, after=None)], missing=t.MissingRecord(record_key=None, label=None))
+    assert t.dump_wire(t.ViewRow, lost) == {"op": "none", "cells": [{"before": None, "after": None}],
+                                            "missing": {"recordKey": None, "label": None}}
     table = t.ViewDetailTable(title="受影响的成本单", columns=[], merged_columns=[], targets=[], rows=[])
     assert t.dump_wire(t.ViewDetailTable, table) == {"title": "受影响的成本单", "columns": [], "mergedColumns": [], "targets": [], "rows": []}
     assert t.dump_wire(t.EvaluationResult, t.EvalComputed(ok=True, rows=[], effects=[])) == {"ok": True, "rows": [], "effects": []}
@@ -608,6 +611,12 @@ INVALID = [
                                                      {"ok": True, "rows": [{"entity": "E", "computed": {}, "fields": {},
                                                                             "style": {"row": None, "cells": {}}}]})),
     ("可勾选写成字符串", t.ApprovalDetail, _broken(["view", "details", 0, "targets", 0, "selectable"], "true", _json("C09", 3))),
+    ("记录已不存在的行缺少 label", t.ApprovalDetail, _broken(["view", "details", 0, "rows", 2, "missing", "label"], _DELETE, _json("C09", 3))),
+    ("记录已不存在的行带 target", t.ApprovalDetail,
+     _broken(["view", "details", 0, "rows", 2, "target"], {"entity": "COST_PINGGU", "recordKey": "2552"}, _json("C09", 3))),
+    ("记录已不存在的行 op 不是 none", t.ApprovalDetail, _broken(["view", "details", 0, "rows", 2, "op"], "modify", _json("C09", 3))),
+    ("记录已不存在的行有值", t.ApprovalDetail,
+     _broken(["view", "details", 0, "rows", 2, "cells", 0], {"before": "2552", "after": "2552"}, _json("C09", 3))),
     ("对比值不是十进制文本", t.DataRow,
      {**_ROW, "compare": {"PRICE": {"value": "3.5", "diff": "0.3", "percent": "8.57%"}}}),
     ("事件主题未知", t.ChannelEvent, _broken(["topic"], "other", _json("C10", 0))),

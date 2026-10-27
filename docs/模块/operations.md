@@ -19,12 +19,12 @@
 实现"确定涉及的单据"（按钮操作）和"动作执行"中的展开部分（[C08](../契约/C08-后端端口.md) 第 6 节）。
 
 - OP-01：动作按数组顺序执行；每个动作展开后，由 write-pipeline 合并并计算，下一个动作使用上一个动作计算后的结果。
-- OP-02：`updateTargets` 的目标是：`selection` 为 `all` 时的全部候选对象，或审批人最终勾选的对象。`fieldMapping` 的 `from` 取来源计算后的值；按关联键找到的目标，取找到它的那一行来源的值；同一目标被多行来源找到且值不同时，返回 422 VALIDATION_FAILED。`to` 必须在操作或审批流允许写入的字段内。
+- OP-02：`updateTargets` 的目标是：`selection` 为 `all` 时的全部候选对象（不含记录已不存在的，approval AP-21），或审批人最终勾选的对象。`fieldMapping` 的 `from` 取来源计算后的值；按关联键找到的目标，取找到它的那一行来源的值；同一目标被多行来源找到且值不同时，返回 422 VALIDATION_FAILED。`to` 必须在操作或审批流允许写入的字段内。
 - OP-03：`propagation` 为 `end` 时，写到目标的修改带上本审批或本操作的来源，目标只执行自身的计算和校验规则，不触发审批，也不再执行同步动作。
 - OP-04：逃生舱只在用户点名时启用。它在命令事务内、加锁和冻结检查之后执行，自身不提交也不回滚；每次调用记录逃生舱、参数、执行人、时间和请求键，随命令记录一起写入。
 - OP-05：按钮操作的 `requiresSelection` 为 true 而 `params.selectedRows` 为空时，返回 422 VALIDATION_FAILED。`requiresSelection` 只规定执行的前提；操作实际处理的行和执行权限，照常按操作配置、按钮权限和行权限检查。
 - OP-06：审批流的 `levelActions` 与 `afterApproval` 用同一组通用动作，展开方式相同；动作中的 `params.名称` 取审批人提交或后端求值的参数值。
-- OP-07：`updateRecords` 按 `find` 经 `RelatedQuery` 查找记录，传入的来源单据按 C08 第 9 节准备。在按钮操作中，来源是选中单据在数据库中的当前数据，`rows` 只能为 `all`；在审批流中，`rows` 为 `changed` 时用只含有变化的行的副本，不改变随后计算和保存用的完整单据。
+- OP-07：`updateRecords` 按 `find` 经 `RelatedQuery` 查找记录，传入的来源单据按 C08 第 9 节准备。在按钮操作中，来源是选中单据在数据库中的当前数据，`rows` 只能为 `all`；在审批流中，`rows` 为 `changed` 时用只含有变化的行的副本，不改变随后计算和保存用的完整单据。`RelatedQuery` 返回的 `missing` 对象（记录已不存在，C08 第 9 节）跳过，不更新，也不报错。
 - OP-08：按钮操作只按选中行的主键执行（C02 第 1 节）。"确定涉及的单据"阶段按 `params.selectedRows` 找出所属单据，写入 `involved`；命令带了 `documents` 时返回 400 INVALID_REQUEST。动作的来源都取 write-pipeline 加锁读到的当前数据，不用前端的值；选中的行已不存在时按 WP-05 处理。
 
 ## 4. 依赖

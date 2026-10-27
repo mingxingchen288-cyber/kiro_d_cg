@@ -1694,13 +1694,29 @@ class ViewCell(Wire):
     after: BusinessValue
 
 
+class MissingRecord(Wire):
+    """记录已不存在的候选对象（approval AP-21）：能取到的单据主键和 `labelColumn` 的值，取不到的为 null。"""
+
+    record_key: Key | None
+    label: str | None
+
+
 class ViewRow(Wire):
-    """"修改内容"的一行：来源单据的行带 `flows`，候选单据的行带 `target`。"""
+    """"修改内容"的一行：来源单据的行带 `flows`，候选单据的行带 `target`；记录已不存在的候选对象只带 `missing`。"""
 
     op: Literal["modify", "add", "delete", "none"]
     cells: list[ViewCell]
     target: RecordRef | None = None
     flows: list[Code] | None = None
+    missing: MissingRecord | None = None
+
+    @model_validator(mode="after")
+    def _missing_row_has_no_values(self) -> ViewRow:
+        """C09 第 6 节：带 `missing` 的行 `op` 为 none，没有 `target`，每格的修改前后都为 null。"""
+        if self.missing is not None and (self.op != "none" or self.target is not None or self.flows is not None
+                                         or any(c.before is not None or c.after is not None for c in self.cells)):
+            raise ValueError("记录已不存在的行 op 为 none，没有 target 和 flows，每格的 before、after 都为 null")
+        return self
 
 
 class ViewMasterTable(Wire):
@@ -2006,10 +2022,17 @@ class FreezeEntry:
 
 @dataclass(frozen=True)
 class TargetObject:
+    """`RelatedQuery` 找到的一个对象（C08 第 9 节）。
+
+    `missing` 为 True 表示记录已不存在：关联 SQL 查出的这一行单据主键或明细主键为空。这时 `record_key` 为查到的
+    单据主键（为空时为 None），`row_keys` 为空；调用方不冻结、不更新它（approval AP-21）。
+    """
+
     entity: str
-    record_key: str
+    record_key: str | None
     row_keys: tuple[str, ...]
     display: dict[str, Value] = dc_field(hash=False)
+    missing: bool
 
 
 @dataclass(frozen=True)

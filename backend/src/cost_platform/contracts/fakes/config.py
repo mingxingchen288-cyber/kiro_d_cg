@@ -228,9 +228,10 @@ class FakeConfigSnapshotReader(Scripted):
 class FakeConfigImporter(Scripted):
     """`ConfigImporter`：按 C08 第 4 节整批导入。
 
-    与 `items` 中已有配置项类型和编码相同的项不覆盖，列入 `skipped`，也不校验。其余各项检查两件事：内容符合 C06 的结构；
-    按编码引用的配置项（实体、操作、页面、角色、Lookup、字典）在已有配置或本批其他项中存在。有一项不通过时抛
-    422 VALIDATION_FAILED，明细列出每个不通过的项，什么都不写。已有的配置项可以用 `put` 预设。
+    同一批中类型和编码相同的项都不通过，与已有配置项相同时也一样。其余各项中，与已有配置项类型和编码相同的不覆盖，
+    列入 `skipped`，也不校验；剩下的检查两件事：内容符合 C06 的结构；按编码引用的配置项（实体、操作、页面、角色、
+    Lookup、字典）在已有配置或本批其他项中存在。有一项不通过时抛 422 VALIDATION_FAILED，明细按本批中的顺序列出每个
+    不通过的项，`path` 以 `items[<序号>]` 开头，什么都不写。已有的配置项可以用 `put` 预设。
 
     C06 第 10 节的其余校验（字段、表和列、表达式、SQL 等）由 config 负责，这里不做。
     """
@@ -246,25 +247,40 @@ class FakeConfigImporter(Scripted):
 
     def import_items(self, items: list[ConfigDraft]) -> ImportReport:
         self._record("import_items", items)
-        skipped = [item for item in items if (item.type, item.key) in self.items]
-        new = [item for item in items if (item.type, item.key) not in self.items]
-        available = set(self.items) | {(item.type, item.key) for item in new}
-        details = []
-        for item in new:
+        positions: dict[tuple[str, str], list[int]] = {}
+        for index, item in enumerate(items):
+            positions.setdefault((item.type, item.key), []).append(index)
+        problems: list[tuple[int, ErrorDetail]] = []
+        for (config_type, config_key), found in positions.items():
+            if len(found) > 1:
+                problems += [(index, ErrorDetail(message=f"同一批中有 {len(found)} 项的类型和编码相同，无法判断该保留哪一项",
+                                                 config_type=config_type, config_key=config_key, path=f"items[{index}]"))
+                             for index in found]
+        unique = [(index, item) for index, item in enumerate(items) if len(positions[(item.type, item.key)]) == 1]
+        skipped = [item for _, item in unique if (item.type, item.key) in self.items]
+        new = [(index, item) for index, item in unique if (item.type, item.key) not in self.items]
+        available = set(self.items) | set(positions)
+        for index, item in new:
             try:
                 content = parse_config_content(item.type, item.content)
             except ValidationError as e:
                 first = e.errors()[0]
-                details.append(ErrorDetail(message=str(first["msg"]), config_type=item.type, config_key=item.key,
-                                           path=".".join(str(p) for p in first["loc"])))
+                problems.append((index, ErrorDetail(message=str(first["msg"]), config_type=item.type, config_key=item.key,
+                                                    path=_item_path(index, first["loc"]))))
                 continue
             for ref_type, ref_key in _references(item.type, content):
                 if (ref_type, ref_key) not in available:
-                    details.append(ErrorDetail(message=f"引用的 {ref_type} {ref_key} 不存在", config_type=item.type,
-                                               config_key=item.key))
-        if details:
-            raise PlatformError(ErrorCode.VALIDATION_FAILED, "配置校验不通过", details)
-        for item in new:
+                    problems.append((index, ErrorDetail(message=f"引用的 {ref_type} {ref_key} 不存在", config_type=item.type,
+                                                        config_key=item.key, path=_item_path(index, ()))))
+        if problems:
+            raise PlatformError(ErrorCode.VALIDATION_FAILED, "配置校验不通过",
+                                [detail for _, detail in sorted(problems, key=lambda p: p[0])])
+        for _, item in new:
             self.put(item)
         return ImportReport(imported=len(new),
                             skipped=[(f"config:{item.type}/{item.key}", "已有同类型、同编码的配置项，没有覆盖") for item in skipped])
+
+
+def _item_path(index: int, loc: Iterable[int | str]) -> str:
+    """错误明细的 `path`：本批中的位置 `items[<序号>]`，后面接内容中的位置，例如 `items[3].levels[0].entries`（C08 第 4 节）。"""
+    return f"items[{index}]" + "".join(f"[{p}]" if isinstance(p, int) else f".{p}" for p in loc)

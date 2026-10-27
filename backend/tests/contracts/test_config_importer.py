@@ -126,6 +126,32 @@ class ConfigImporterContract:
         assert report.imported == 0
         assert sorted(ident for ident, _ in report.skipped) == ["config:dict/CT_STATUS", "config:lookup/CT_GOODS_LOOKUP"]
 
+    def test_duplicates_in_batch_are_rejected(self, harness: ConfigImporterHarness) -> None:
+        """同一批中两项类型和编码相同：整批不写，明细列出这两项，`path` 为它们在批中的位置。"""
+        error = _rejected(harness, [LOOKUP, DICT, DICT_CHANGED])
+        assert sorted((d.config_type, d.config_key, d.path) for d in error.details) == [
+            ("dict", "CT_STATUS", "items[1]"), ("dict", "CT_STATUS", "items[2]")]
+        assert all(d.message for d in error.details)
+        assert harness.stored("dict", "CT_STATUS") is None
+        assert harness.stored("lookup", "CT_GOODS_LOOKUP") is None
+
+    def test_duplicates_of_existing_item_are_rejected(self, harness: ConfigImporterHarness) -> None:
+        """重复的项与已有配置项相同时也拒绝，不当作已有的项跳过；已有的项不变。"""
+        _import(harness, [DICT])
+        error = _rejected(harness, [DICT_CHANGED, DICT, LOOKUP])
+        assert sorted(d.path for d in error.details) == ["items[0]", "items[1]"]
+        assert harness.stored("dict", "CT_STATUS") == DICT.content
+        assert harness.stored("lookup", "CT_GOODS_LOOKUP") is None
+
+    def test_detail_path_starts_with_batch_position(self, harness: ConfigImporterHarness) -> None:
+        """每条明细的 `path` 以 `items[<序号>]` 开头，序号是这一项在本批中的位置（从 0 起）。"""
+        error = _rejected(harness, [DICT, BROKEN, LOOKUP, PAGE, OPERATION])
+        positions = {d.config_key: d.path for d in error.details}
+        assert set(positions) >= {"CT_BROKEN", CT_PAGE_A}
+        for key, index in (("CT_BROKEN", 1), (CT_PAGE_A, 3)):
+            path = positions[key]
+            assert path is not None and (path == f"items[{index}]" or path.startswith((f"items[{index}].", f"items[{index}][")))
+
 
 class FakeConfigImporterHarness:
     def __init__(self) -> None:

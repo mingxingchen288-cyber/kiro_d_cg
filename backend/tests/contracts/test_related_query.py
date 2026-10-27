@@ -49,12 +49,20 @@ class RelatedQueryHarness(Protocol):
         """一个查出的行缺少 `recordKeyColumn` 的关联 SQL 和它的来源单据。"""
         ...
 
+    def lost_record_case(self) -> Case:
+        """查出的行中有主键为空的关联 SQL（例如明细还在、所属单据已被删除），它的来源单据和应找到的目标。
+
+        `rowKeyColumns` 不为空，`labelColumn` 不在 `displayColumns` 中；结果中至少一行完整，至少一行
+        `recordKeyColumn` 为空，至少一行 `recordKeyColumn` 有值而 `rowKeyColumns` 中的列为空。
+        """
+        ...
+
 
 def _sorted(targets: list[TargetObject]) -> list[TargetObject]:
-    return sorted(targets, key=lambda o: (o.entity, o.record_key, o.row_keys))
+    return sorted(targets, key=lambda o: (o.entity, o.record_key or "", o.row_keys, o.missing, sorted(map(str, o.display.items()))))
 
 
-def _ids(targets: list[TargetObject]) -> set[tuple[str, str, tuple[str, ...]]]:
+def _ids(targets: list[TargetObject]) -> set[tuple[str, str | None, tuple[str, ...]]]:
     return {(o.entity, o.record_key, o.row_keys) for o in targets}
 
 
@@ -77,6 +85,7 @@ class RelatedQueryContract:
         found = harness.query.find(harness.uow, finder, source)
         assert all(isinstance(o, TargetObject) for o in found)
         assert _sorted(found) == _sorted(expected)
+        assert not any(o.missing for o in found) and all(o.record_key is not None for o in found)
 
     def test_relation_key_uses_every_source_row(self, harness: RelatedQueryHarness) -> None:
         """按关联键时用传入单据中 sourceKey 所指实体的全部行：只留一行时找到的更少，一行都没有时找不到（C08 第 9 节）。"""
@@ -108,6 +117,23 @@ class RelatedQueryContract:
             harness.query.find(harness.uow, finder, source)
         assert caught.value.code is ErrorCode.INTERNAL_ERROR
 
+    def test_lost_record_is_returned_as_missing(self, harness: RelatedQueryHarness) -> None:
+        """主键为空的行返回为 missing 的对象，不报错，其余行照常返回（C08 第 9 节）。"""
+        finder, source, expected = harness.lost_record_case()
+        assert isinstance(finder, SqlFinder) and finder.row_key_columns, "harness 的查找方式不符合要求"
+        assert finder.label_column is not None and finder.label_column not in finder.display_columns, "harness 的查找方式不符合要求"
+        assert any(not o.missing for o in expected), "harness 的结果中没有完整的行"
+        assert any(o.missing and o.record_key is None for o in expected), "harness 的结果中没有单据主键为空的行"
+        assert any(o.missing and o.record_key is not None for o in expected), "harness 的结果中没有只有明细主键为空的行"
+        found = harness.query.find(harness.uow, finder, source)
+        assert _sorted(found) == _sorted(expected)
+        for o in found:
+            assert finder.label_column in o.display and set(finder.display_columns) <= set(o.display)
+            if o.missing:
+                assert o.row_keys == ()
+            else:
+                assert o.record_key is not None and len(o.row_keys) == len(finder.row_key_columns)
+
 
 _SOURCE = DocumentData(
     ref=DocumentRef(entity="COST_PINGGU", record_key="1001"),
@@ -123,6 +149,11 @@ _SQL = SqlFinder(kind="sql", entity="COST_PINGGU", sql="SELECT M.DOCID AS DOC_ID
                  "WHERE EXISTS (SELECT 1 FROM T_COST_PINGGU_DTL D WHERE D.DOCID = M.DOCID AND D.GOODSID = :goodsId)",
                  binds={"goodsId": "COST_GOODS_PRICE.GOODSID"}, record_key_column="DOC_ID", label_column="PRODUCT_NAME",
                  display_columns=["DOC_ID", "PRODUCT_NAME"])
+_LOST = SqlFinder(kind="sql", entity="COST_PINGGU",
+                  sql="SELECT M.DOCID AS DOC_ID, D.DTLID AS DTL_ID, M.GOODSNAME AS PRODUCT_NAME FROM T_COST_PINGGU_DTL D "
+                  "LEFT JOIN T_COST_PINGGU M ON M.DOCID = D.DOCID WHERE D.GOODSID = :goodsId",
+                  binds={"goodsId": "COST_GOODS_PRICE.GOODSID"}, record_key_column="DOC_ID", row_key_columns=["DTL_ID"],
+                  label_column="PRODUCT_NAME", display_columns=["DOC_ID"])
 _GOODS = DocumentData(ref=DocumentRef(entity="COST_GOODS_PRICE", record_key="115"),
                       master=Row(entity="COST_GOODS_PRICE", row_key="115", client_row_id=None, values={"GOODSID": Decimal("115")}),
                       details={})
@@ -133,15 +164,25 @@ class FakeRelatedQueryHarness:
         self._stack = ExitStack()
         self.uow = self._stack.enter_context(FakeUnitOfWorkFactory().begin())
         self.query = FakeRelatedQuery()
-        self._relation = [TargetObject("COST_GOODS_PRICE", "115", (), {"GOODSID": Decimal("115")}),
-                          TargetObject("COST_GOODS_PRICE", "116", (), {"GOODSID": Decimal("116")})]
+        self._relation = [TargetObject("COST_GOODS_PRICE", "115", (), {"GOODSID": Decimal("115")}, False),
+                          TargetObject("COST_GOODS_PRICE", "116", (), {"GOODSID": Decimal("116")}, False)]
         for target in self._relation:
             self.query.add_target("COST_GOODS_PRICE", "GOODSID", target.display["GOODSID"], target)
         rows = [{"DOC_ID": Decimal("2001"), "PRODUCT_NAME": "甲"}, {"DOC_ID": Decimal("2002"), "PRODUCT_NAME": "乙"}]
-        self._sql = [TargetObject("COST_PINGGU", "2001", (), rows[0]), TargetObject("COST_PINGGU", "2002", (), rows[1])]
+        self._sql = [TargetObject("COST_PINGGU", "2001", (), rows[0], False), TargetObject("COST_PINGGU", "2002", (), rows[1], False)]
         self.query.respond_rows(_SQL, rows, source=_GOODS.ref)
         self._missing = _SQL.model_copy(update={"sql": _SQL.sql.replace("M.DOCID AS DOC_ID, ", "")})
         self.query.respond_rows(self._missing, [rows[0], {"PRODUCT_NAME": "乙"}])
+        # 预设的三行：完整的一行；成本单号为空（明细还在、所属成本单已被删除）；成本单号有值、明细主键为空
+        lost_rows = [{"DOC_ID": Decimal("2001"), "DTL_ID": Decimal("5001"), "PRODUCT_NAME": "甲"},
+                     {"DOC_ID": None, "DTL_ID": Decimal("5007"), "PRODUCT_NAME": None},
+                     {"DOC_ID": Decimal("2003"), "DTL_ID": None, "PRODUCT_NAME": "丁"}]
+        self._lost = _LOST
+        self._lost_expected = [
+            TargetObject("COST_PINGGU", "2001", ("5001",), {"DOC_ID": Decimal("2001"), "PRODUCT_NAME": "甲"}, False),
+            TargetObject("COST_PINGGU", None, (), {"DOC_ID": None, "PRODUCT_NAME": None}, True),
+            TargetObject("COST_PINGGU", "2003", (), {"DOC_ID": Decimal("2003"), "PRODUCT_NAME": "丁"}, True)]
+        self.query.respond_rows(_LOST, lost_rows, source=_GOODS.ref)
 
     def close(self) -> None:
         self._stack.close()
@@ -154,6 +195,9 @@ class FakeRelatedQueryHarness:
 
     def missing_record_key_case(self) -> tuple[SqlFinder, DocumentData]:
         return self._missing, copy.deepcopy(_GOODS)
+
+    def lost_record_case(self) -> Case:
+        return self._lost, copy.deepcopy(_GOODS), list(self._lost_expected)
 
 
 class TestFakeRelatedQuery(RelatedQueryContract):
@@ -172,20 +216,23 @@ def test_fake_without_data_finds_nothing() -> None:
     harness.close()
 
 
-@pytest.mark.parametrize("bad_row", [{"DOC_ID": None, "PRODUCT_NAME": "乙"}, {"DOC_ID": Decimal("2002"), "PRODUCT_NAME": "乙"}],
-                         ids=["record-key-null", "row-key-column-missing"])
-def test_fake_sql_rows_without_identity(bad_row: dict[str, object]) -> None:
-    """替代实现：主键为空、或缺少 rowKeyColumns 中的列，与缺少 recordKeyColumn 一样整个查找失败。"""
+def test_fake_sql_rows_without_row_key_column() -> None:
+    """替代实现：缺少 rowKeyColumns 中的列，与缺少 recordKeyColumn 一样整个查找失败（C08 第 9 节，待确认第 1 项）。"""
     harness = FakeRelatedQueryHarness()
-    update: dict[str, object] = {"sql": _SQL.sql + " AND 1 = 1"}
-    if bad_row["DOC_ID"] is not None:
-        update["row_key_columns"] = ["DTL_ID"]
-    finder = _SQL.model_copy(update=update)
+    finder = _SQL.model_copy(update={"sql": _SQL.sql + " AND 1 = 1", "row_key_columns": ["DTL_ID"]})
     good = {"DOC_ID": Decimal("2001"), "PRODUCT_NAME": "甲", "DTL_ID": Decimal("1")}
-    harness.query.respond_rows(finder, [good, bad_row])
+    harness.query.respond_rows(finder, [good, {"DOC_ID": Decimal("2002"), "PRODUCT_NAME": "乙"}])
     with pytest.raises(PlatformError) as caught:
         harness.query.find(harness.uow, finder, _GOODS)
     assert caught.value.code is ErrorCode.INTERNAL_ERROR
+    harness.close()
+
+
+def test_fake_relation_key_targets_exist() -> None:
+    """替代实现：按关联键找到的对象都存在，登记 missing 的对象是准备数据的错误。"""
+    harness = FakeRelatedQueryHarness()
+    with pytest.raises(ValueError):
+        harness.query.add_target("COST_GOODS_PRICE", "GOODSID", "117", TargetObject("COST_GOODS_PRICE", None, (), {}, True))
     harness.close()
 
 

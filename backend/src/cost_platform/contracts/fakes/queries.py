@@ -54,8 +54,9 @@ class FakeRelatedQuery(Scripted):
     - 按关联键：`add_target` 登记目标实体中键值为某值的目标；`find` 取 `source` 中 `sourceKey` 所指实体的全部行，
       按每行的键值找登记的目标，按行的顺序合并，同一目标只出现一次。
     - 按关联 SQL：`respond_rows` 给出查出的行，`find` 时按 C06 7.2 换成目标：实体取 `entity`，单据主键取
-      `recordKeyColumn`，明细主键取 `rowKeyColumns`，展示数据取 `displayColumns`。有一行的 `recordKeyColumn`
-      缺少或为空，或缺少 `rowKeyColumns` 中的列时，抛 500 INTERNAL_ERROR，不返回部分结果。
+      `recordKeyColumn`，明细主键取 `rowKeyColumns`，展示数据取 `labelColumn` 和 `displayColumns`。有一行缺少
+      `recordKeyColumn` 或 `rowKeyColumns` 中的列时，抛 500 INTERNAL_ERROR，不返回部分结果；有一行这些列的值为空时，
+      这一行换成 `missing` 的目标（`record_key` 为查到的值或 None，`row_keys` 为空），其余行照常。
     - `respond` 直接给出找到的目标，优先于上面两种。
     来源单据由调用方按 `rows` 准备，这里不按 `rows` 筛选。
     """
@@ -76,7 +77,9 @@ class FakeRelatedQuery(Scripted):
         self._results[(_finder_key(finder), source)] = _SqlRows(finder, [dict(r) for r in rows])
 
     def add_target(self, entity: str, target_key: str, value: Value, target: TargetObject) -> None:
-        """登记按关联键能找到的目标：`entity` 中 `target_key` 等于 `value` 的对象。"""
+        """登记按关联键能找到的目标：`entity` 中 `target_key` 等于 `value` 的对象。按关联键找到的对象都存在（C08 第 9 节）。"""
+        if target.missing:
+            raise ValueError("按关联键找到的对象 missing 总为 False")
         self._by_key.setdefault((entity, target_key, _key_text(value)), []).append(target)
 
     def find(self, uow: UnitOfWork, finder: TargetFinderConfig, source: DocumentData) -> list[TargetObject]:
@@ -94,7 +97,7 @@ class FakeRelatedQuery(Scripted):
     def _by_relation_key(self, finder: RelationKeyFinder, source: DocumentData) -> list[TargetObject]:
         entity, _, field = finder.source_key.partition(".")
         result: list[TargetObject] = []
-        seen: set[tuple[str, str, tuple[str, ...]]] = set()
+        seen: set[tuple[str, str | None, tuple[str, ...]]] = set()
         for row in _source_rows(source, entity):
             value = row.values.get(field)
             if value is None:
@@ -114,15 +117,25 @@ class _SqlRows:
 
     def targets(self) -> list[TargetObject]:
         f = self.finder
+        key_columns = [f.record_key_column, *f.row_key_columns]
         for row in self.rows:
-            if row.get(f.record_key_column) is None:
-                raise PlatformError(ErrorCode.INTERNAL_ERROR, f"关联 SQL 的结果缺少 {f.record_key_column}，或它为空")
-            missing = [c for c in f.row_key_columns if c not in row]
-            if missing:
-                raise PlatformError(ErrorCode.INTERNAL_ERROR, f"关联 SQL 的结果缺少 {', '.join(missing)}")
-        return [TargetObject(entity=f.entity, record_key=_key_text(row[f.record_key_column]),
-                             row_keys=tuple(_key_text(row[c]) for c in f.row_key_columns),
-                             display={c: row.get(c) for c in f.display_columns}) for row in self.rows]
+            absent = [c for c in key_columns if c not in row]
+            if absent:
+                raise PlatformError(ErrorCode.INTERNAL_ERROR, f"关联 SQL 的结果缺少 {', '.join(absent)}")
+        shown = [*([f.label_column] if f.label_column else []), *f.display_columns]
+        result = []
+        for row in self.rows:
+            display = {c: row.get(c) for c in shown}
+            record_key = row[f.record_key_column]
+            if any(row[c] is None for c in key_columns):
+                # 主键为空：这一行表示的记录已不存在，照常返回，由调用方跳过（C08 第 9 节）
+                result.append(TargetObject(entity=f.entity, record_key=None if record_key is None else _key_text(record_key),
+                                           row_keys=(), display=display, missing=True))
+            else:
+                result.append(TargetObject(entity=f.entity, record_key=_key_text(record_key),
+                                           row_keys=tuple(_key_text(row[c]) for c in f.row_key_columns),
+                                           display=display, missing=False))
+        return result
 
 
 class FakeDocumentReader(Scripted):

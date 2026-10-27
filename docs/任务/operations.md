@@ -11,7 +11,7 @@
 - 负责范围：`backend/src/cost_platform/operations/`。
 - 交付物：`applyPendingChanges`、`recalculate`、`updateTargets`、`updateRecords` 的展开；字段映射；传播边界。
 - 接入责任：T-AS-5 注册按钮操作的阶段；T-AS-6 接入批准后动作。
-- 验收标准（模拟验证）：每种动作的展开结果正确；字段映射取来源计算后的值；同一目标被多行来源找到且值不同时返回 VALIDATION_FAILED；映射到计算字段，或映射到 ERP 行的 ERP 列被拒绝；传播边界为 `end` 时目标不触发审批；按钮需要选中行而没有时返回 VALIDATION_FAILED；按钮命令带了 `documents` 时返回 INVALID_REQUEST；选中成本单 D 点按钮时，`updateRecords` 按 D 在数据库中的当前数据查找和写入；选中的行在点按钮前已被删除时，`rowNotFound` 为 `skip` 写入 `skipped`，为 `reject` 返回 ROW_NOT_FOUND；审批流 `afterApproval` 中的 `updateRecords` 为 `rows: changed` 时按 C08 第 9 节准备来源单据：一张有 10 条明细的单据只改了第 3 条，`RelatedQuery` 收到的来源单据中这个明细只有第 3 条，整单计算和保存仍用 10 条；`sourceKey` 指向主表而主表没有变化时不查找；修改了关联键的行只按新值查找；按钮操作的"确定涉及的单据"和"动作执行"中的展开通过 `PipelineStage` 的契约测试（C08 第 14 节）。
+- 验收标准（模拟验证）：每种动作的展开结果正确；字段映射取来源计算后的值；同一目标被多行来源找到且值不同时返回 VALIDATION_FAILED；映射到计算字段，或映射到 ERP 行的 ERP 列被拒绝；传播边界为 `end` 时目标不触发审批；按钮需要选中行而没有时返回 VALIDATION_FAILED；按钮命令带了 `documents` 时返回 INVALID_REQUEST；选中成本单 D 点按钮时，`updateRecords` 按 D 在数据库中的当前数据查找和写入；选中的行在点按钮前已被删除时，`rowNotFound` 为 `skip` 写入 `skipped`，为 `reject` 返回 ROW_NOT_FOUND；审批流 `afterApproval` 中的 `updateRecords` 为 `rows: changed` 时按 C08 第 9 节准备来源单据：一张有 10 条明细的单据只改了第 3 条，`RelatedQuery` 收到的来源单据中这个明细只有第 3 条，整单计算和保存仍用 10 条；`sourceKey` 指向主表而主表没有变化时不查找；修改了关联键的行只按新值查找；`updateRecords` 的关联 SQL 查出的行中有一行主键为空时，跳过这一行，其余行照常更新；`selection` 为 `all` 时 `updateTargets` 不更新记录已不存在的候选对象；按钮操作的"确定涉及的单据"和"动作执行"中的展开通过 `PipelineStage` 的契约测试（C08 第 14 节）。
 - 状态与证据：未开始。
 
 ### T-OP-2 逃生舱机制
