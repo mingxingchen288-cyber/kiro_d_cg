@@ -29,7 +29,7 @@
 - 归属与目标：实现 AS-06、AS-09 和 AS-07 的前端部分。
 - 前置输入：开始前 T-FS-1、T-CT-4。验收前 T-RC-2。
 - 负责范围：`frontend/src/main.ts`、`frontend/src/assembly/`、`vite.config.ts`、`vitest.config.ts`、`package.json`、dependency-cruiser 配置；根目录的 `.env.test`、`.env.prod`，以及 `.gitignore`、`.env.example` 中与前端有关的部分。
-- 交付物：HTTP 客户端（C09、C03，带 CSRF，可以把请求标为后台请求）；实时客户端（C10，断线自动重连）；用 rules-core 交付的 `createCalcWorkerClient` 创建计算客户端（不另写 Worker 代码）；模块注册（C11）；开发服务器带 COOP、COEP 响应头。前端环境文件迁到根目录（AS-09），按以下顺序做，不能只改读取路径：
+- 交付物：HTTP 客户端（C09、C03，带 CSRF，可以把请求标为后台请求；错误体用 T-CT-4 的解析函数检查）；实时客户端（C10，断线自动重连）；用 rules-core 交付的 `createCalcWorkerClient` 创建计算客户端（不另写 Worker 代码）；模块注册（C11）；开发服务器带 COOP、COEP 响应头。前端环境文件迁到根目录（AS-09），按以下顺序做，不能只改读取路径：
   1. 把 `frontend/.env`、`frontend/.env.test`、`frontend/.env.prod` 中仍在使用的变量（`VITE_BASE_URL`、`VITE_APP_TITLE`、`VITE_SERVICE_BASE_URL` 等）迁到根目录的 `.env.test`、`.env.prod`。逐个变量确认使用方，没有使用方的不迁移，迁移记录写明每个变量的去向。
   2. 修改 `vite.config.ts`，让 `envDir` 和 `loadEnv()` 都指向仓库根目录；`vitest.config.ts` 的 `envDir` 也指向根目录。`.env.test`、`.env.prod` 中不写 `VITE_AG_GRID_LICENSE_KEY`。
   3. 删除 `frontend/` 下的三个环境文件。`.gitignore` 中 `frontend/.env*` 的三条例外改为根目录的 `.env.test`、`.env.prod`；`.env.example` 保留 `VITE_AG_GRID_LICENSE_KEY`。

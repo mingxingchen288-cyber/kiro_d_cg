@@ -21,7 +21,7 @@
 - 负责范围：queries 的 Lookup、字典、个人配置和三个端口；表 `PF_PERSONAL_CONFIG` 的迁移脚本。
 - 交付物：C09 第 4 节的 Lookup、字典和个人配置接口；三个端口。
 - 接入责任：approval、operations 使用 `RelatedQuery`、`DocumentReader`（T-AS-6）；migration 使用 `PersonalConfigImporter`（T-AS-8）。
-- 验收标准：模拟验证：个人配置只替换请求中给出的部分；关联 SQL 缺少 `recordKeyColumn` 时报错；`rows` 为 `changed` 时按关联键只用本次修改的来源行；真实验证：C06 7.5 的两条关联 SQL 在 d_cg 上查出成本单。
+- 验收标准：模拟验证：个人配置只替换请求中给出的部分；Lookup 的 `keywordColumns` 为空时，只有空白的关键字照常返回全部候选（带 `filter` 时照常过滤、分页），非空关键字返回 400 INVALID_REQUEST，响应的 `keywordSearch` 为 false；关联 SQL 缺少 `recordKeyColumn` 时报错；`rows` 为 `changed` 时按关联键只用本次修改的来源行；真实验证：C06 7.5 的两条关联 SQL 在 d_cg 上查出成本单。
 - 状态与证据：未开始。
 
 ### T-QE-3 导出

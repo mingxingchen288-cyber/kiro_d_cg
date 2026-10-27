@@ -247,7 +247,8 @@ _HTTP_STATUS: dict[ErrorCode, int] = {
 class ErrorDetail(Wire):
     """错误明细：定位到行和字段（被冻结时 `approval_id` 指明冻结它的审批），或定位到配置项和其中的位置。
 
-    构造时只需给出用到的字段；输出时 9 个字段总是出现，没有值的为 null（C03 第 1 节）。
+    后端负责生成（C03 第 1 节"生成和接收的分工"）：构造时只需给出用到的字段，输出时 9 个字段总是出现，没有值的为 null。
+    这种宽松只用于错误明细的构造；严格检查收到的错误体由前端负责（T-CT-4），其他请求类型照常严格解析。
     """
 
     message: str | None = None
@@ -901,7 +902,8 @@ class RuleConfig(Wire):
 class Trigger(Wire):
     operations: Annotated[list[RowOp], Field(min_length=1)] = ["modify"]
     """省略时为 ["modify"]；写出空数组时拒绝（C06 7.1、第 10 节）。"""
-    changed_fields: dict[str, list[str]] = {}
+    changed_fields: dict[str, list[str]]
+    """必须写；是否列出了来源单据的实体、含 modify 时是否列出了字段，由 config 按 C06 第 10 节检查。"""
     when: Condition | None = None
     data_items: list[DataItem] = []
 
@@ -1504,6 +1506,8 @@ class WizardGenerateRequest(Wire):
     page_code: Code
     title: str
     layout: PageLayout
+    detail_mode: DetailMode
+    audit: Bool
     master: dict[str, JsonValue]
     details: list[dict[str, JsonValue]]
 
@@ -1578,6 +1582,8 @@ class LookupRow(Wire):
 class LookupSearchResponse(Wire):
     rows: list[LookupRow]
     total: Int
+    keyword_search: Bool
+    """该 Lookup 是否支持关键字搜索（`keywordColumns` 不为空）。"""
 
 
 class DictItem(Wire):

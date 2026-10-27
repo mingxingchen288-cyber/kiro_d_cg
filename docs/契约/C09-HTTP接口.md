@@ -1,6 +1,6 @@
 # C09 HTTP 接口
 
-版本：v3。维护：contracts。状态：已确认。
+版本：v4。维护：contracts。状态：已确认。
 
 ## 1. 通用规则
 
@@ -50,7 +50,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 | DELETE | `/api/config/items/{type}/{key}` | 无 | 204；仍被其他配置引用时返回 422 VALIDATION_FAILED |
 | POST | `/api/config/validate` | `{"items": [配置项]}` | `{"ok": false, "errors": [C03 的 details 项]}`。只校验，不保存 |
 | POST | `/api/config/wizard/columns` | `{"readView": "T_COST_GOODS_PRICE_V", "table": "T_COST_GOODS"}` | `{"primaryKey": "GOODSID", "sequence": {"name": "T_COST_GOODS_SEQ", "exists": true}, "columns": [{"name": "ZX_PRICE", "type": "number", "label": "执行价", "inTable": true}]}`；只读取结构，不写任何东西 |
-| POST | `/api/config/wizard/generate` | `{"parentMenu": "cost", "pageCode": "GOODS_PRICE_MANAGE", "title": "物料清单及成本", "layout": "single", "master": {实体}, "details": []}` | 生成的实体、页面、菜单配置项，以及 ADMIN 角色的 `*` 权限，作为一次保存写入（config CF-14）；序列不存在时返回 422，提示用户先建序列 |
+| POST | `/api/config/wizard/generate` | `{"parentMenu": "cost", "pageCode": "GOODS_PRICE_MANAGE", "title": "物料清单及成本", "layout": "single", "detailMode": "tabs", "audit": true, "master": {实体}, "details": []}`。`audit`、`detailMode` 必须写，原样写入生成的页面（C06 第 3 节），单表页也要写 `detailMode` | 生成的实体、页面、页面的保存操作、菜单配置项，以及 ADMIN 角色的 `*` 权限，在一个事务中写入（config CF-14），任一项失败时全部不写；序列不存在时返回 422，提示用户先建序列 |
 
 表单布局是页面配置的一部分，随 `PUT /api/config/items/page/{pageCode}` 保存。两个管理员同时编辑同一配置项时，后保存的覆盖先保存的。
 
@@ -61,7 +61,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 | POST | `/api/pages/{pageCode}/rows` | `ListRequest` | `{"rows": [DataRow], "total": 1234, "aggregates": {"TOTAL_COST": "98765.43"}}` |
 | POST | `/api/pages/{pageCode}/rows/by-keys` | `{"entity": "COST_PINGGU", "rowKeys": ["1001", "1002"]}` | `{"rows": [DataRow]}`；不存在或超出行权限的行不返回 |
 | GET | `/api/pages/{pageCode}/records/{recordKey}` | 无 | `{"master": DataRow, "details": {"COST_MATERIAL": [DataRow]}}`；不存在或超出行权限返回 404 |
-| POST | `/api/lookups/{lookupCode}/search` | `{"keyword": "胶", "filter": {"column": "GOODSTYPE", "value": "瓶"}, "startRow": 0, "endRow": 50}`，`filter` 可选；`column` 必须是该 Lookup 的列，否则返回 422 | `{"rows": [{"values": {"GOODSID": "115", "NAME": "胶囊壳"}}], "total": 3}` |
+| POST | `/api/lookups/{lookupCode}/search` | `{"keyword": "胶", "filter": {"column": "GOODSTYPE", "value": "瓶"}, "startRow": 0, "endRow": 50}`，`filter` 可选；`column` 必须是该 Lookup 的列，否则返回 422。`keyword` 去掉首尾空白后判断：该 Lookup 的 `keywordColumns` 为空而关键字不为空时，返回 400 INVALID_REQUEST（queries-export 的 QE-09） | `{"rows": [{"values": {"GOODSID": "115", "NAME": "胶囊壳"}}], "total": 3, "keywordSearch": true}`。`keywordSearch` 表示该 Lookup 是否支持关键字搜索（`keywordColumns` 不为空），为 false 时前端不显示搜索框 |
 | GET | `/api/dicts/{dictType}` | 无 | `{"items": [{"value": "1", "label": "启用"}]}`；类型不存在时 `items` 为空 |
 | GET | `/api/pages/{pageCode}/personal` | 无 | `PersonalConfig`；没有保存过时各项为空 |
 | PUT | `/api/pages/{pageCode}/personal` | `PersonalConfig`，只含要替换的部分 | `PersonalConfig` |

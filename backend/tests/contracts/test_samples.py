@@ -141,13 +141,15 @@ INLINE: list[tuple[str, Any, Any]] = [
     ("C09 向导读列响应", {"primaryKey": "GOODSID", "sequence": {"name": "T_COST_GOODS_SEQ", "exists": True},
                        "columns": [{"name": "ZX_PRICE", "type": "number", "label": "执行价", "inTable": True}]}, t.WizardColumnsResponse),
     ("C09 向导生成请求", {"parentMenu": "cost", "pageCode": "GOODS_PRICE_MANAGE", "title": "物料清单及成本", "layout": "single",
-                       "master": {}, "details": []}, t.WizardGenerateRequest),
+                       "detailMode": "tabs", "audit": True, "master": {}, "details": []}, t.WizardGenerateRequest),
     ("C09 列表响应", {"rows": [_ROW], "total": 1234, "aggregates": {"TOTAL_COST": "98765.43"}}, t.ListResponse),
     ("C09 按主键读行", {"entity": "COST_PINGGU", "rowKeys": ["1001", "1002"]}, t.ByKeysRequest),
     ("C09 单据响应", {"master": _ROW, "details": {"COST_MATERIAL": [_ROW]}}, t.RecordResponse),
     ("C09 Lookup 查询请求", {"keyword": "胶", "filter": {"column": "GOODSTYPE", "value": "瓶"}, "startRow": 0, "endRow": 50},
      t.LookupSearchRequest),
-    ("C09 Lookup 查询响应", {"rows": [{"values": {"GOODSID": "115", "NAME": "胶囊壳"}}], "total": 3}, t.LookupSearchResponse),
+    ("C09 Lookup 查询响应", {"rows": [{"values": {"GOODSID": "115", "NAME": "胶囊壳"}}], "total": 3, "keywordSearch": True},
+     t.LookupSearchResponse),
+    ("C09 不支持关键字搜索的 Lookup 查询响应", {"rows": [], "total": 0, "keywordSearch": False}, t.LookupSearchResponse),
     ("C09 字典", {"items": [{"value": "1", "label": "启用"}]}, t.DictResponse),
     ("C09 导出列表", {"items": [{"exportCode": "cost-pinggu-export", "name": "物料成本核算表导出"}]}, t.ExportList),
     ("C09 默认导出", {"mode": "page", "request": _json("C09", 0), "columns": ["DOCID", "GOODSNAME"]}, t.ExportRequest),
@@ -264,6 +266,8 @@ CONFIG_CONTENTS: list[tuple[str, Any, Any]] = [
     ("C06 dict", _json("C06", 12), t.DictConfig),
     ("C06 lookup", _json("C06", 13), t.LookupConfig),
     ("C06 正文例子：不按关键字搜索的 Lookup", _broken(["keywordColumns"], [], _json("C06", 13)), t.LookupConfig),
+    ("C06 正文例子：只监听新增、删除的审批流", _broken(["trigger"], {"operations": ["add", "delete"], "changedFields": {"COST_MATERIAL": []}},
+                                         FLOW_1["content"]), t.ApprovalFlowConfig),
     ("C06 export", _json("C06", 14), t.ExportConfig),
 ]
 
@@ -340,9 +344,10 @@ def test_error_detail_keeps_one_key_style() -> None:
 def test_c06_documented_defaults() -> None:
     """C06 写明的默认值：保存操作省略时只有修改（写出空数组被拒绝）、从表默认只列有变化的行、Lookup 默认单选并回填且不筛选、
     导出默认 Calibri 和每张主单一张明细表、要修改的行已删除时默认跳过、审批流的传播边界固定为 end、冻结省略时为空。"""
-    assert t.parse_wire(t.Trigger, {}).operations == ["modify"]
+    watched = {"changedFields": {"COST_MATERIAL": ["PRICE"]}}
+    assert t.parse_wire(t.Trigger, watched).operations == ["modify"]
     with pytest.raises(ValidationError):
-        t.parse_wire(t.Trigger, {"operations": []})
+        t.parse_wire(t.Trigger, {**watched, "operations": []})
     assert t.parse_wire(t.DisplayDetail, {"title": "原辅料", "rows": "source.COST_MATERIAL"}).rows_filter == "changed"
     lookup = t.parse_wire(t.LookupSetting, {"code": "GOODS", "fill": {}})
     assert (lookup.multiple, lookup.fill_back, lookup.filter) == (False, True, None)
@@ -549,6 +554,12 @@ INVALID = [
     ("通用动作未知", t.ApprovalFlowConfig, _broken(["afterApproval", 0, "action"], "sync", FLOW_1["content"])),
     ("触发操作未知", t.ApprovalFlowConfig, _broken(["trigger", "operations"], ["upsert"], FLOW_1["content"])),
     ("触发操作写成空数组", t.ApprovalFlowConfig, _broken(["trigger", "operations"], [], FLOW_1["content"])),
+    ("审批流缺少 changedFields", t.ApprovalFlowConfig, _broken(["trigger", "changedFields"], _DELETE, FLOW_1["content"])),
+    ("向导请求缺少 audit", t.WizardGenerateRequest,
+     {"parentMenu": "cost", "pageCode": "P", "title": "T", "layout": "single", "detailMode": "tabs", "master": {}, "details": []}),
+    ("向导请求缺少 detailMode", t.WizardGenerateRequest,
+     {"parentMenu": "cost", "pageCode": "P", "title": "T", "layout": "single", "audit": True, "master": {}, "details": []}),
+    ("Lookup 查询响应缺少 keywordSearch", t.LookupSearchResponse, {"rows": [], "total": 0}),
     # C06 第 1.1 节中决定行为、必须写出的字段
     ("页面缺少 audit", t.PageConfig, _broken(["audit"], _DELETE, _json("C06", 2))),
     ("页面缺少 detailMode", t.PageConfig, _broken(["detailMode"], _DELETE, _json("C06", 2))),

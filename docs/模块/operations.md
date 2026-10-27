@@ -22,7 +22,7 @@
 - OP-02：`updateTargets` 的目标是：`selection` 为 `all` 时的全部候选对象，或审批人最终勾选的对象。`fieldMapping` 的 `from` 取来源计算后的值；按关联键找到的目标，取找到它的那一行来源的值；同一目标被多行来源找到且值不同时，返回 422 VALIDATION_FAILED。`to` 必须在操作或审批流允许写入的字段内。
 - OP-03：`propagation` 为 `end` 时，写到目标的修改带上本审批或本操作的来源，目标只执行自身的计算和校验规则，不触发审批，也不再执行同步动作。
 - OP-04：逃生舱只在用户点名时启用。它在命令事务内、加锁和冻结检查之后执行，自身不提交也不回滚；每次调用记录逃生舱、参数、执行人、时间和请求键，随命令记录一起写入。
-- OP-05：按钮操作的 `requiresSelection` 为 true 而 `params.selectedRows` 为空时，返回 422 VALIDATION_FAILED。
+- OP-05：按钮操作的 `requiresSelection` 为 true 而 `params.selectedRows` 为空时，返回 422 VALIDATION_FAILED。`requiresSelection` 只规定执行的前提；操作实际处理的行和执行权限，照常按操作配置、按钮权限和行权限检查。
 - OP-06：审批流的 `levelActions` 与 `afterApproval` 用同一组通用动作，展开方式相同；动作中的 `params.名称` 取审批人提交或后端求值的参数值。
 
 ## 4. 依赖
