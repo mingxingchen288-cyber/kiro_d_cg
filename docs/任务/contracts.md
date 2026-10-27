@@ -32,7 +32,7 @@
 - 交付物：C08 每个端口和管道阶段的内存替代实现，可以预设返回值和错误；每个端口一套契约测试 `test_<端口名>.py`，被测实现以参数传入。
 - 接入责任：各模块用替代实现开发；各提供方的真实实现运行同一套测试。
 - 验收标准：全部替代实现通过各自的契约测试；用一个故意写错的实现运行契约测试，测试失败。
-- 状态与证据：未开始。
+- 状态与证据：进行中（C08 末尾"待确认"的 10 项待用户确认，确认后补测试并复核）。模拟验证：`backend/src/cost_platform/contracts/fakes/` 为 C08 的 22 个端口（`ports.py` 中的全部 Protocol）各提供一个内存替代实现，`PORT_FAKES` 列出对应关系；事务（`FakeUnitOfWorkFactory`）和旧库只读连接（`FakeConnectionFactory`）用内存 SQLite，提交、回滚和只读都由数据库执行（探针 `.reports/T-CT-3/probe_sqlite.py`、`probe_sqlite.txt`）；其余替代实现在内存中实现 C08 写明的语义，或由预设给出结果。每个替代实现记录收到的调用，用统一的 `fail(方法, 错误, times)` 预设错误，`recover` 撤销。`backend/tests/contracts/` 新增 20 个契约测试文件，每个写成 `<端口名>Contract` 类，被测实现和准备数据的方法由 `harness` fixture 提供（接口为同一文件中的 `<端口名>Harness` 协议），替代实现以 `TestFake<端口名>` 运行，真实实现继承同一个类、提供自己的 `harness`；`UnitOfWork` 与工厂、`ConfigSnapshot` 与读取方各在同一套测试中。契约测试只检查 C08（及它引用的 C02、C03、C07、C10 和模块规则编号）写明的行为；管道阶段的测试从 C08 第 6 节的表读出每个阶段可以写的字段，检查阶段只写自己的字段、`applies` 不改状态，操作权限、冻结检查失败时分别为 PERMISSION_DENIED、FROZEN_BY_APPROVAL。`test_fakes.py` 检查每个端口都有替代实现和契约测试类、替代实现的方法与端口的参数名和默认值相同、端口方法都能预设错误，以及预设错误的次数、顺序和撤销。`Clock` 的契约测试要求时间不带时区，依据是 C01 第 4 节。结果：`uv run pytest` 398 个通过，其中 `tests/contracts` 383 个（`.reports/T-CT-3/pytest.txt`）；`uv run lint-imports --no-cache` 3 条规则保持（`lint-imports.txt`）；`.reports/T-CT-3/mutants.py` 为 20 个契约类各写了至少一个故意写错的实现，共 27 种（例如事务退出时提交、写请求不核对 CSRF、`touch=False` 也顺延、同一请求键重复执行、冻结检查阶段写 `candidate`、行权限留着 `${userId}`、不合法的求值请求返回空结果、数值读成 float、冻结记录不按实体区分），27 种都让契约测试失败，20 个不改实现的对照都通过（`mutants.txt`）。
 
 ### T-CT-4 前端类型与模拟实现
 
