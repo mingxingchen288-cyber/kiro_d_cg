@@ -111,6 +111,8 @@ class FakeRelatedQuery(Scripted):
         """
         if source is not None and binds is not None:
             raise ValueError("source 和 binds 只能给一个")
+        if binds is not None and set(binds) != set(finder.binds):
+            raise ValueError(f"binds 须正好给出全部绑定变量：{sorted(finder.binds)}")
         sql_rows = _SqlRows(finder, [dict(r) for r in rows])
         if binds is not None:
             self._by_binds[(_finder_key(finder), _bind_key(binds))] = sql_rows
