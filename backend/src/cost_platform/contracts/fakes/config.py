@@ -14,7 +14,6 @@ from ..types import (
     ErrorCode,
     ErrorDetail,
     EscapeHatch,
-    FreezeTargets,
     ImportReport,
     MenuItem,
     OperationConfig,
@@ -82,10 +81,8 @@ def _references(config_type: str, content: Any) -> list[tuple[str, str]]:
         refs += [("role", a.role) for level in content.levels for entry in level.entries for a in entry.approvers
                  if isinstance(a, RoleApprover)]
         refs += [("entity", f.entity) for f in (content.targets.find if content.targets else [])]
-        refs += [("entity", f.entity) for f in content.freeze if not isinstance(f, FreezeTargets)]
+        refs += [("entity", f.entity) for f in content.freeze]
         actions(content.after_approval)
-        for level_actions in content.level_actions:
-            actions(level_actions.steps)
     elif config_type == "role":
         refs += [("page", p) for p in content.pages]
     elif config_type == "menu":

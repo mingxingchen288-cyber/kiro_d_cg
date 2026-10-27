@@ -13,7 +13,7 @@ import sqlite3
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import Connection, RootTransaction
@@ -85,21 +85,31 @@ class FakeUnitOfWorkFactory(Scripted):
 
 
 class FakeSchemaInspector(Scripted):
-    """`SchemaInspector`：表结构由 `add_table` 预设。"""
+    """`SchemaInspector`：表和视图的结构由 `add_table`、`add_view` 预设。"""
 
-    scriptable = ('columns',)
+    scriptable = ('columns', 'object_type')
 
     def __init__(self) -> None:
         super().__init__()
         self._tables: dict[str, dict[str, ColumnInfo]] = {}
+        self._types: dict[str, Literal["table", "view"]] = {}
 
     def add_table(self, table: str, columns: Sequence[ColumnInfo]) -> None:
         self._tables[table] = {c.name: c for c in columns}
+        self._types[table] = "table"
+
+    def add_view(self, view: str, columns: Sequence[ColumnInfo]) -> None:
+        self._tables[view] = {c.name: c for c in columns}
+        self._types[view] = "view"
 
     def columns(self, table: str) -> dict[str, ColumnInfo] | None:
         self._record("columns", table)
         found = self._tables.get(table)
         return None if found is None else dict(found)
+
+    def object_type(self, name: str) -> Literal["table", "view"] | None:
+        self._record("object_type", name)
+        return self._types.get(name)
 
 
 class FakeConnectionFactory(Scripted):

@@ -944,14 +944,9 @@ class FlowTargets(Wire):
     selection: Literal["all", "approverSelects"]
 
 
-class FreezeTargets(Wire):
-    """冻结全部候选对象所在的单据（C06 7.3）。"""
-
-    kind: Literal["targets"]
-
-
-FreezeSpec = Annotated[FreezeTargets | RelationKeyFinder | SqlFinder, Field(discriminator="kind")]
-"""来源单据之外还要冻结的单据：全部候选对象，或按来源的字段关联其他表找到的单据。"""
+FreezeSpec = TargetFinder
+"""来源单据和候选对象之外还要锁定、审批后不更新的单据：按来源的字段关联其他表找到（C06 7.3）。
+来源单据和全部候选对象总是锁定，不用配置。"""
 
 _IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 
@@ -979,11 +974,6 @@ class ApprovalDisplay(Wire):
 
     master: DisplayMaster
     details: list[DisplayDetail] = []
-
-
-class LevelActions(Wire):
-    level: Int
-    steps: list[ActionStep]
 
 
 class FlowParam(Wire):
@@ -1018,7 +1008,7 @@ class ApprovalFlowConfig(Wire):
     display: ApprovalDisplay | None = None
     freeze: list[FreezeSpec] = []
     after_approval: list[ActionStep] = []
-    level_actions: list[LevelActions] = []
+    """全部审批节点都通过后才执行（approval AP-20）；中途某一级通过不执行任何动作。"""
     params: list[FlowParam] = []
     propagation: Literal["end"] = "end"
     notify: list[NotifyRule] = []

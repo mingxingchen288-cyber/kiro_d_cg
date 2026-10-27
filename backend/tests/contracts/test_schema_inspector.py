@@ -29,6 +29,10 @@ class SchemaInspectorHarness(Protocol):
         """建一张有这些列的表。"""
         ...
 
+    def create_view(self, view: str, table: str) -> None:
+        """在表 `table` 上建一个选出它全部列的视图。"""
+        ...
+
     def missing_table(self) -> str:
         """一个不存在的表名。"""
         ...
@@ -41,10 +45,19 @@ class SchemaInspectorContract:
 
     def test_missing_table_is_none(self, harness: SchemaInspectorHarness) -> None:
         assert harness.inspector.columns(harness.missing_table()) is None
+        assert harness.inspector.object_type(harness.missing_table()) is None
 
     def test_columns_keyed_by_name(self, harness: SchemaInspectorHarness) -> None:
         harness.create_table("CT_SCHEMA_PROBE", COLUMNS)
         assert harness.inspector.columns("CT_SCHEMA_PROBE") == {c.name: c for c in COLUMNS}
+
+    def test_table_and_view_are_told_apart(self, harness: SchemaInspectorHarness) -> None:
+        """审批的锁定对象只能是表（C06 第 10 节）：表为 table，视图为 view，视图也能读出列。"""
+        harness.create_table("CT_SCHEMA_PROBE", COLUMNS)
+        harness.create_view("CT_SCHEMA_PROBE_V", "CT_SCHEMA_PROBE")
+        assert harness.inspector.object_type("CT_SCHEMA_PROBE") == "table"
+        assert harness.inspector.object_type("CT_SCHEMA_PROBE_V") == "view"
+        assert set(harness.inspector.columns("CT_SCHEMA_PROBE_V") or {}) == {c.name for c in COLUMNS}
 
 
 class FakeSchemaInspectorHarness:
@@ -53,6 +66,9 @@ class FakeSchemaInspectorHarness:
 
     def create_table(self, table: str, columns: Sequence[ColumnInfo]) -> None:
         self.inspector.add_table(table, columns)
+
+    def create_view(self, view: str, table: str) -> None:
+        self.inspector.add_view(view, list((self.inspector.columns(table) or {}).values()))
 
     def missing_table(self) -> str:
         return "CT_NO_SUCH_TABLE"

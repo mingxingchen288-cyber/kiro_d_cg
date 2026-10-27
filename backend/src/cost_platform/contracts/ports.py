@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from .types import (
     AccountBatch,
@@ -61,7 +61,11 @@ class UnitOfWorkFactory(Protocol):
 
 class SchemaInspector(Protocol):
     def columns(self, table: str) -> dict[str, ColumnInfo] | None:
-        """表的列，键为列名；表不存在时为 None。"""
+        """表或视图的列，键为列名；不存在时为 None。"""
+        ...
+
+    def object_type(self, name: str) -> Literal["table", "view"] | None:
+        """这个名字在数据库中是表还是视图；都不是时为 None。config 用它检查审批锁定对象只能是表（C06 第 10 节）。"""
         ...
 
 

@@ -30,7 +30,7 @@
 - MG-06：切换手册写明每一步的操作和完成后的检查，包括停止旧系统写入、迁移配置和账号、虚拟列改为普通列并回填、核对，以及回退步骤。业务表整表复制到 d_cg 之后的数据同步由用户的 CDC 负责，手册只要求切换前确认同步已完成。
 - MG-07：旧导出配置迁移为 C06 第 9 节的 `export`：MASTER_SQL、DETAIL_SQL 原样保留；`PAGE_FK_COLUMN` 是页面主表主键时，`MASTER_LINK_COLUMN` 对应 `keyColumn`，`DETAIL_LINK_COLUMN` 对应 `linkColumn`，否则列入人工改写清单。
 - MG-08：旧角色权限迁移为 C06 第 8 节的格式：BUTTON_POLICY 的分组从区域标题换成区域编码（`系统默认按钮` 为 `system`，`自定义导出` 为 `export`），`approval.*` 不迁移（审批改为保存时自动触发，处理权限由审批流决定，进度所有人可看），列入报告；COLUMN_POLICY、ROW_POLICY 原样迁移。
-- MG-09：旧系统的以下配置原样转为新格式：`APPROVAL_REQUIRED` 规则转为实体的 `approvalRequired`；字段的默认值转为 `default`；`rulesConfig.compare` 转为 `compare`；Lookup 的 `multiple`、`filterColumn`、`filterValueFrom`、`noFillback` 转为 C06 第 3 节的写法；审批的 SQL 审批人、`NODE_COMPLETED` 动作和动作参数转为 C06 7.1 的写法。旧审批流在 `FLOW_REJECTED`、`FLOW_CANCELED` 上的动作不迁移，列入审批确认清单。
+- MG-09：旧系统的以下配置原样转为新格式：`APPROVAL_REQUIRED` 规则转为实体的 `approvalRequired`；字段的默认值转为 `default`；`rulesConfig.compare` 转为 `compare`；Lookup 的 `multiple`、`filterColumn`、`filterValueFrom`、`noFillback` 转为 C06 第 3 节的写法；审批的 SQL 审批人和动作参数转为 C06 7.1 的写法。旧审批流在 `NODE_COMPLETED`、`FLOW_REJECTED`、`FLOW_CANCELED` 上的动作不迁移，列入审批确认清单：新平台中途某一级通过、驳回和撤回都不执行动作，全部审批节点通过后才生效（approval AP-20）。
 - MG-10：生成的配置项写出 C06 第 1.1 节要求必须写的全部字段（例如页面的 `audit`、`detailMode`，操作的 `propagation`，角色的 `admin`）。旧配置中没有对应项的，按旧系统的实际行为取值，并写入迁移报告；不能确定取值的，列入人工改写清单（MG-02）。
 - MG-11：生成的每个配置项都记下来源，即旧表名和行的主键（例如 `CMX.T_COST_PAGE_RULE` 中 `ID` 为 1234 的行），写在迁移输出中，不写进配置内容。`ConfigImporter` 拒绝整批时（422，C08 第 4 节），按错误明细 `path` 开头的 `items[<序号>]` 找回对应的配置项，在迁移输出目录写出拒绝清单：每个被拒绝的配置项一行，列出类型和编码、来源表和行、拒绝原因（中文，取错误明细的 `message`）。同一批中类型和编码重复的，重复的每一项各占一行，分别列出来源。被拒绝时什么都没有写入，修正后重新导入。
 

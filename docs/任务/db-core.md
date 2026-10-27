@@ -9,7 +9,7 @@
 - 归属与目标：实现 DB-01、DB-02，以及 `UnitOfWorkFactory`、`UnitOfWork`、`SchemaInspector`、`ConnectionFactory`。
 - 前置输入：开始前 T-CT-1、T-CT-3；`.env` 中 d_cg 的连接可用（cmx 经 d_cg 只读访问）。
 - 负责范围：`backend/src/cost_platform/db_core/`。
-- 交付物：连接池和事务；数值列与 Decimal 的转换；Oracle 错误映射；表结构读取；cmx 只读连接。
+- 交付物：连接池和事务；数值列与 Decimal 的转换；Oracle 错误映射；表和视图的结构读取，区分表和视图（`object_type`）；cmx 只读连接。
 - 接入责任：T-AS-4 注入各模块；各模块验证自己的 Oracle 存储时也使用本任务的实现。
 - 验收标准（真实验证，在 d_cg 上）：通过这几个端口的契约测试；`12345678901234567890.123456`、负数和零写入再读出数值相等，读取过程不出现 float（Hypothesis 生成数值做往返）；等锁超时、连接断开分别映射为 DOCUMENT_BUSY、DATABASE_UNAVAILABLE；读取 cmx 的连接以只读事务打开，写语句报错。
 - 状态与证据：未开始。
