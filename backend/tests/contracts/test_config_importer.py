@@ -156,7 +156,9 @@ class ConfigImporterContract:
         """有重复项时，其余不通过的项也照常列出，调用方一次就能改完。"""
         error = _rejected(harness, [DICT, BROKEN, DICT_CHANGED])
         assert sorted(d.config_key for d in error.details if d.config_key == "CT_STATUS") == ["CT_STATUS", "CT_STATUS"]
-        assert "CT_BROKEN" in {d.config_key for d in error.details}
+        broken = [d.path or "" for d in error.details if d.config_key == "CT_BROKEN"]
+        # 序号是整批中的位置，前面的重复项也计入
+        assert broken and all(_at(p, 1) for p in broken)
 
     def test_detail_path_starts_with_batch_position(self, harness: ConfigImporterHarness) -> None:
         """每条明细的 `path` 以 `items[<序号>]` 开头，序号是这一项在本批中的位置（从 0 起）；内容不符合 C06 结构、

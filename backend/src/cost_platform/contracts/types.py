@@ -2152,6 +2152,19 @@ class RowChange:
     """修改：这些字段的旧值；删除：删除前的整行（审计用）；新增：空。"""
 
 
+@dataclass(frozen=True)
+class RowIntent:
+    """动作要做的一行修改，还没有和当前数据合并（C08 第 6 节）。operations 展开动作时写入 `CommandState.intents`，
+    write-pipeline 对所属单据不在 `involved` 中的先加锁读取、做冻结检查，再合并（WP-18）。"""
+
+    document: DocumentRef
+    entity: str
+    op: RowOp
+    row_key: str | None
+    client_row_id: str | None
+    values: dict[str, Value] = dc_field(hash=False)
+
+
 @dataclass
 class ChangePlan:
     """只含有变化的列的写入计划，由 write-pipeline 生成并执行。"""
@@ -2170,6 +2183,7 @@ class CommandState:
     involved: list[DocumentRef] = dc_field(default_factory=list)
     current: dict[DocumentRef, DocumentData] = dc_field(default_factory=dict)
     actions: list[ActionStep] = dc_field(default_factory=list)
+    intents: list[RowIntent] = dc_field(default_factory=list)
     candidate: dict[DocumentRef, DocumentData] = dc_field(default_factory=dict)
     effects: list[RuleEffect] = dc_field(default_factory=list)
     changes: ChangePlan = dc_field(default_factory=ChangePlan)

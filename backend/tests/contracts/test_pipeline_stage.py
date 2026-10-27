@@ -34,6 +34,7 @@ from cost_platform.contracts.types import (
     RecordRef,
     Row,
     RowChange,
+    RowIntent,
     SkippedRow,
 )
 from cost_platform.contracts.types import Prompt as PromptItem
@@ -156,6 +157,8 @@ _NOTICE = NotificationIntent(event="approvalSubmitted", recipients=("111",), tit
 _WRITERS = {
     "involved": lambda s: s.involved.append(_REF),
     "actions": lambda s: s.actions.append(ApplyPendingChanges(action="applyPendingChanges")),
+    "intents": lambda s: s.intents.append(RowIntent(document=_REF, entity="COST_PINGGU", op="modify", row_key="1001",
+                                                    client_row_id=None, values={"QTY": "12"})),
     "candidate": lambda s: s.candidate.__setitem__(_REF, copy.deepcopy(_DOC)),
     "effects": lambda s: s.effects.append(PromptEffect(kind="prompt", rule="R1", message="提示")),
     "changes": lambda s: s.changes.rows.append(RowChange(document=_REF, entity="COST_PINGGU", op="modify", row_key="1001",

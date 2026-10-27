@@ -20,7 +20,7 @@
 提供 `UnitOfWorkFactory`、`UnitOfWork`、`SchemaInspector`、`ConnectionFactory`（[C08](../契约/C08-后端端口.md) 第 2 节）。
 
 - DB-01：数值列读出为 `Decimal`，写入时也用 `Decimal`，全程不经过浮点；超出浮点精确范围的值（例如 `12345678901234567890.123456`）读写往返后数值相等。
-- DB-02：等锁超时映射为 DOCUMENT_BUSY，连接断开或数据库不可用映射为 DATABASE_UNAVAILABLE，其余为 INTERNAL_ERROR（[C03](../契约/C03-错误.md)）；错误响应中不出现 `ORA-` 文本。
+- DB-02：等锁超时和死锁（ORA-00060）映射为 DOCUMENT_BUSY，连接断开或数据库不可用映射为 DATABASE_UNAVAILABLE，其余为 INTERNAL_ERROR（[C03](../契约/C03-错误.md)）；错误响应中不出现 `ORA-` 文本。
 - DB-03：`platform db copy-business-tables` 从 cmx 整表复制业务表的结构和数据到 d_cg（之后的数据同步由用户的 CDC 负责，不属于平台）：去掉 DDL 中的方案名；为每张表建序列 `<表名>_SEQ`，起始值为当前最大主键加一；不复制名称以 `BP_T09_` 或 `PF_` 开头的对象；可以重复执行。
 - DB-04：`platform db upgrade` 用 Alembic 执行各模块的平台表迁移脚本；`platform db check` 核对平台表是否齐全、迁移是否为最新版本，不一致时以非零退出码结束。
 - DB-05：不修改 d_cg 中已有的 `BP_T09_*` 对象；cmx 只读。
