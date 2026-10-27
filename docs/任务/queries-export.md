@@ -21,7 +21,7 @@
 - 负责范围：queries 的 Lookup、字典、个人配置和三个端口；表 `PF_PERSONAL_CONFIG` 的迁移脚本。
 - 交付物：C09 第 4 节的 Lookup、字典和个人配置接口；三个端口。
 - 接入责任：approval、operations 使用 `RelatedQuery`、`DocumentReader`（T-AS-6）；migration 使用 `PersonalConfigImporter`（T-AS-8）。
-- 验收标准：模拟验证：个人配置只替换请求中给出的部分；Lookup 的 `keywordColumns` 为空时，只有空白的关键字照常返回全部候选（带 `filter` 时照常过滤、分页），非空关键字返回 400 INVALID_REQUEST，响应的 `keywordSearch` 为 false；关联 SQL 缺少 `recordKeyColumn` 时报错；`rows` 为 `changed` 时按关联键只用本次修改的来源行；真实验证：C06 7.5 的两条关联 SQL 在 d_cg 上查出成本单。
+- 验收标准：模拟验证：个人配置只替换请求中给出的部分；Lookup 的 `keywordColumns` 为空时，只有空白的关键字照常分页返回全部候选，非空关键字返回 400 INVALID_REQUEST，响应的 `keywordSearch` 为 false；关联 SQL 缺少 `recordKeyColumn` 时报错；`rows` 为 `changed` 时按关联键只用本次修改的来源行；真实验证：C06 7.5 的两条关联 SQL 在 d_cg 上查出成本单。
 - 状态与证据：未开始。
 
 ### T-QE-3 导出
@@ -41,5 +41,5 @@
 - 负责范围：queries 的对比、Lookup 过滤和高级查询中的明细条件。
 - 交付物：上述功能。
 - 接入责任：T-AS-5 联调。
-- 验收标准：业务例子 E29、E30；模拟验证：对比值为 0 时不给百分比；Lookup 的 `filter.column` 不是 Lookup 的列时返回 422；真实验证：在 d_cg 上 E30 查出的成本单与旧系统同样条件查出的相同。
+- 验收标准：业务例子 E29、E30；模拟验证：对比值为 0 时不给百分比；Lookup 的 `filter.column` 不是 Lookup 的列时返回 422；`keywordColumns` 为空的 Lookup 用只有空白的关键字和 `filter` 查询时，照常按 `filter` 过滤并分页（QE-09）；真实验证：在 d_cg 上 E30 查出的成本单与旧系统同样条件查出的相同。
 - 状态与证据：未开始。
