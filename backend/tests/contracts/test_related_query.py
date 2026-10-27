@@ -42,7 +42,7 @@ class RelatedQueryHarness(Protocol):
         ...
 
     def sql_case(self) -> Case:
-        """按关联 SQL 查找：查找方式、来源单据和应找到的目标。"""
+        """按只引用主表字段的关联 SQL 查找：查找方式、来源单据和应找到的目标，目标按 SQL 返回的顺序给出，至少两个。"""
         ...
 
     def relation_key_detail_case(self) -> Case:
@@ -59,8 +59,11 @@ class RelatedQueryHarness(Protocol):
         - 绑定变量引用一个明细的字段，还引用一个主表字段；这个主表字段在该明细的行中也有同名字段，值与主表不同。
         - 来源单据中这个明细至少两行，绑定的字段值各不相同；每行都能找到别的行找不到的对象。
         - 至少一个正常对象被两行都找到，两次查到的 `display` 不同（应保留先查到的）。
-        - 同一次执行中，至少一个正常对象和一个 `missing` 对象（`display` 相同）各查出两次（都只算一个）。
+        - 同一次执行中，至少一个正常对象查出两次、两行的 `display` 不同（应保留第一行）；至少一个 `missing` 对象查出
+          两次、`display` 相同（只算一个）。
         - 结果中至少两个 `record_key` 为空、`display` 不同的 `missing` 对象。
+        - 数据能区分主表字段取主表还是取明细行的同名字段：把来源单据主表的这个字段换成明细行同名字段的值后，按这一行
+          查找的结果不同。
         """
         ...
 
@@ -75,8 +78,8 @@ class RelatedQueryHarness(Protocol):
     def lost_record_case(self) -> Case:
         """查出的行中有主键为空的关联 SQL（例如明细还在、所属单据已被删除），它的来源单据和应找到的目标。
 
-        `finder.entity` 为明细实体，`rowKeyColumns` 不为空，`labelColumn` 和 `recordKeyColumn` 都不在 `displayColumns`
-        中；结果中至少一行各列都有值，至少一行主键完整而 `labelColumn` 为空，至少一行 `recordKeyColumn` 为空，至少一行
+        应找到的目标按 SQL 返回的顺序给出。`finder.entity` 为明细实体，`rowKeyColumns` 不为空，`labelColumn` 和
+        `recordKeyColumn` 都不在 `displayColumns` 中；结果中至少一行各列都有值，至少一行主键完整而 `labelColumn` 为空，至少一行 `recordKeyColumn` 为空，至少一行
         `recordKeyColumn` 有值而 `rowKeyColumns` 中的列为空。另外：同一张单据的两行明细（`record_key` 相同、`row_keys`
         不同）；两个 `display` 相同、`record_key` 不同且都不为空的 `missing` 对象；同一行查出两次（只算一个）。
         """
@@ -124,7 +127,10 @@ class RelatedQueryContract:
         finder, source, expected = getattr(harness, case_name)()
         found = harness.query.find(harness.uow, finder, source)
         assert all(isinstance(o, TargetObject) for o in found)
-        assert _sorted(found) == _sorted(expected)
+        if case_name == "sql_case":
+            assert found == expected  # 只引用主表字段的关联 SQL 执行一次，按 SQL 返回的顺序（C08 第 9 节）
+        else:
+            assert _sorted(found) == _sorted(expected)
         assert not any(o.missing for o in found) and all(o.record_key is not None for o in found)
 
     def test_relation_key_uses_every_source_row(self, harness: RelatedQueryHarness) -> None:
@@ -175,6 +181,14 @@ class RelatedQueryContract:
 
         found = harness.query.find(harness.uow, finder, source)
         assert found == expected
+
+        first = _with_rows(source, entity, rows[:1])
+        swapped = copy.deepcopy(first)
+        for f in master_fields:
+            if f in rows[0].values:
+                swapped.master.values[f] = rows[0].values[f]
+        assert harness.query.find(harness.uow, finder, swapped) != harness.query.find(harness.uow, finder, first), \
+            "主表字段取主表的值和取明细行同名字段的值，查找结果相同：harness 的数据区分不了，或实现取错了值"
 
         per_row = [harness.query.find(harness.uow, finder, _with_rows(source, entity, [row])) for row in rows]
         per_ids = [{_identity(o) for o in one} for one in per_row]
@@ -227,7 +241,7 @@ class RelatedQueryContract:
         assert any(a.display == b.display and a.record_key != b.record_key for a in keyed_lost for b in keyed_lost), \
             "harness 的结果中没有 display 相同、record_key 不同的两个 missing 对象"
         found = harness.query.find(harness.uow, finder, source)
-        assert _sorted(found) == _sorted(expected)
+        assert found == expected
         for o in found:
             assert finder.label_column in o.display and set(finder.display_columns) <= set(o.display)
             if o.missing:
@@ -250,7 +264,8 @@ _SQL = SqlFinder(kind="sql", entity="COST_PINGGU", sql="SELECT M.DOCID AS DOC_ID
                  "WHERE EXISTS (SELECT 1 FROM T_COST_PINGGU_DTL D WHERE D.DOCID = M.DOCID AND D.GOODSID = :goodsId)",
                  binds={"goodsId": "COST_GOODS_PRICE.GOODSID"}, record_key_column="DOC_ID", label_column="PRODUCT_NAME",
                  display_columns=["DOC_ID", "PRODUCT_NAME"])
-# 找原辅料明细（明细实体）：成本单已删除时 DOC_ID 为空，明细已删除时 DTL_ID 为空
+# 找原辅料明细（明细实体）：成本单已删除时 DOC_ID 为空，明细已删除时 DTL_ID 为空。替代实现的预设行不受 SQL 文本约束；
+# 真实实现的 harness 要让同一行查出两次，需另写能查出重复行的 SQL（例如 UNION ALL）
 _LOST = SqlFinder(kind="sql", entity="COST_MATERIAL",
                   sql="SELECT M.DOCID AS DOC_ID, D.DTLID AS DTL_ID, M.GOODSNAME AS PRODUCT_NAME FROM T_COST_PINGGU_DTL D "
                   "FULL JOIN T_COST_PINGGU M ON M.DOCID = D.DOCID WHERE D.GOODSID = :goodsId OR M.GOODSID = :goodsId",
@@ -261,11 +276,11 @@ _RELATION_DETAIL = RelationKeyFinder(kind="relationKey", entity="COST_MATERIAL",
 # 含某个物料、产品不同的成本单：物料编号取原辅料明细，产品取主表（主表和原辅料都有 GOODSID，值不同）；
 # DTL_DOC 取明细一侧，所属成本单已被删除时仍有值
 _SQL_DETAIL = SqlFinder(kind="sql", entity="COST_PINGGU",
-                        sql="SELECT D.DOCID AS DTL_DOC, M.DOCID AS DOC_ID, D.GOODSID AS HIT FROM T_COST_PINGGU_DTL D "
-                        "LEFT JOIN T_COST_PINGGU M ON M.DOCID = D.DOCID "
-                        "WHERE D.GOODSID = :goodsId AND NVL(M.GOODSID, 0) <> :productId ORDER BY D.DOCID",
+                        sql="SELECT D.DOCID AS DTL_DOC, M.DOCID AS DOC_ID, D.GOODSID AS HIT, D.DTLID AS DTL_ID "
+                        "FROM T_COST_PINGGU_DTL D LEFT JOIN T_COST_PINGGU M ON M.DOCID = D.DOCID "
+                        "WHERE D.GOODSID = :goodsId AND NVL(M.GOODSID, 0) <> :productId ORDER BY D.DOCID, D.DTLID",
                         binds={"goodsId": "COST_MATERIAL.GOODSID", "productId": "COST_PINGGU.GOODSID"},
-                        record_key_column="DOC_ID", label_column="DTL_DOC", display_columns=["HIT"])
+                        record_key_column="DOC_ID", label_column="DTL_DOC", display_columns=["HIT", "DTL_ID"])
 _COST_DOC = DocumentData(
     ref=DocumentRef(entity="COST_PINGGU", record_key="1001"),
     master=Row(entity="COST_PINGGU", row_key="1001", client_row_id=None,
@@ -322,22 +337,23 @@ class FakeRelatedQueryHarness:
         for target in self._relation_detail:
             self.query.add_target("COST_MATERIAL", "GOODSID", Decimal("115"), target)
         # 绑定明细字段：来源成本单 1001（产品 900）的物料 115、116 各执行一次。2002 两种物料都有，两次的 HIT 不同；
-        # 2003 在 116 那次查出两次；2008、2009 是已删除成本单留下的明细，2008 在 115 那次查出两次
-        hit = lambda dtl_doc, doc, goods: {"DTL_DOC": Decimal(dtl_doc), "DOC_ID": None if doc is None else Decimal(doc),  # noqa: E731
-                                           "HIT": Decimal(goods)}
-        self.query.respond_rows(_SQL_DETAIL, [hit("2001", "2001", "115"), hit("2002", "2002", "115"), hit("2008", None, "115"),
-                                              hit("2008", None, "115")],
+        # 2003 有两行 116，在 116 那次查出两次、DTL_ID 不同；2008、2009 是已删除成本单留下的明细，2008 的同一行在
+        # 115 那次查出两次
+        hit = lambda dtl_doc, doc, goods, dtl: {  # noqa: E731
+            "DTL_DOC": Decimal(dtl_doc), "DOC_ID": None if doc is None else Decimal(doc), "HIT": Decimal(goods), "DTL_ID": Decimal(dtl)}
+        self.query.respond_rows(_SQL_DETAIL, [hit("2001", "2001", "115", "7001"), hit("2002", "2002", "115", "7002"),
+                                              hit("2008", None, "115", "7008"), hit("2008", None, "115", "7008")],
                                 binds={"goodsId": Decimal("115"), "productId": Decimal("900")})
-        self.query.respond_rows(_SQL_DETAIL, [hit("2002", "2002", "116"), hit("2003", "2003", "116"), hit("2003", "2003", "116"),
-                                              hit("2009", None, "116")],
+        self.query.respond_rows(_SQL_DETAIL, [hit("2002", "2002", "116", "7003"), hit("2003", "2003", "116", "7004"),
+                                              hit("2003", "2003", "116", "7005"), hit("2009", None, "116", "7009")],
                                 binds={"goodsId": Decimal("116"), "productId": Decimal("900")})
-        shown = lambda dtl_doc, goods: {"DTL_DOC": Decimal(dtl_doc), "HIT": Decimal(goods)}  # noqa: E731
+        shown = lambda dtl_doc, goods, dtl: {"DTL_DOC": Decimal(dtl_doc), "HIT": Decimal(goods), "DTL_ID": Decimal(dtl)}  # noqa: E731
         self._detail_expected = [
-            TargetObject("COST_PINGGU", "2001", (), shown("2001", "115"), False),
-            TargetObject("COST_PINGGU", "2002", (), shown("2002", "115"), False),
-            TargetObject("COST_PINGGU", None, (), shown("2008", "115"), True),
-            TargetObject("COST_PINGGU", "2003", (), shown("2003", "116"), False),
-            TargetObject("COST_PINGGU", None, (), shown("2009", "116"), True)]
+            TargetObject("COST_PINGGU", "2001", (), shown("2001", "115", "7001"), False),
+            TargetObject("COST_PINGGU", "2002", (), shown("2002", "115", "7002"), False),
+            TargetObject("COST_PINGGU", None, (), shown("2008", "115", "7008"), True),
+            TargetObject("COST_PINGGU", "2003", (), shown("2003", "116", "7004"), False),
+            TargetObject("COST_PINGGU", None, (), shown("2009", "116", "7009"), True)]
 
     def close(self) -> None:
         self._stack.close()
