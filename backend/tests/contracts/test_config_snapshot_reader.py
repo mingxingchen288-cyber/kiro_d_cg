@@ -110,7 +110,10 @@ class ConfigSnapshotReaderContract:
     def test_created_order_survives_resave(self, harness: ConfigSnapshotReaderHarness) -> None:
         """重新保存先建的审批流后，先后仍按创建：`createdSeq` 第一次保存时分配，之后不变（C06 7.1）。"""
         save_all(harness)
-        harness.save([ct_flow("CT_FLOW_M", CT_SAVE_A, "第一个建的审批流（改）")])
+        changed = ct_flow("CT_FLOW_M", CT_SAVE_A, "第一个建的审批流（改）")
+        # 提交的内容里带一个很大的 createdSeq：config 不采用提交的值，先后照旧
+        changed = changed.model_copy(update={"content": {**changed.content, "createdSeq": 999999}})
+        harness.save([changed])
         flows = harness.reader.read(CT_ROLE_A).approval_flows(CT_SAVE_A)
         assert [f.levels[0].entries[0].name for f in flows] == ["第一个建的审批流（改）", "第二个建的审批流", "第三个建的审批流"]
 

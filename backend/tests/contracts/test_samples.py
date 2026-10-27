@@ -45,9 +45,10 @@ def _flow(index: int, display_index: int) -> Any:
     return data
 
 
-# C06 第 7.6 节先给物料清单改价（样例二，块 8），再给成本核算改价（样例一，块 9）。
+# C06 第 7.6 节先给物料清单改价（样例二，块 8），再给成本核算改价（样例一，块 9）；7.7 的样例三（块 10）自带 display。
 FLOW_1 = _flow(6, 9)
 FLOW_2 = _flow(7, 8)
+FLOW_3 = _json("C06", 10)
 
 _UUID = "3f2b6c1e-8a4d-4c2e-9b1a-0d6e5f7a8b9c"
 _TMP = "tmp-6a1f2c3d-0b4e-4f5a-8c7d-9e0f1a2b3c4d"
@@ -111,6 +112,7 @@ SAMPLES: list[tuple[str, Any, Any]] = [
     ("C06 配置项", _json("C06", 0), t.ConfigItem),
     ("C06 审批流样例一", FLOW_1, t.ConfigDraft),
     ("C06 审批流样例二", FLOW_2, t.ConfigDraft),
+    ("C06 审批流样例三", FLOW_3, t.ConfigDraft),
     ("C07 规则包", _json("C07", 0), t.RulesPack),
     ("C07 求值请求", _json("C07", 1), t.EvaluationRequest),
     ("C07 求值结果", _json("C07", 2), t.EvaluationResult),
@@ -247,7 +249,7 @@ _OPERATION_EXAMPLES = {"label": "同步价格", "kind": "action", "writableField
 _PAGE_FIELD_EXAMPLES = _broken(["master", "fields"], {"GOODSID": {"lookup": {
     "code": "GOODS", "fill": {"GOODSID": "GOODSID", "GOODSNAME": "NAME"}, "multiple": False,
     "filter": {"column": "GOODSTYPE", "from": "row", "field": "PACKTYPE"}, "fillBack": True}, "dictType": "GOODS_TYPE"}}, _json("C06", 2))
-_ROLE_SQL_ROWS = _broken(["pages", "COST_PINGGU", "rows"], "CREATE_BY = ${username}", _json("C06", 10))
+_ROLE_SQL_ROWS = _broken(["pages", "COST_PINGGU", "rows"], "CREATE_BY = ${username}", _json("C06", 11))
 
 CONFIG_CONTENTS: list[tuple[str, Any, Any]] = [
     ("C06 正文例子：entity", _ENTITY_EXAMPLES, t.EntityConfig),
@@ -262,14 +264,15 @@ CONFIG_CONTENTS: list[tuple[str, Any, Any]] = [
     ("C06 界面规则", _json("C06", 5), t.RuleConfig),
     ("C06 审批流样例一的内容", FLOW_1["content"], t.ApprovalFlowConfig),
     ("C06 审批流样例二的内容", FLOW_2["content"], t.ApprovalFlowConfig),
-    ("C06 role", _json("C06", 10), t.RoleConfig),
-    ("C06 menu", _json("C06", 11), t.MenuConfig),
-    ("C06 dict", _json("C06", 12), t.DictConfig),
-    ("C06 lookup", _json("C06", 13), t.LookupConfig),
-    ("C06 正文例子：不按关键字搜索的 Lookup", _broken(["keywordColumns"], [], _json("C06", 13)), t.LookupConfig),
+    ("C06 审批流样例三的内容", FLOW_3["content"], t.ApprovalFlowConfig),
+    ("C06 role", _json("C06", 11), t.RoleConfig),
+    ("C06 menu", _json("C06", 12), t.MenuConfig),
+    ("C06 dict", _json("C06", 13), t.DictConfig),
+    ("C06 lookup", _json("C06", 14), t.LookupConfig),
+    ("C06 正文例子：不按关键字搜索的 Lookup", _broken(["keywordColumns"], [], _json("C06", 14)), t.LookupConfig),
     ("C06 正文例子：只监听新增、删除的审批流", _broken(["trigger"], {"operations": ["add", "delete"], "changedFields": {"COST_MATERIAL": []}},
                                          FLOW_1["content"]), t.ApprovalFlowConfig),
-    ("C06 export", _json("C06", 14), t.ExportConfig),
+    ("C06 export", _json("C06", 15), t.ExportConfig),
 ]
 
 
@@ -325,6 +328,9 @@ def test_constructed_values_dump_in_sample_shape() -> None:
     lost = t.ViewRow(op="none", cells=[t.ViewCell(before=None, after=None)], missing=t.MissingRecord(record_key=None, label=None))
     assert t.dump_wire(t.ViewRow, lost) == {"op": "none", "cells": [{"before": None, "after": None}],
                                             "missing": {"recordKey": None, "label": None}}
+    # 单据还在、明细主键为空时（C08 第 9 节），missing 带单据号和名称
+    partly = {"op": "none", "cells": [{"before": None, "after": None}], "missing": {"recordKey": "2552", "label": "250mg乙酰唑胺片"}}
+    assert t.dump_wire(t.ViewRow, t.parse_wire(t.ViewRow, partly)) == partly
     table = t.ViewDetailTable(title="受影响的成本单", columns=[], merged_columns=[], targets=[], rows=[])
     assert t.dump_wire(t.ViewDetailTable, table) == {"title": "受影响的成本单", "columns": [], "mergedColumns": [], "targets": [], "rows": []}
     assert t.dump_wire(t.EvaluationResult, t.EvalComputed(ok=True, rows=[], effects=[])) == {"ok": True, "rows": [], "effects": []}
@@ -355,7 +361,7 @@ def test_c06_documented_defaults() -> None:
     assert t.parse_wire(t.DisplayDetail, {"title": "原辅料", "rows": "source.COST_MATERIAL"}).rows_filter == "changed"
     lookup = t.parse_wire(t.LookupSetting, {"code": "GOODS", "fill": {}})
     assert (lookup.multiple, lookup.fill_back, lookup.filter) == (False, True, None)
-    export = t.parse_wire(t.ExportConfig, {k: v for k, v in _json("C06", 14).items() if k not in ("font", "detailLayout")})
+    export = t.parse_wire(t.ExportConfig, {k: v for k, v in _json("C06", 15).items() if k not in ("font", "detailLayout")})
     assert (export.font, export.detail_layout) == ("Calibri", "perMaster")
     assert t.parse_wire(t.OperationConfig, {"label": "保存", "kind": "save", "propagation": "continue"}).row_not_found == "skip"
     flow = {k: v for k, v in FLOW_1["content"].items() if k not in ("propagation", "freeze")}
@@ -582,9 +588,9 @@ INVALID = [
     ("操作缺少 propagation", t.OperationConfig, _broken(["propagation"], _DELETE, _json("C06", 3))),
     ("规则缺少 order", t.RuleConfig, _broken(["order"], _DELETE, _json("C06", 4))),
     ("审批流参数缺少 required", t.ApprovalFlowConfig, _broken(["params", 1, "required"], _DELETE, _FLOW_EXAMPLES)),
-    ("角色缺少 admin", t.RoleConfig, _broken(["admin"], _DELETE, _json("C06", 10))),
-    ("字典项缺少 order", t.DictConfig, _broken(["items", 0, "order"], _DELETE, _json("C06", 12))),
-    ("Lookup 缺少 keywordColumns", t.LookupConfig, _broken(["keywordColumns"], _DELETE, _json("C06", 13))),
+    ("角色缺少 admin", t.RoleConfig, _broken(["admin"], _DELETE, _json("C06", 11))),
+    ("字典项缺少 order", t.DictConfig, _broken(["items", 0, "order"], _DELETE, _json("C06", 13))),
+    ("Lookup 缺少 keywordColumns", t.LookupConfig, _broken(["keywordColumns"], _DELETE, _json("C06", 14))),
     ("Lookup 筛选写成空对象", t.PageConfig, _broken(["master", "fields", "GOODSID", "lookup", "filter"], {}, _PAGE_FIELD_EXAMPLES)),
     ("展示列的字段写法不对", t.ApprovalFlowConfig,
      _broken(["display", "details", 0, "columns", 0, "field"], "COST_MATERIAL.GOODSID", FLOW_1["content"])),

@@ -17,7 +17,7 @@ from cost_platform.contracts.types import ConfigDraft, ErrorCode, PlatformError
 
 from .support import CT_PAGE_A, CT_SAVE_A, CT_TABLE, ct_entity, ct_page, ct_save_operation, doc_json
 
-DICT = ConfigDraft(type="dict", key="CT_STATUS", name="状态", content=doc_json("C06", 12))
+DICT = ConfigDraft(type="dict", key="CT_STATUS", name="状态", content=doc_json("C06", 13))
 DICT_CHANGED = ConfigDraft(type="dict", key="CT_STATUS", name="状态（改）",
                            content={"items": [{"value": "9", "label": "改过", "order": 1}]})
 LOOKUP = ConfigDraft(type="lookup", key="CT_GOODS_LOOKUP", name="物料",
@@ -167,7 +167,16 @@ class ConfigImporterContract:
             paths.setdefault(d.config_key or "", []).append(d.path or "")
         assert set(paths) >= {"CT_BROKEN", CT_PAGE_A}
         assert all(p.startswith(("items[1].", "items[1][")) for p in paths["CT_BROKEN"])
-        assert all(p.startswith(("items[3].", "items[3][")) for p in paths[CT_PAGE_A])
+        # 引用位置用 C06 的字段名，指到引用所在的字段：页面引用的实体在 master.entity，保存操作在 writableFields、impact 中引用实体
+        assert "items[3].master.entity" in paths[CT_PAGE_A]
+        assert paths[CT_SAVE_A] and all(p.startswith(("items[4].writableFields", "items[4].impact")) for p in paths[CT_SAVE_A])
+
+    def test_detail_path_counts_skipped_items(self, harness: ConfigImporterHarness) -> None:
+        """序号是这一项在整批中的位置：前面被跳过的已有项也计入。"""
+        _import(harness, [DICT])
+        error = _rejected(harness, [DICT, BROKEN])
+        assert [d.config_key for d in error.details] == ["CT_BROKEN"]
+        assert all(_at(d.path or "", 1) for d in error.details)
 
 
 class FakeConfigImporterHarness:
