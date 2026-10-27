@@ -23,7 +23,7 @@
 - WP-02：任一步失败，整个事务回滚，命令记录一起撤销，同一请求键可以重新提交。
 - WP-03：按（实体、主键）排序，用 `SELECT … FOR UPDATE WAIT 5` 锁定涉及的主表行（秒数取 `.env` 的 `PLATFORM_LOCK_WAIT_SECONDS`），同一条 SQL 中带出行权限的判断列；等锁超时返回 409 DOCUMENT_BUSY；有一行超出行权限时返回 403 PERMISSION_DENIED。
 - WP-04：合并时只改 `changes` 中出现的字段；新值与当前值相同不算变化，数值按数值相等比较。Patch 中出现计算字段、只读的 ERP 列（C06 第 2 节）、`erpRow.column`、主键、主从关联字段或不可写字段时，返回 422 FIELD_NOT_WRITABLE。
-- WP-05：要修改或删除的行已不存在时，按操作的 `rowNotFound` 处理：默认跳过并写入结果的 `skipped`；配置为 `reject` 时返回 409 ROW_NOT_FOUND。
+- WP-05：要修改或删除的行（按钮操作为选中的行，C02 第 1 节）已不存在时，按操作的 `rowNotFound` 处理：默认跳过并写入结果的 `skipped`；配置为 `reject` 时返回 409 ROW_NOT_FOUND。
 - WP-06：删除主表行时，在同一事务中先物理删除它的全部明细，再删除主表行。
 - WP-14：实体有 `erpRow` 时，按加锁读到的当前值判断每一行是否为 ERP 行，修改 ERP 行的 ERP 列返回 422 FIELD_NOT_WRITABLE；新增行的 `erpRow.column` 由写入管道设为 `localValue`。
 - WP-15：写入数值前处理小数位：最多保留 8 位小数，按第 9 位四舍五入（负数按绝对值四舍五入，与 Oracle 相同）；列定义了小数位（`NUMBER(p,s)`）且小于 8 时，按列的小数位四舍五入，与 Oracle 存储的结果一致。命令结果中的受影响行和审计差异使用处理后的值，与数据库相同。计算过程中的值不受影响。
