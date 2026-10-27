@@ -159,15 +159,15 @@ class ConfigImporterContract:
         assert "CT_BROKEN" in {d.config_key for d in error.details}
 
     def test_detail_path_starts_with_batch_position(self, harness: ConfigImporterHarness) -> None:
-        """每条明细的 `path` 以 `items[<序号>]` 开头，序号是这一项在本批中的位置（从 0 起）；
-        内容不符合 C06 结构的项，后面接内容中的位置（C08 第 4 节）。"""
+        """每条明细的 `path` 以 `items[<序号>]` 开头，序号是这一项在本批中的位置（从 0 起）；内容不符合 C06 结构、
+        引用不存在的项，后面接内容中的位置（C08 第 4 节）。"""
         error = _rejected(harness, [DICT, BROKEN, LOOKUP, PAGE, OPERATION])
         paths: dict[str, list[str]] = {}
         for d in error.details:
             paths.setdefault(d.config_key or "", []).append(d.path or "")
         assert set(paths) >= {"CT_BROKEN", CT_PAGE_A}
         assert all(p.startswith(("items[1].", "items[1][")) for p in paths["CT_BROKEN"])
-        assert all(_at(p, 3) for p in paths[CT_PAGE_A])
+        assert all(p.startswith(("items[3].", "items[3][")) for p in paths[CT_PAGE_A])
 
 
 class FakeConfigImporterHarness:

@@ -41,59 +41,65 @@ def _accessible_menus(items: list[MenuItem], pages: set[str]) -> list[MenuItem]:
     return kept
 
 
-def _references(config_type: str, content: Any) -> list[tuple[str, str]]:
-    """配置内容按编码引用的其他配置项：（类型、编码）。只看配置项之间的引用，不看字段、表和列。"""
-    refs: list[tuple[str, str]] = []
+def _references(config_type: str, content: Any) -> list[tuple[str, str, str]]:
+    """配置内容按编码引用的其他配置项：（类型、编码、引用在内容中的位置）。位置按 C03 的写法，以 `.` 开头，
+    例如 `.master.entity`、`.levels[0].entries[1].approvers[0].role`。只看配置项之间的引用，不看字段、表和列。"""
+    refs: list[tuple[str, str, str]] = []
 
-    def actions(steps: Iterable[Any]) -> None:
-        for step in steps:
+    def actions(steps: Iterable[Any], at: str) -> None:
+        for i, step in enumerate(steps):
+            here = f"{at}[{i}]"
             if isinstance(step, UpdateTargets):
-                for target in step.targets:
-                    refs.append(("entity", target.entity))
+                for j, target in enumerate(step.targets):
+                    refs.append(("entity", target.entity, f"{here}.targets[{j}].entity"))
                     if target.detail_entity:
-                        refs.append(("entity", target.detail_entity))
+                        refs.append(("entity", target.detail_entity, f"{here}.targets[{j}].detailEntity"))
             elif isinstance(step, UpdateRecords):
-                refs.append(("entity", step.find.entity))
+                refs.append(("entity", step.find.entity, f"{here}.find.entity"))
             elif isinstance(step, EscapeHatch):
-                refs.append(("operation", step.operation))
+                refs.append(("operation", step.operation, f"{here}.operation"))
 
     if config_type == "entity":
-        refs += [("entity", d.entity) for d in content.details]
-        refs += [("page", p) for rule in content.approval_required for p in rule.source_pages]
+        refs += [("entity", d.entity, f".details[{i}].entity") for i, d in enumerate(content.details)]
+        refs += [("page", p, f".approvalRequired[{i}].sourcePages[{j}]")
+                 for i, rule in enumerate(content.approval_required) for j, p in enumerate(rule.source_pages)]
     elif config_type == "page":
-        refs.append(("operation", content.save_operation))
-        for area in [content.master, *content.details]:
-            refs.append(("entity", area.entity))
-            refs += [("operation", b.operation) for b in area.buttons if b.operation]
-            for setting in area.fields.values():
+        refs.append(("operation", content.save_operation, ".saveOperation"))
+        areas = [(".master", content.master), *((f".details[{i}]", d) for i, d in enumerate(content.details))]
+        for at, area in areas:
+            refs.append(("entity", area.entity, f"{at}.entity"))
+            refs += [("operation", b.operation, f"{at}.buttons[{j}].operation") for j, b in enumerate(area.buttons) if b.operation]
+            for name, setting in area.fields.items():
                 if setting.lookup:
-                    refs.append(("lookup", setting.lookup.code))
+                    refs.append(("lookup", setting.lookup.code, f"{at}.fields.{name}.lookup.code"))
                 if setting.dict_type:
-                    refs.append(("dict", setting.dict_type))
+                    refs.append(("dict", setting.dict_type, f"{at}.fields.{name}.dictType"))
     elif config_type == "operation":
-        refs += [("entity", e) for e in [*content.writable_fields, *content.impact]]
-        actions(content.actions)
+        refs += [("entity", e, f".writableFields.{e}") for e in content.writable_fields]
+        refs += [("entity", e, f".impact[{i}]") for i, e in enumerate(content.impact)]
+        actions(content.actions, ".actions")
     elif config_type == "rule":
-        refs.append(({"entity": "entity", "operation": "operation", "page": "page"}[content.layer], content.target))
+        refs.append(({"entity": "entity", "operation": "operation", "page": "page"}[content.layer], content.target, ".target"))
     elif config_type == "approvalFlow":
-        refs.append(("operation", content.source_operation))
-        refs += [("entity", e) for e in content.trigger.changed_fields]
-        refs += [("role", a.role) for level in content.levels for entry in level.entries for a in entry.approvers
-                 if isinstance(a, RoleApprover)]
-        refs += [("entity", f.entity) for f in (content.targets.find if content.targets else [])]
-        refs += [("entity", f.entity) for f in content.freeze]
-        actions(content.after_approval)
+        refs.append(("operation", content.source_operation, ".sourceOperation"))
+        refs += [("entity", e, f".trigger.changedFields.{e}") for e in content.trigger.changed_fields]
+        refs += [("role", a.role, f".levels[{i}].entries[{j}].approvers[{k}].role")
+                 for i, level in enumerate(content.levels) for j, entry in enumerate(level.entries)
+                 for k, a in enumerate(entry.approvers) if isinstance(a, RoleApprover)]
+        refs += [("entity", f.entity, f".targets.find[{i}].entity") for i, f in enumerate(content.targets.find if content.targets else [])]
+        refs += [("entity", f.entity, f".freeze[{i}].entity") for i, f in enumerate(content.freeze)]
+        actions(content.after_approval, ".afterApproval")
     elif config_type == "role":
-        refs += [("page", p) for p in content.pages]
+        refs += [("page", p, f".pages.{p}") for p in content.pages]
     elif config_type == "menu":
-        def walk(items: Iterable[MenuItem]) -> None:
-            for item in items:
+        def walk(items: Iterable[MenuItem], at: str) -> None:
+            for i, item in enumerate(items):
                 if item.page_code:
-                    refs.append(("page", item.page_code))
-                walk(item.children)
-        walk(content.items)
+                    refs.append(("page", item.page_code, f"{at}[{i}].pageCode"))
+                walk(item.children, f"{at}[{i}].children")
+        walk(content.items, ".items")
     elif config_type == "export":
-        refs.append(("page", content.page))
+        refs.append(("page", content.page, ".page"))
     return refs
 
 
@@ -230,7 +236,8 @@ class FakeConfigImporter(Scripted):
     Lookup、字典）在已有配置或本批其他项中存在。有一项不通过时抛 422 VALIDATION_FAILED，明细按本批中的顺序列出每个
     不通过的项，说明用中文，`path` 以 `items[<序号>]` 开头，什么都不写。已有的配置项可以用 `put` 预设。
 
-    限制：结构不合法的项只列出第一处错误；引用不存在的明细，`path` 只给 `items[<序号>]`，不给内容中引用所在的位置。
+    结构不合法和引用不存在的明细，`path` 在 `items[<序号>]` 后面接内容中的位置；同批重复只有 `items[<序号>]`。
+    限制：结构不合法的项只列出第一处错误。
 
     C06 第 10 节的其余校验（字段、表和列、表达式、SQL 等）由 config 负责，这里不做。
     """
@@ -267,10 +274,10 @@ class FakeConfigImporter(Scripted):
                 problems.append((index, ErrorDetail(message=_structure_message(first["type"], first["loc"]), config_type=item.type,
                                                     config_key=item.key, path=_item_path(index, first["loc"]))))
                 continue
-            for ref_type, ref_key in dict.fromkeys(_references(item.type, content)):
+            for ref_type, ref_key, at in _references(item.type, content):
                 if (ref_type, ref_key) not in available:
                     problems.append((index, ErrorDetail(message=f"引用的 {ref_type} {ref_key} 不存在", config_type=item.type,
-                                                        config_key=item.key, path=_item_path(index, ()))))
+                                                        config_key=item.key, path=f"items[{index}]{at}")))
         if problems:
             raise PlatformError(ErrorCode.VALIDATION_FAILED, "配置校验不通过",
                                 [detail for _, detail in sorted(problems, key=lambda p: p[0])])

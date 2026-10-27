@@ -31,7 +31,8 @@ from .support import (
 )
 
 # 同一个操作的三条审批流按 FIRST、SECOND、THIRD 的先后创建；编码正序为 THIRD、FIRST、SECOND，倒序为 SECOND、FIRST、THIRD，
-# 都与创建先后不同，按编码或保存先后排列的实现都不能通过
+# 都与创建先后不同，按编码排列的实现不能通过；test_created_order_survives_resave 再保存一次 FIRST，
+# 按最后一次保存的先后排列（例如 ORDER BY 更新时间）的实现也不能通过
 FIRST = ct_flow("CT_FLOW_M", CT_SAVE_A, "第一个建的审批流")
 SECOND = ct_flow("CT_FLOW_Z", CT_SAVE_A, "第二个建的审批流")
 THIRD = ct_flow("CT_FLOW_A", CT_SAVE_A, "第三个建的审批流")
@@ -105,6 +106,13 @@ class ConfigSnapshotReaderContract:
         assert [f.levels[0].entries[0].name for f in flows] == ["第一个建的审批流", "第二个建的审批流", "第三个建的审批流"]
         assert {f.source_operation for f in flows} == {CT_SAVE_A}
         assert flows[0].created_seq < flows[1].created_seq < flows[2].created_seq
+
+    def test_created_order_survives_resave(self, harness: ConfigSnapshotReaderHarness) -> None:
+        """重新保存先建的审批流后，先后仍按创建：`createdSeq` 第一次保存时分配，之后不变（C06 7.1）。"""
+        save_all(harness)
+        harness.save([ct_flow("CT_FLOW_M", CT_SAVE_A, "第一个建的审批流（改）")])
+        flows = harness.reader.read(CT_ROLE_A).approval_flows(CT_SAVE_A)
+        assert [f.levels[0].entries[0].name for f in flows] == ["第一个建的审批流（改）", "第二个建的审批流", "第三个建的审批流"]
 
     def test_page_view(self, snapshot: ConfigSnapshot) -> None:
         view = snapshot.page_view(CT_PAGE_A)
