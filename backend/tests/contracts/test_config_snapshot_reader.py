@@ -30,8 +30,11 @@ from .support import (
     without_created_seq,
 )
 
-EARLY = ct_flow("CT_FLOW_EARLY", CT_SAVE_A, "先建的审批流")
-LATE = ct_flow("CT_FLOW_LATE", CT_SAVE_A, "后建的审批流")
+# 同一个操作的三条审批流按 FIRST、SECOND、THIRD 的先后创建；编码正序为 THIRD、FIRST、SECOND，倒序为 SECOND、FIRST、THIRD，
+# 都与创建先后不同，按编码或保存先后排列的实现都不能通过
+FIRST = ct_flow("CT_FLOW_M", CT_SAVE_A, "第一个建的审批流")
+SECOND = ct_flow("CT_FLOW_Z", CT_SAVE_A, "第二个建的审批流")
+THIRD = ct_flow("CT_FLOW_A", CT_SAVE_A, "第三个建的审批流")
 OTHER = ct_flow("CT_FLOW_OTHER", CT_SAVE_B, "另一个操作的审批流")
 
 
@@ -62,9 +65,9 @@ class ConfigSnapshotReaderHarness(Protocol):
 
 
 def save_all(harness: ConfigSnapshotReaderHarness) -> None:
-    """依次保存基础配置和三条审批流，审批流的创建先后为 EARLY、LATE、OTHER。"""
+    """依次保存基础配置和四条审批流，审批流的创建先后为 FIRST、SECOND、OTHER、THIRD。"""
     harness.save(ct_base_items())
-    for flow in (EARLY, LATE, OTHER):
+    for flow in (FIRST, SECOND, OTHER, THIRD):
         harness.save([flow])
 
 
@@ -99,9 +102,9 @@ class ConfigSnapshotReaderContract:
 
     def test_approval_flows_by_operation_in_created_order(self, snapshot: ConfigSnapshot) -> None:
         flows = snapshot.approval_flows(CT_SAVE_A)
-        assert [f.levels[0].entries[0].name for f in flows] == ["先建的审批流", "后建的审批流"]
+        assert [f.levels[0].entries[0].name for f in flows] == ["第一个建的审批流", "第二个建的审批流", "第三个建的审批流"]
         assert {f.source_operation for f in flows} == {CT_SAVE_A}
-        assert flows[0].created_seq < flows[1].created_seq
+        assert flows[0].created_seq < flows[1].created_seq < flows[2].created_seq
 
     def test_page_view(self, snapshot: ConfigSnapshot) -> None:
         view = snapshot.page_view(CT_PAGE_A)

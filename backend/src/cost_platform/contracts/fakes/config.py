@@ -231,7 +231,9 @@ class FakeConfigImporter(Scripted):
     同一批中类型和编码相同的项都不通过，与已有配置项相同时也一样。其余各项中，与已有配置项类型和编码相同的不覆盖，
     列入 `skipped`，也不校验；剩下的检查两件事：内容符合 C06 的结构；按编码引用的配置项（实体、操作、页面、角色、
     Lookup、字典）在已有配置或本批其他项中存在。有一项不通过时抛 422 VALIDATION_FAILED，明细按本批中的顺序列出每个
-    不通过的项，`path` 以 `items[<序号>]` 开头，什么都不写。已有的配置项可以用 `put` 预设。
+    不通过的项，说明用中文，`path` 以 `items[<序号>]` 开头，什么都不写。已有的配置项可以用 `put` 预设。
+
+    限制：结构不合法的项只列出第一处错误；引用不存在的明细，`path` 只给 `items[<序号>]`，不给内容中引用所在的位置。
 
     C06 第 10 节的其余校验（字段、表和列、表达式、SQL 等）由 config 负责，这里不做。
     """
@@ -265,10 +267,10 @@ class FakeConfigImporter(Scripted):
                 content = parse_config_content(item.type, item.content)
             except ValidationError as e:
                 first = e.errors()[0]
-                problems.append((index, ErrorDetail(message=str(first["msg"]), config_type=item.type, config_key=item.key,
-                                                    path=_item_path(index, first["loc"]))))
+                problems.append((index, ErrorDetail(message=_structure_message(first["type"], first["loc"]), config_type=item.type,
+                                                    config_key=item.key, path=_item_path(index, first["loc"]))))
                 continue
-            for ref_type, ref_key in _references(item.type, content):
+            for ref_type, ref_key in dict.fromkeys(_references(item.type, content)):
                 if (ref_type, ref_key) not in available:
                     problems.append((index, ErrorDetail(message=f"引用的 {ref_type} {ref_key} 不存在", config_type=item.type,
                                                         config_key=item.key, path=_item_path(index, ()))))
@@ -281,6 +283,21 @@ class FakeConfigImporter(Scripted):
                             skipped=[(f"config:{item.type}/{item.key}", "已有同类型、同编码的配置项，没有覆盖") for item in skipped])
 
 
+def _loc_text(loc: Iterable[int | str]) -> str:
+    """内容中的位置，C03 的写法：`.levels[0].entries`。"""
+    return "".join(f"[{p}]" if isinstance(p, int) else f".{p}" for p in loc)
+
+
 def _item_path(index: int, loc: Iterable[int | str]) -> str:
     """错误明细的 `path`：本批中的位置 `items[<序号>]`，后面接内容中的位置，例如 `items[3].levels[0].entries`（C08 第 4 节）。"""
-    return f"items[{index}]" + "".join(f"[{p}]" if isinstance(p, int) else f".{p}" for p in loc)
+    return f"items[{index}]{_loc_text(loc)}"
+
+
+def _structure_message(kind: str, loc: Iterable[int | str]) -> str:
+    """内容不符合 C06 结构时给用户看的中文说明（C03 第 1 节），迁移的拒绝清单直接使用（MG-11）。"""
+    where = _loc_text(loc).lstrip(".") or "内容"
+    if kind == "missing":
+        return f"缺少 {where}"
+    if kind == "extra_forbidden":
+        return f"不允许出现 {where}"
+    return f"{where} 的值不合法"

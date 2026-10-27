@@ -56,8 +56,8 @@ class RelatedQueryHarness(Protocol):
     def lost_record_case(self) -> Case:
         """查出的行中有主键为空的关联 SQL（例如明细还在、所属单据已被删除），它的来源单据和应找到的目标。
 
-        `rowKeyColumns` 不为空，`labelColumn` 不在 `displayColumns` 中；结果中至少一行完整，至少一行
-        `recordKeyColumn` 为空，至少一行 `recordKeyColumn` 有值而 `rowKeyColumns` 中的列为空。
+        `rowKeyColumns` 不为空，`labelColumn` 不在 `displayColumns` 中；结果中至少一行各列都有值，至少一行主键完整而
+        `labelColumn` 为空，至少一行 `recordKeyColumn` 为空，至少一行 `recordKeyColumn` 有值而 `rowKeyColumns` 中的列为空。
         """
         ...
 
@@ -130,7 +130,9 @@ class RelatedQueryContract:
         finder, source, expected = harness.lost_record_case()
         assert isinstance(finder, SqlFinder) and finder.row_key_columns, "harness 的查找方式不符合要求"
         assert finder.label_column is not None and finder.label_column not in finder.display_columns, "harness 的查找方式不符合要求"
-        assert any(not o.missing for o in expected), "harness 的结果中没有完整的行"
+        assert any(not o.missing and None not in o.display.values() for o in expected), "harness 的结果中没有各列都有值的行"
+        assert any(not o.missing and o.display.get(finder.label_column) is None for o in expected), \
+            "harness 的结果中没有主键完整而 labelColumn 为空的行：只有主键为空才是记录已不存在"
         assert any(o.missing and o.record_key is None for o in expected), "harness 的结果中没有单据主键为空的行"
         assert any(o.missing and o.record_key is not None for o in expected), "harness 的结果中没有只有明细主键为空的行"
         found = harness.query.find(harness.uow, finder, source)
@@ -183,13 +185,16 @@ class FakeRelatedQueryHarness:
         self.query.respond_rows(self._missing, [rows[0], {"PRODUCT_NAME": "乙"}])
         self._missing_row_key = _SQL.model_copy(update={"sql": _SQL.sql + " AND 1 = 1", "row_key_columns": ["DTL_ID"]})
         self.query.respond_rows(self._missing_row_key, [{**rows[0], "DTL_ID": Decimal("5001")}, rows[1]])
-        # 预设的三行：完整的一行；成本单号为空（明细还在、所属成本单已被删除）；成本单号有值、明细主键为空
+        # 预设的四行：各列都有值；主键完整、产品名为空（照常返回）；成本单号为空（明细还在、所属成本单已被删除）；
+        # 成本单号有值、明细主键为空
         lost_rows = [{"DOC_ID": Decimal("2001"), "DTL_ID": Decimal("5001"), "PRODUCT_NAME": "甲"},
+                     {"DOC_ID": Decimal("2004"), "DTL_ID": Decimal("5009"), "PRODUCT_NAME": None},
                      {"DOC_ID": None, "DTL_ID": Decimal("5007"), "PRODUCT_NAME": None},
                      {"DOC_ID": Decimal("2003"), "DTL_ID": None, "PRODUCT_NAME": "丁"}]
         self._lost = _LOST
         self._lost_expected = [
             TargetObject("COST_PINGGU", "2001", ("5001",), {"DOC_ID": Decimal("2001"), "PRODUCT_NAME": "甲"}, False),
+            TargetObject("COST_PINGGU", "2004", ("5009",), {"DOC_ID": Decimal("2004"), "PRODUCT_NAME": None}, False),
             TargetObject("COST_PINGGU", None, (), {"DOC_ID": None, "PRODUCT_NAME": None}, True),
             TargetObject("COST_PINGGU", "2003", (), {"DOC_ID": Decimal("2003"), "PRODUCT_NAME": "丁"}, True)]
         self.query.respond_rows(_LOST, lost_rows, source=_GOODS.ref)

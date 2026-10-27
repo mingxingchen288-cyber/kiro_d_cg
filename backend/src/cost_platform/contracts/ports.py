@@ -190,7 +190,8 @@ class RulesEngine(Protocol):
 
 class RelatedQuery(Protocol):
     def find(self, uow: UnitOfWork, finder: TargetFinderConfig, source: DocumentData) -> list[TargetObject]:
-        """finder 为审批流 targets.find 或 freeze 中按关联键、关联 SQL 查找的一项；只读，参数用绑定变量。
+        """finder 为审批流 targets.find 或 freeze 中按关联键、关联 SQL 查找的一项，或通用动作 updateRecords 的 find；
+        只读，参数用绑定变量。
 
         关联 SQL 查出的行中主键为空的，返回为 `missing` 的对象，不报错；缺少主键列时为 500（C08 第 9 节）。
         """
