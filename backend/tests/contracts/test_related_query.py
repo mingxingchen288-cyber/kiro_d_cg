@@ -49,6 +49,10 @@ class RelatedQueryHarness(Protocol):
         """一个查出的行缺少 `recordKeyColumn` 的关联 SQL 和它的来源单据。"""
         ...
 
+    def missing_row_key_column_case(self) -> tuple[SqlFinder, DocumentData]:
+        """`rowKeyColumns` 不为空、查出的行却缺少其中一列的关联 SQL 和它的来源单据（保存后表或视图变了）。"""
+        ...
+
     def lost_record_case(self) -> Case:
         """查出的行中有主键为空的关联 SQL（例如明细还在、所属单据已被删除），它的来源单据和应找到的目标。
 
@@ -110,9 +114,13 @@ class RelatedQueryContract:
         harness.query.find(harness.uow, finder, source)
         assert source == before
 
-    def test_missing_record_key_fails_whole_query(self, harness: RelatedQueryHarness) -> None:
-        """结果缺少 recordKeyColumn 时整个查找失败（500 INTERNAL_ERROR），不返回部分结果。"""
-        finder, source = harness.missing_record_key_case()
+    @pytest.mark.parametrize("case_name", ["missing_record_key_case", "missing_row_key_column_case"])
+    def test_missing_key_column_fails_whole_query(self, harness: RelatedQueryHarness, case_name: str) -> None:
+        """结果缺少 recordKeyColumn 或 rowKeyColumns 中的列时整个查找失败（500 INTERNAL_ERROR），不返回部分结果，
+        也不当成记录已不存在（C08 第 9 节）。"""
+        finder, source = getattr(harness, case_name)()
+        if case_name == "missing_row_key_column_case":
+            assert finder.row_key_columns, "harness 的查找方式不符合要求"
         with pytest.raises(PlatformError) as caught:
             harness.query.find(harness.uow, finder, source)
         assert caught.value.code is ErrorCode.INTERNAL_ERROR
@@ -173,6 +181,8 @@ class FakeRelatedQueryHarness:
         self.query.respond_rows(_SQL, rows, source=_GOODS.ref)
         self._missing = _SQL.model_copy(update={"sql": _SQL.sql.replace("M.DOCID AS DOC_ID, ", "")})
         self.query.respond_rows(self._missing, [rows[0], {"PRODUCT_NAME": "乙"}])
+        self._missing_row_key = _SQL.model_copy(update={"sql": _SQL.sql + " AND 1 = 1", "row_key_columns": ["DTL_ID"]})
+        self.query.respond_rows(self._missing_row_key, [{**rows[0], "DTL_ID": Decimal("5001")}, rows[1]])
         # 预设的三行：完整的一行；成本单号为空（明细还在、所属成本单已被删除）；成本单号有值、明细主键为空
         lost_rows = [{"DOC_ID": Decimal("2001"), "DTL_ID": Decimal("5001"), "PRODUCT_NAME": "甲"},
                      {"DOC_ID": None, "DTL_ID": Decimal("5007"), "PRODUCT_NAME": None},
@@ -196,6 +206,9 @@ class FakeRelatedQueryHarness:
     def missing_record_key_case(self) -> tuple[SqlFinder, DocumentData]:
         return self._missing, copy.deepcopy(_GOODS)
 
+    def missing_row_key_column_case(self) -> tuple[SqlFinder, DocumentData]:
+        return self._missing_row_key, copy.deepcopy(_GOODS)
+
     def lost_record_case(self) -> Case:
         return self._lost, copy.deepcopy(_GOODS), list(self._lost_expected)
 
@@ -213,18 +226,6 @@ class TestFakeRelatedQuery(RelatedQueryContract):
 def test_fake_without_data_finds_nothing() -> None:
     harness = FakeRelatedQueryHarness()
     assert harness.query.find(harness.uow, _RELATION, _GOODS) == []
-    harness.close()
-
-
-def test_fake_sql_rows_without_row_key_column() -> None:
-    """替代实现：缺少 rowKeyColumns 中的列，与缺少 recordKeyColumn 一样整个查找失败（C08 第 9 节，待确认第 1 项）。"""
-    harness = FakeRelatedQueryHarness()
-    finder = _SQL.model_copy(update={"sql": _SQL.sql + " AND 1 = 1", "row_key_columns": ["DTL_ID"]})
-    good = {"DOC_ID": Decimal("2001"), "PRODUCT_NAME": "甲", "DTL_ID": Decimal("1")}
-    harness.query.respond_rows(finder, [good, {"DOC_ID": Decimal("2002"), "PRODUCT_NAME": "乙"}])
-    with pytest.raises(PlatformError) as caught:
-        harness.query.find(harness.uow, finder, _GOODS)
-    assert caught.value.code is ErrorCode.INTERNAL_ERROR
     harness.close()
 
 
