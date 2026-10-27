@@ -41,24 +41,40 @@ from cost_platform.contracts.types import Prompt as PromptItem
 from .support import DOCS, context, sample_command
 
 
-def _stage_table() -> dict[str, frozenset[str]]:
-    """C08 第 6 节的阶段表：阶段名称 -> 可以写的 CommandState 字段。"""
+def _stage_rows() -> list[list[str]]:
+    """C08 第 6 节阶段表的各行：阶段、实现模块、读取、写入。"""
     text = next(DOCS.glob("C08-*.md")).read_text(encoding="utf-8")
     section = text.split("## 6. 管道阶段", 1)[1].split("\n## ", 1)[0]
-    table: dict[str, frozenset[str]] = {}
+    rows = []
     for line in section.splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if not line.startswith("|") or len(cells) != 4 or cells[0] in ("阶段", "---"):
-            continue
-        written = cells[3].split("；", 1)[0]
-        table[cells[0]] = frozenset() if written.startswith("无") else frozenset(re.findall(r"`([a-z_]+)`", written))
+        if line.startswith("|") and len(cells) == 4 and cells[0] not in ("阶段", "---"):
+            rows.append(cells)
+    return rows
+
+
+def _stage_table() -> dict[str, frozenset[str]]:
+    """阶段名称 -> 可以写的 CommandState 字段（"写入"列分号前的部分）。"""
+    table: dict[str, frozenset[str]] = {}
+    for name, _, _, written in _stage_rows():
+        head = written.split("；", 1)[0]
+        table[name] = frozenset() if head.startswith("无") else frozenset(re.findall(r"`([a-z_]+)`", head))
     return table
+
+
+def _stage_errors() -> dict[str, ErrorCode]:
+    """阶段名称 -> 不通过时抛的错误码（"写入"列中"抛 XXX"的部分）。"""
+    errors = {}
+    for name, _, _, written in _stage_rows():
+        codes = re.findall(r"抛 ([A-Z_]+)", written)
+        if codes:
+            errors[name] = ErrorCode(codes[0])
+    return errors
 
 
 STAGE_WRITES = _stage_table()
 STATE_FIELDS = frozenset(f.name for f in dataclasses.fields(CommandState))
-# 阶段失败时 C08 第 6 节写明的错误码
-STAGE_ERRORS = {"操作权限": ErrorCode.PERMISSION_DENIED, "冻结检查": ErrorCode.FROZEN_BY_APPROVAL}
+STAGE_ERRORS = _stage_errors()
 
 
 @dataclass
@@ -73,12 +89,15 @@ class StageCase:
 
 
 class PipelineStageHarness(Protocol):
+    kinds: frozenset[str]
+    """提供方实现的阶段，取阶段表中的名称（例如 authz 为 {"操作权限"}）。"""
+
     def cases(self) -> list[StageCase]:
-        """阶段运行成功的场景。"""
+        """阶段运行成功的场景，`kinds` 中每个阶段至少一个。"""
         ...
 
     def failing_cases(self) -> list[StageCase]:
-        """阶段不通过、抛出 PlatformError 的场景；`操作权限`、`冻结检查` 的错误码必须是 C08 写明的。"""
+        """阶段不通过、抛出 PlatformError 的场景；`kinds` 中阶段表写明了错误码的阶段，每个至少一个。"""
         ...
 
 
@@ -92,8 +111,14 @@ class PipelineStageContract:
         raise NotImplementedError("由具体实现的测试类提供")
 
     def test_stage_kinds_are_in_table(self, harness: PipelineStageHarness) -> None:
+        assert harness.kinds and harness.kinds <= set(STAGE_WRITES), harness.kinds
         for case in harness.cases() + harness.failing_cases():
-            assert case.kind in STAGE_WRITES, case.kind
+            assert case.kind in harness.kinds, case.kind
+
+    def test_cases_cover_every_stage(self, harness: PipelineStageHarness) -> None:
+        """场景覆盖提供方实现的每个阶段；阶段表写明错误码的阶段另有不通过的场景。"""
+        assert {c.kind for c in harness.cases()} == set(harness.kinds)
+        assert {c.kind for c in harness.failing_cases()} >= set(harness.kinds) & set(STAGE_ERRORS)
 
     def test_stage_has_name(self, harness: PipelineStageHarness) -> None:
         for case in harness.cases():
@@ -162,7 +187,9 @@ def fresh_state() -> CommandState:
 
 
 class FakeStageHarness:
-    """各场景共用一个打开的事务，`close` 时回滚。"""
+    """替代实现覆盖阶段表中的全部 8 个阶段；各场景共用一个打开的事务，`close` 时回滚。"""
+
+    kinds = frozenset(STAGE_WRITES)
 
     def __init__(self) -> None:
         self._stack = ExitStack()
@@ -202,6 +229,7 @@ def test_table_covers_every_stage_and_known_fields() -> None:
     assert written <= set(_WRITERS)
     assert STAGE_WRITES["冻结检查"] == frozenset()
     assert STAGE_WRITES["触发审批"] == frozenset({"approvals", "pending_documents", "outcome", "notifications"})
+    assert STAGE_ERRORS == {"操作权限": ErrorCode.PERMISSION_DENIED, "冻结检查": ErrorCode.FROZEN_BY_APPROVAL}
 
 
 def test_detects_stage_writing_foreign_field() -> None:

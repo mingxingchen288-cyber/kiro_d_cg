@@ -2,16 +2,31 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from typing import Any, ClassVar
+
+from ..types import ExecutionContext
 
 
 @dataclass(frozen=True)
 class Call:
-    """替代实现收到的一次调用。"""
+    """替代实现收到的一次调用：`args` 是调用时参数的副本，调用方之后修改参数不影响记录。
+
+    事务（有 `connection` 属性的对象）、执行上下文和替代实现本身按原对象记录，不复制。
+    """
 
     method: str
     args: tuple[Any, ...]
+
+
+def _as_received(value: Any) -> Any:
+    if isinstance(value, Scripted | ExecutionContext) or hasattr(value, "connection"):
+        return value
+    try:
+        return copy.deepcopy(value)
+    except Exception:  # 不能复制的对象按原对象记录
+        return value
 
 
 class Scripted:
@@ -46,7 +61,7 @@ class Scripted:
 
     def _record(self, method: str, *args: Any) -> None:
         """记录调用；有预设的错误时抛出。"""
-        self.calls.append(Call(method, args))
+        self.calls.append(Call(method, tuple(_as_received(a) for a in args)))
         queue = self._failures.get(method)
         if not queue:
             return

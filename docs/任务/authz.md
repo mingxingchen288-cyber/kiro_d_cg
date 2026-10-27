@@ -11,5 +11,5 @@
 - 负责范围：`backend/src/cost_platform/authz/`。
 - 交付物：`PermissionChecker`；"操作权限"阶段。
 - 接入责任：T-AS-5 接入 write-pipeline 和 queries-export。
-- 验收标准（模拟验证）：通过契约测试；用旧系统"技术中心"角色在成本核算页的按钮权限转换后的样例：保存、复制可以，没有复制按钮的区域新增被拒；没有 `system:deleteRow` 时删除被拒；`["*"]` 全部通过；可视化和自定义 SQL 两种行权限都转成带绑定变量的 SQL 条件，`${userId}`、`${username}` 不拼进 SQL 文本；没有行权限时返回 None；来源为审批时不检查行权限和可写字段。条件在 d_cg 上的执行由 T-QE-1、T-WP-2 验证。
+- 验收标准（模拟验证）：通过 `PermissionChecker` 和"操作权限"阶段（`PipelineStage`）的契约测试（C08 第 14 节）；用旧系统"技术中心"角色在成本核算页的按钮权限转换后的样例：保存、复制可以，没有复制按钮的区域新增被拒；没有 `system:deleteRow` 时删除被拒；`["*"]` 全部通过；可视化和自定义 SQL 两种行权限都转成带绑定变量的 SQL 条件，`${userId}`、`${username}` 不拼进 SQL 文本；没有行权限时返回 None；来源为审批时不检查行权限和可写字段。条件在 d_cg 上的执行由 T-QE-1、T-WP-2 验证。
 - 状态与证据：未开始。

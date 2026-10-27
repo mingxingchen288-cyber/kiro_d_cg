@@ -32,10 +32,17 @@ MISSING = DocumentRef(entity="COST_PINGGU", record_key="1999")
 
 
 def _normalized(document: DocumentData | None) -> DocumentData | None:
-    """明细的顺序没有约定，按行主键排序后比较。"""
+    """明细的顺序没有约定，按行主键排序后比较；没有行的明细实体出不出现也没有约定（C08 第 1 节），去掉后比较。"""
     if document is None:
         return None
-    return replace(document, details={k: sorted(v, key=lambda r: r.row_key or "") for k, v in document.details.items()})
+    return replace(document, details={k: sorted(v, key=lambda r: r.row_key or "") for k, v in document.details.items() if v})
+
+
+def _all_numbers_decimal(document: DocumentData) -> bool:
+    """主表和明细中的数值都是 Decimal（C08 第 2 节），没有 float 和 int。"""
+    rows = [document.master, *(r for rows in document.details.values() for r in rows)]
+    numbers = [v for row in rows for v in row.values.values() if isinstance(v, int | float | Decimal) and not isinstance(v, bool)]
+    return bool(numbers) and all(isinstance(v, Decimal) for v in numbers)
 
 
 class DocumentReaderHarness(Protocol):
@@ -67,7 +74,8 @@ class DocumentReaderContract:
     def test_numbers_are_decimal(self, arranged: DocumentReaderHarness) -> None:
         loaded = arranged.reader.load(DOC_A.ref)
         assert loaded is not None
-        assert isinstance(loaded.master.values["QTY"], Decimal)
+        assert _all_numbers_decimal(loaded)
+        assert all(_all_numbers_decimal(d) for d in arranged.reader.load_many([DOC_A.ref, DOC_B.ref]).values())
 
     def test_load_many(self, arranged: DocumentReaderHarness) -> None:
         found = arranged.reader.load_many([DOC_A.ref, DOC_B.ref])

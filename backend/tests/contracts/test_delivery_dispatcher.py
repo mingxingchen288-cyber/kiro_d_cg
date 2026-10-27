@@ -39,11 +39,11 @@ class DeliveryDispatcherContract:
         assert harness.status(OK) == "sent"
 
     def test_failure_is_recorded_not_raised(self, harness: DeliveryDispatcherHarness) -> None:
-        """发送失败只记录，不抛出，由后台重试；同一批中其他记录照常发送。"""
+        """发送失败只记录，不抛出，由后台重试；同一批中其他记录照常发送。失败后记成哪个状态属于 delivery 的 DL-02。"""
         harness.register(FAILS, fails=True)
         harness.register(OK, fails=False)
         harness.dispatcher.dispatch_now([FAILS, OK])
-        assert harness.status(FAILS) == "failed"
+        assert harness.status(FAILS) != "sent"
         assert harness.status(OK) == "sent"
 
     def test_empty(self, harness: DeliveryDispatcherHarness) -> None:

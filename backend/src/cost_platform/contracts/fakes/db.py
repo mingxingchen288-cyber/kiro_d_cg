@@ -1,20 +1,35 @@
 """db-core 端口的替代实现（C08 第 2 节）。
 
 事务和只读连接用内存中的 SQLite，提交、回滚和只读都是数据库的真实行为，契约测试可以用 SQL 验证。
+
+数值的限制：声明为 NUMBER、NUMERIC、DECIMAL、INTEGER、INT 的列读出为 Decimal，写入时可以绑定 Decimal；
+但 SQLite 按浮点存储小数，超过约 15 位有效数字会丢精度，SQL 表达式（例如 `A + B`）的结果仍是 float。
+数值的精确往返只能在 Oracle 上验证（db-core 的 T-DB-1），不要用这里的事务验证数值精度。
 """
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import Connection, RootTransaction
 from sqlalchemy.pool import StaticPool
 
 from ..types import ColumnInfo
 from ._script import Scripted
+
+sqlite3.register_adapter(Decimal, str)
+for _declared in ("NUMBER", "NUMERIC", "DECIMAL", "INTEGER", "INT"):
+    sqlite3.register_converter(_declared, lambda raw: Decimal(raw.decode("ascii")))
+
+
+def _engine() -> Engine:
+    """内存 SQLite；所有连接共用同一个库，按列的声明类型转换数值。"""
+    return create_engine("sqlite://", poolclass=StaticPool, connect_args={"detect_types": sqlite3.PARSE_DECLTYPES})
 
 
 class FakeUnitOfWork:
@@ -54,7 +69,7 @@ class FakeUnitOfWorkFactory(Scripted):
 
     def __init__(self) -> None:
         super().__init__()
-        self.engine = create_engine("sqlite://", poolclass=StaticPool)
+        self.engine = _engine()
         self.units: list[FakeUnitOfWork] = []
 
     @contextmanager
@@ -98,7 +113,7 @@ class FakeConnectionFactory(Scripted):
 
     def __init__(self) -> None:
         super().__init__()
-        self.engine = create_engine("sqlite://", poolclass=StaticPool)
+        self.engine = _engine()
         with self.engine.connect() as connection:
             connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS CMX")
             connection.commit()

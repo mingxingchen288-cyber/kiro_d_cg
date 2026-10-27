@@ -11,7 +11,7 @@
 - 负责范围：`backend/src/cost_platform/pipeline/` 的执行器、阶段注册接口和命令记录存储；表 `PF_COMMAND` 的迁移脚本。
 - 交付物：`CommandExecutor`；按架构第 7 节的顺序调用已注册的阶段；判重；失败回滚。
 - 接入责任：T-AS-2 注册阶段，T-AS-5 挂载 `POST /api/commands` 并接入真实阶段；approval 调用 `CommandExecutor`。
-- 验收标准：模拟验证：同一请求键、相同内容返回原结果，业务流程只执行一次；内容不同返回 IDEMPOTENCY_KEY_REUSED；处理中等待 5 秒后返回 REQUEST_IN_PROGRESS；任一阶段抛错时命令记录和全部写入都不保留；真实验证：两个连接用同一请求键并发提交，只执行一次。
+- 验收标准：模拟验证：同一请求键、相同内容返回原结果，业务流程只执行一次；内容不同返回 IDEMPOTENCY_KEY_REUSED；处理中等待 5 秒后返回 REQUEST_IN_PROGRESS；任一阶段抛错时命令记录和全部写入都不保留；通过 `CommandExecutor` 的契约测试（C08 第 14 节）；真实验证：两个连接用同一请求键并发提交，只执行一次。
 - 状态与证据：未开始。
 
 ### T-WP-2 加锁、合并与写入

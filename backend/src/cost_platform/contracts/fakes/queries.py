@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from collections.abc import Iterable, Mapping
+from decimal import Decimal
 
 from ..ports import UnitOfWork
 from ..types import (
@@ -15,6 +16,8 @@ from ..types import (
     PersonalConfig,
     PersonalConfigBatch,
     PlatformError,
+    RelationKeyFinder,
+    Row,
     SqlFinder,
     TargetFinder,
     TargetFinderConfig,
@@ -26,17 +29,35 @@ from ._script import Scripted
 
 
 def _finder_key(finder: TargetFinderConfig) -> str:
-    return json.dumps(dump_wire(TargetFinder, finder), sort_keys=True, ensure_ascii=False)
+    """预设结果的键：`rows` 不参与，端口不按它筛选（C08 第 9 节）。"""
+    data = dump_wire(TargetFinder, finder)
+    data.pop("rows", None)
+    return json.dumps(data, sort_keys=True, ensure_ascii=False)
+
+
+def _key_text(value: Value) -> str:
+    """键值统一成文本比较：Decimal 115、"115" 都是 "115"。"""
+    if isinstance(value, Decimal):
+        return format(value.normalize(), "f")
+    return str(value)
+
+
+def _source_rows(source: DocumentData, entity: str) -> list[Row]:
+    if entity == source.master.entity:
+        return [source.master]
+    return list(source.details.get(entity, []))
 
 
 class FakeRelatedQuery(Scripted):
-    """`RelatedQuery`：不执行查询，结果按（查找方式、来源单据）预设，没有预设时为空列表。
+    """`RelatedQuery`：不访问数据库，按 C08 第 9 节由预设的数据得出目标。
 
-    - `respond` 直接给出找到的目标。
-    - `respond_rows` 给出关联 SQL 查出的行，`find` 时按 C06 7.2 换成目标：实体取 `entity`，单据主键取
-      `recordKeyColumn`，明细主键取 `rowKeyColumns`，展示数据取 `displayColumns`；有一行缺少 `recordKeyColumn`
-      时抛 500 INTERNAL_ERROR，不返回部分结果（C08 第 9 节）。
-    来源单据按 C08 第 9 节由调用方准备，这里不按 `rows` 筛选。
+    - 按关联键：`add_target` 登记目标实体中键值为某值的目标；`find` 取 `source` 中 `sourceKey` 所指实体的全部行，
+      按每行的键值找登记的目标，按行的顺序合并，同一目标只出现一次。
+    - 按关联 SQL：`respond_rows` 给出查出的行，`find` 时按 C06 7.2 换成目标：实体取 `entity`，单据主键取
+      `recordKeyColumn`，明细主键取 `rowKeyColumns`，展示数据取 `displayColumns`。有一行的 `recordKeyColumn`
+      缺少或为空，或缺少 `rowKeyColumns` 中的列时，抛 500 INTERNAL_ERROR，不返回部分结果。
+    - `respond` 直接给出找到的目标，优先于上面两种。
+    来源单据由调用方按 `rows` 准备，这里不按 `rows` 筛选。
     """
 
     scriptable = ('find',)
@@ -44,6 +65,7 @@ class FakeRelatedQuery(Scripted):
     def __init__(self) -> None:
         super().__init__()
         self._results: dict[tuple[str, DocumentRef | None], list[TargetObject] | _SqlRows] = {}
+        self._by_key: dict[tuple[str, str, str], list[TargetObject]] = {}
 
     def respond(self, finder: TargetFinderConfig, targets: Iterable[TargetObject], *, source: DocumentRef | None = None) -> None:
         """预设查找结果；不给 `source` 时对任何来源单据生效。"""
@@ -53,11 +75,36 @@ class FakeRelatedQuery(Scripted):
         """预设关联 SQL 查出的行；不给 `source` 时对任何来源单据生效。"""
         self._results[(_finder_key(finder), source)] = _SqlRows(finder, [dict(r) for r in rows])
 
+    def add_target(self, entity: str, target_key: str, value: Value, target: TargetObject) -> None:
+        """登记按关联键能找到的目标：`entity` 中 `target_key` 等于 `value` 的对象。"""
+        self._by_key.setdefault((entity, target_key, _key_text(value)), []).append(target)
+
     def find(self, uow: UnitOfWork, finder: TargetFinderConfig, source: DocumentData) -> list[TargetObject]:
         self._record("find", uow, finder, source)
         key = _finder_key(finder)
-        found = self._results.get((key, source.ref), self._results.get((key, None), []))
-        return found.targets() if isinstance(found, _SqlRows) else list(found)
+        found = self._results.get((key, source.ref), self._results.get((key, None)))
+        if isinstance(found, _SqlRows):
+            return found.targets()
+        if found is not None:
+            return list(found)
+        if isinstance(finder, RelationKeyFinder):
+            return self._by_relation_key(finder, source)
+        return []
+
+    def _by_relation_key(self, finder: RelationKeyFinder, source: DocumentData) -> list[TargetObject]:
+        entity, _, field = finder.source_key.partition(".")
+        result: list[TargetObject] = []
+        seen: set[tuple[str, str, tuple[str, ...]]] = set()
+        for row in _source_rows(source, entity):
+            value = row.values.get(field)
+            if value is None:
+                continue
+            for target in self._by_key.get((finder.entity, finder.target_key, _key_text(value)), []):
+                ident = (target.entity, target.record_key, target.row_keys)
+                if ident not in seen:
+                    seen.add(ident)
+                    result.append(target)
+        return result
 
 
 class _SqlRows:
@@ -67,10 +114,14 @@ class _SqlRows:
 
     def targets(self) -> list[TargetObject]:
         f = self.finder
-        if any(f.record_key_column not in row for row in self.rows):
-            raise PlatformError(ErrorCode.INTERNAL_ERROR, f"关联 SQL 的结果缺少 {f.record_key_column}")
-        return [TargetObject(entity=f.entity, record_key=str(row[f.record_key_column]),
-                             row_keys=tuple(str(row[c]) for c in f.row_key_columns),
+        for row in self.rows:
+            if row.get(f.record_key_column) is None:
+                raise PlatformError(ErrorCode.INTERNAL_ERROR, f"关联 SQL 的结果缺少 {f.record_key_column}，或它为空")
+            missing = [c for c in f.row_key_columns if c not in row]
+            if missing:
+                raise PlatformError(ErrorCode.INTERNAL_ERROR, f"关联 SQL 的结果缺少 {', '.join(missing)}")
+        return [TargetObject(entity=f.entity, record_key=_key_text(row[f.record_key_column]),
+                             row_keys=tuple(_key_text(row[c]) for c in f.row_key_columns),
                              display={c: row.get(c) for c in f.display_columns}) for row in self.rows]
 
 
@@ -107,6 +158,10 @@ class FakePersonalConfigImporter(Scripted):
     def __init__(self) -> None:
         super().__init__()
         self.configs: dict[tuple[str, str], PersonalConfig] = {}
+
+    def put(self, user_id: str, page_code: str, config: PersonalConfig) -> None:
+        """预设已有的个人配置。"""
+        self.configs[(user_id, page_code)] = config
 
     def import_batch(self, batch: PersonalConfigBatch) -> ImportReport:
         self._record("import_batch", batch)

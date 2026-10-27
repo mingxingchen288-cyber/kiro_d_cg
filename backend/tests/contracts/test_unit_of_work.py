@@ -113,3 +113,17 @@ def test_fake_records_outcome_and_preset_errors() -> None:
         uow.commit()
     assert harness.committed() == []
     assert factory.units[-1].rolled_back
+
+
+def test_fake_numbers_are_decimal() -> None:
+    """替代实现：NUMBER 列可以绑定 Decimal，读出为 Decimal；SQL 表达式的结果仍是 float（见 fakes/db.py 的说明）。"""
+    from decimal import Decimal
+
+    factory = FakeUnitOfWorkFactory()
+    with factory.begin() as uow:
+        uow.connection.execute(text("CREATE TABLE CT_NUM (A NUMBER(18,2), B NUMBER(18,2), N INTEGER)"))
+        uow.connection.execute(text("INSERT INTO CT_NUM VALUES (:a, :b, :n)"), {"a": Decimal("1.10"), "b": Decimal("0.1"), "n": 115})
+        a, b, n, total = uow.connection.execute(text("SELECT A, B, N, A + B FROM CT_NUM")).one()
+    assert (a, b, n) == (Decimal("1.1"), Decimal("0.1"), Decimal("115"))
+    assert all(isinstance(v, Decimal) for v in (a, b, n))
+    assert isinstance(total, float)

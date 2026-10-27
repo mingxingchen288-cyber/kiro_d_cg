@@ -13,13 +13,18 @@ from ..types import (
     EntityConfig,
     ErrorCode,
     ErrorDetail,
+    EscapeHatch,
+    FreezeTargets,
     ImportReport,
     MenuItem,
     OperationConfig,
     PackHandle,
     PageView,
     PlatformError,
+    RoleApprover,
     RoleConfig,
+    UpdateRecords,
+    UpdateTargets,
     parse_config_content,
 )
 from ._script import Scripted
@@ -27,12 +32,81 @@ from ._script import Scripted
 _T = TypeVar("_T")
 
 
+def _accessible_menus(items: list[MenuItem], pages: set[str]) -> list[MenuItem]:
+    """去掉指向角色不能访问的页面的菜单项；分组保留，其中的子项同样处理。"""
+    kept = []
+    for item in items:
+        if item.kind == "page" and item.page_code not in pages:
+            continue
+        kept.append(item.model_copy(update={"children": _accessible_menus(item.children, pages)}))
+    return kept
+
+
+def _references(config_type: str, content: Any) -> list[tuple[str, str]]:
+    """配置内容按编码引用的其他配置项：（类型、编码）。只看配置项之间的引用，不看字段、表和列。"""
+    refs: list[tuple[str, str]] = []
+
+    def actions(steps: Iterable[Any]) -> None:
+        for step in steps:
+            if isinstance(step, UpdateTargets):
+                for target in step.targets:
+                    refs.append(("entity", target.entity))
+                    if target.detail_entity:
+                        refs.append(("entity", target.detail_entity))
+            elif isinstance(step, UpdateRecords):
+                refs.append(("entity", step.find.entity))
+            elif isinstance(step, EscapeHatch):
+                refs.append(("operation", step.operation))
+
+    if config_type == "entity":
+        refs += [("entity", d.entity) for d in content.details]
+        refs += [("page", p) for rule in content.approval_required for p in rule.source_pages]
+    elif config_type == "page":
+        refs.append(("operation", content.save_operation))
+        for area in [content.master, *content.details]:
+            refs.append(("entity", area.entity))
+            refs += [("operation", b.operation) for b in area.buttons if b.operation]
+            for setting in area.fields.values():
+                if setting.lookup:
+                    refs.append(("lookup", setting.lookup.code))
+                if setting.dict_type:
+                    refs.append(("dict", setting.dict_type))
+    elif config_type == "operation":
+        refs += [("entity", e) for e in [*content.writable_fields, *content.impact]]
+        actions(content.actions)
+    elif config_type == "rule":
+        refs.append(({"entity": "entity", "operation": "operation", "page": "page"}[content.layer], content.target))
+    elif config_type == "approvalFlow":
+        refs.append(("operation", content.source_operation))
+        refs += [("entity", e) for e in content.trigger.changed_fields]
+        refs += [("role", a.role) for level in content.levels for entry in level.entries for a in entry.approvers
+                 if isinstance(a, RoleApprover)]
+        refs += [("entity", f.entity) for f in (content.targets.find if content.targets else [])]
+        refs += [("entity", f.entity) for f in content.freeze if not isinstance(f, FreezeTargets)]
+        actions(content.after_approval)
+        for level_actions in content.level_actions:
+            actions(level_actions.steps)
+    elif config_type == "role":
+        refs += [("page", p) for p in content.pages]
+    elif config_type == "menu":
+        def walk(items: Iterable[MenuItem]) -> None:
+            for item in items:
+                if item.page_code:
+                    refs.append(("page", item.page_code))
+                walk(item.children)
+        walk(content.items)
+    elif config_type == "export":
+        refs.append(("page", content.page))
+    return refs
+
+
 class FakeConfigSnapshot(Scripted):
     """`ConfigSnapshot`：内容在创建时给出，之后不变（C04：命令执行期间配置快照不变）。
 
-    页面视图、菜单和规则包句柄由 config 生成，这里直接给出生成后的结果；`menus` 应已去掉该角色不能访问的页面。
-    替代实现没有缓存，取不到时直接按 C08 第 4 节回查后仍取不到的情况处理：
-    - `page_view`：`page_views` 中没有、但在 `pages`（配置中存在的页面）中的，为 403 PERMISSION_DENIED；两处都没有的为 404 NOT_FOUND；
+    页面视图、菜单和规则包句柄由 config 生成，这里直接给出生成后的结果；直接构造时 `menus` 应已去掉该角色不能访问的页面
+    （`from_items` 会按角色去掉）。替代实现没有缓存，取不到时直接按 C08 第 4 节回查后仍取不到的情况处理：
+    - `page_view`：配置中存在（在 `pages` 中）、但角色配置中没有的页面为 403 PERMISSION_DENIED；配置和角色配置中都没有的
+      为 404 NOT_FOUND；角色可以访问、却没有给出页面视图，是准备测试数据时漏了，抛 ValueError；
     - `entity`、`operation`、`approval_flow`、`rules_pack`：为 500 INTERNAL_ERROR。
     """
 
@@ -68,15 +142,16 @@ class FakeConfigSnapshot(Scripted):
     def from_items(cls, *, version: int, role_code: str, items: Iterable[ConfigDraft],
                    page_views: Mapping[str, PageView] | None = None, packs: Mapping[str, PackHandle] | None = None) -> FakeConfigSnapshot:
         """由 C06 的配置项建快照：编码为 `role_code` 的角色是快照所属角色；page 项的编码作为配置中存在的页面；
-        menu 项的 `items` 原样作为菜单。"""
+        menu 项的 `items` 作为菜单，去掉角色配置中没有的页面（CF-12）。"""
         found: dict[str, dict[str, Any]] = {"entity": {}, "operation": {}, "approvalFlow": {}, "role": {}, "menu": {}, "page": {}}
         for item in items:
             if item.type in found:
                 found[item.type][item.key] = parse_config_content(item.type, item.content)
         if role_code not in found["role"]:
             raise ValueError(f"配置项中没有角色 {role_code}")
-        menus = [entry for menu in found["menu"].values() for entry in menu.items]
-        return cls(version=version, role_code=role_code, role=found["role"][role_code], page_views=page_views, pages=found["page"],
+        role: RoleConfig = found["role"][role_code]
+        menus = _accessible_menus([entry for menu in found["menu"].values() for entry in menu.items], set(role.pages))
+        return cls(version=version, role_code=role_code, role=role, page_views=page_views, pages=found["page"],
                    entities=found["entity"], operations=found["operation"], approval_flows=found["approvalFlow"],
                    menus=menus, packs=packs)
 
@@ -90,6 +165,8 @@ class FakeConfigSnapshot(Scripted):
         self._record("page_view", page_code)
         if page_code in self._page_views:
             return self._page_views[page_code]
+        if page_code in self._role.pages:
+            raise ValueError(f"替代实现没有给出角色可以访问的页面 {page_code} 的页面视图")
         if page_code in self._pages:
             raise PlatformError(ErrorCode.PERMISSION_DENIED, f"当前角色不能访问页面 {page_code}")
         raise PlatformError(ErrorCode.NOT_FOUND, f"页面 {page_code} 不存在")
@@ -149,10 +226,13 @@ class FakeConfigSnapshotReader(Scripted):
 
 
 class FakeConfigImporter(Scripted):
-    """`ConfigImporter`：按 C08 第 4 节整批导入，只检查内容符合 C06 的结构（第 10 节的其余校验和引用由 config 负责）。
+    """`ConfigImporter`：按 C08 第 4 节整批导入。
 
-    与 `items` 中已有配置项类型和编码相同的项不覆盖，列入 `skipped`，也不校验；其余各项有一项不符合时抛
-    422 VALIDATION_FAILED，明细列出每个不符合的项，什么都不写。已有的配置项可以用 `put` 预设。
+    与 `items` 中已有配置项类型和编码相同的项不覆盖，列入 `skipped`，也不校验。其余各项检查两件事：内容符合 C06 的结构；
+    按编码引用的配置项（实体、操作、页面、角色、Lookup、字典）在已有配置或本批其他项中存在。有一项不通过时抛
+    422 VALIDATION_FAILED，明细列出每个不通过的项，什么都不写。已有的配置项可以用 `put` 预设。
+
+    C06 第 10 节的其余校验（字段、表和列、表达式、SQL 等）由 config 负责，这里不做。
     """
 
     scriptable = ('import_items',)
@@ -168,14 +248,20 @@ class FakeConfigImporter(Scripted):
         self._record("import_items", items)
         skipped = [item for item in items if (item.type, item.key) in self.items]
         new = [item for item in items if (item.type, item.key) not in self.items]
+        available = set(self.items) | {(item.type, item.key) for item in new}
         details = []
         for item in new:
             try:
-                parse_config_content(item.type, item.content)
+                content = parse_config_content(item.type, item.content)
             except ValidationError as e:
                 first = e.errors()[0]
                 details.append(ErrorDetail(message=str(first["msg"]), config_type=item.type, config_key=item.key,
                                            path=".".join(str(p) for p in first["loc"])))
+                continue
+            for ref_type, ref_key in _references(item.type, content):
+                if (ref_type, ref_key) not in available:
+                    details.append(ErrorDetail(message=f"引用的 {ref_type} {ref_key} 不存在", config_type=item.type,
+                                               config_key=item.key))
         if details:
             raise PlatformError(ErrorCode.VALIDATION_FAILED, "配置校验不通过", details)
         for item in new:

@@ -32,8 +32,6 @@ class AuthenticatorHarness(Protocol):
 
     def logout(self, session_id: str) -> None: ...
 
-    def disable_account(self, user_id: str) -> None: ...
-
     def revoke_role(self, user_id: str, role_code: str) -> None: ...
 
     def advance(self, delta: timedelta) -> None:
@@ -78,15 +76,17 @@ class AuthenticatorContract:
         assert _code(harness, sid, "wrong", is_write=True) is ErrorCode.CSRF_FAILED
         assert _code(harness, sid, None, is_write=True) is ErrorCode.CSRF_FAILED
 
-    def test_disabled_account_and_revoked_role(self, harness: AuthenticatorHarness) -> None:
-        """ID-05：停用账号后旧会话为 SESSION_REQUIRED，撤销会话选定的角色后为 SESSION_ROLE_REVOKED。"""
+    def test_revoked_role(self, harness: AuthenticatorHarness) -> None:
+        """会话选定的角色被撤销后为 SESSION_ROLE_REVOKED（C08 第 3 节、C03）；别的用户的会话不受影响。
+
+        停用账号后旧会话怎样失效属于 identity 的 ID-05，由 identity 自己的测试验证。
+        """
         other = replace(USER, user_id="113", username="user113")
-        disabled = harness.open_session(USER, CSRF)
         revoked = harness.open_session(other, CSRF)
-        harness.disable_account(USER.user_id)
+        kept = harness.open_session(USER, CSRF)
         harness.revoke_role(other.user_id, other.role_code)
-        assert _code(harness, disabled) is ErrorCode.SESSION_REQUIRED
         assert _code(harness, revoked) is ErrorCode.SESSION_ROLE_REVOKED
+        assert harness.authenticator.authenticate(kept, None, False).user_id == USER.user_id
 
     def test_idle_session_expires(self, harness: AuthenticatorHarness) -> None:
         sid = harness.open_session(USER, CSRF)
@@ -122,9 +122,6 @@ class FakeAuthenticatorHarness:
 
     def logout(self, session_id: str) -> None:
         self.authenticator.close_session(session_id)
-
-    def disable_account(self, user_id: str) -> None:
-        self.authenticator.disable_account(user_id)
 
     def revoke_role(self, user_id: str, role_code: str) -> None:
         self.authenticator.revoke_role(user_id, role_code)

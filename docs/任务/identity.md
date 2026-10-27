@@ -21,7 +21,7 @@
 - 负责范围：identity 的会话存储（Redis）、认证和登录相关路由。
 - 交付物：上述接口和 `Authenticator`。
 - 接入责任：T-AS-4 接入中间件和 realtime 的握手；frontend-shell 使用登录接口（T-AS-7）。
-- 验收标准：模拟验证：账号不存在、密码错误、账号停用都返回 LOGIN_FAILED；单角色自动选定；写请求缺 CSRF 令牌返回 CSRF_FAILED；用可控时钟验证 120 分钟无操作后返回 SESSION_REQUIRED、中途有用户请求则顺延，`touch=False` 不顺延；真实验证：会话在 Redis 上按时过期。
+- 验收标准：模拟验证：账号不存在、密码错误、账号停用都返回 LOGIN_FAILED；单角色自动选定；写请求缺 CSRF 令牌返回 CSRF_FAILED；用可控时钟验证 120 分钟无操作后返回 SESSION_REQUIRED、中途有用户请求则顺延，`touch=False` 不顺延；通过 `Authenticator` 的契约测试（C08 第 14 节）；真实验证：会话在 Redis 上按时过期。
 - 状态与证据：未开始。
 
 ### T-ID-3 账号管理与会话撤销

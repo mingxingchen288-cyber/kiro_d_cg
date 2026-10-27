@@ -73,6 +73,17 @@ class AccountImporterContract:
         assert harness.reader.enabled_accounts_with_role("CT_IMPORTED") == [_ref(ACCOUNTS[0])]
         assert harness.reader.enabled_accounts_with_role("CT_EXTRA") == []
 
+    def test_same_id_or_same_username_counts_as_existing(self, harness: AccountImporterHarness) -> None:
+        """账号编号相同、或账号名相同，都算已存在（C08 第 3 节），各自列入 skipped，标识取导入的账号编号。"""
+        harness.importer.import_batch(BATCH)
+        same_id = replace(ACCOUNTS[0], username="ct_import_other")
+        same_name = replace(ACCOUNTS[0], user_id="9103")
+        report = harness.importer.import_batch(AccountBatch(accounts=[same_id, same_name], roles=[], assignments=[], departments=[]))
+        assert report.imported == 0
+        assert sorted(ident for ident, _ in report.skipped) == ["account:9101", "account:9103"]
+        assert harness.reader.account("9101") == _ref(ACCOUNTS[0])
+        assert harness.reader.account("9103") is None
+
     def test_mixed_batch_counts_only_imported(self, harness: AccountImporterHarness) -> None:
         harness.importer.import_batch(replace(BATCH, accounts=ACCOUNTS[:1], assignments=BATCH.assignments[:1]))
         report = harness.importer.import_batch(BATCH)

@@ -75,6 +75,13 @@ class RulesEngineContract:
         assert result.error.code == "INPUT_INVALID"
         assert "Traceback" not in result.error.message and "panicked" not in result.error.message
 
+    def test_foreign_handle(self, harness: RulesEngineHarness) -> None:
+        """evaluate 收到不是本引擎加载的句柄时，返回 PACK_INVALID 的结果（C08 第 8 节）。"""
+        harness.engine.load_pack(harness.pack())
+        result = _result(harness.engine.evaluate(object(), harness.operation_request()))
+        assert isinstance(result, EvalFailure)
+        assert result.error.code == "PACK_INVALID"
+
     def test_request_missing_required_field(self, harness: RulesEngineHarness) -> None:
         handle = harness.engine.load_pack(harness.pack())
         request = json.loads(harness.operation_request())
@@ -110,7 +117,7 @@ class TestFakeRulesEngine(RulesEngineContract):
 
 
 def test_fake_presets_and_requests() -> None:
-    """替代实现：按条件预设结果，记录解析后的请求；没有加载的句柄返回 PACK_INVALID。"""
+    """替代实现：按条件预设结果，记录解析后的请求。"""
     harness = FakeRulesEngineHarness()
     engine = harness.engine
     handle = engine.load_pack(harness.pack())
@@ -120,5 +127,3 @@ def test_fake_presets_and_requests() -> None:
     assert _result(engine.evaluate(handle, harness.entry_request())) == EvalEntry(ok=True, satisfied=False)
     assert _result(engine.evaluate(handle, harness.operation_request())) == computed
     assert [r.purpose for r in engine.requests] == ["approvalEntry", "operation"]
-    failure = _result(engine.evaluate(object(), harness.operation_request()))
-    assert isinstance(failure, EvalFailure) and failure.error.code == "PACK_INVALID"

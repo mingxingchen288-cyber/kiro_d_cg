@@ -35,7 +35,10 @@ class RelatedQueryHarness(Protocol):
     uow: UnitOfWork
 
     def relation_key_case(self) -> Case:
-        """按关联键查找（`rows` 为 `all`）：查找方式、来源单据和应找到的目标。"""
+        """按关联键查找（`rows` 为 `all`）：查找方式、来源单据和应找到的目标。
+
+        `sourceKey` 指向明细；来源单据中这个明细至少两行，键值各不相同，每行都能找到别的行找不到的目标。
+        """
         ...
 
     def sql_case(self) -> Case:
@@ -51,6 +54,18 @@ def _sorted(targets: list[TargetObject]) -> list[TargetObject]:
     return sorted(targets, key=lambda o: (o.entity, o.record_key, o.row_keys))
 
 
+def _ids(targets: list[TargetObject]) -> set[tuple[str, str, tuple[str, ...]]]:
+    return {(o.entity, o.record_key, o.row_keys) for o in targets}
+
+
+def _with_source_rows(finder: RelationKeyFinder, source: DocumentData, rows: list[Row]) -> DocumentData:
+    """来源单据的副本，`sourceKey` 所指明细只留下 `rows`。"""
+    entity = finder.source_key.split(".", 1)[0]
+    reduced = copy.deepcopy(source)
+    reduced.details[entity] = copy.deepcopy(rows)
+    return reduced
+
+
 class RelatedQueryContract:
     @pytest.fixture
     def harness(self) -> RelatedQueryHarness:
@@ -62,6 +77,22 @@ class RelatedQueryContract:
         found = harness.query.find(harness.uow, finder, source)
         assert all(isinstance(o, TargetObject) for o in found)
         assert _sorted(found) == _sorted(expected)
+
+    def test_relation_key_uses_every_source_row(self, harness: RelatedQueryHarness) -> None:
+        """按关联键时用传入单据中 sourceKey 所指实体的全部行：只留一行时找到的更少，一行都没有时找不到（C08 第 9 节）。"""
+        finder, source, expected = harness.relation_key_case()
+        assert isinstance(finder, RelationKeyFinder)
+        entity = finder.source_key.split(".", 1)[0]
+        assert entity != source.master.entity and len(source.details[entity]) >= 2, "harness 的来源单据不符合要求"
+        first_only = harness.query.find(harness.uow, finder, _with_source_rows(finder, source, source.details[entity][:1]))
+        assert first_only and _ids(first_only) < _ids(expected)
+        assert harness.query.find(harness.uow, finder, _with_source_rows(finder, source, [])) == []
+
+    def test_rows_changed_does_not_filter(self, harness: RelatedQueryHarness) -> None:
+        """`rows` 为 changed 时，来源行由调用方准备，端口照常用传入的全部行查找。"""
+        finder, source, expected = harness.relation_key_case()
+        changed = finder.model_copy(update={"rows": "changed"})
+        assert _sorted(harness.query.find(harness.uow, changed, source)) == _sorted(expected)
 
     @pytest.mark.parametrize("case_name", ["relation_key_case", "sql_case"])
     def test_source_not_modified(self, harness: RelatedQueryHarness, case_name: str) -> None:
@@ -104,9 +135,10 @@ class FakeRelatedQueryHarness:
         self.query = FakeRelatedQuery()
         self._relation = [TargetObject("COST_GOODS_PRICE", "115", (), {"GOODSID": Decimal("115")}),
                           TargetObject("COST_GOODS_PRICE", "116", (), {"GOODSID": Decimal("116")})]
+        for target in self._relation:
+            self.query.add_target("COST_GOODS_PRICE", "GOODSID", target.display["GOODSID"], target)
         rows = [{"DOC_ID": Decimal("2001"), "PRODUCT_NAME": "甲"}, {"DOC_ID": Decimal("2002"), "PRODUCT_NAME": "乙"}]
         self._sql = [TargetObject("COST_PINGGU", "2001", (), rows[0]), TargetObject("COST_PINGGU", "2002", (), rows[1])]
-        self.query.respond(_RELATION, self._relation, source=_SOURCE.ref)
         self.query.respond_rows(_SQL, rows, source=_GOODS.ref)
         self._missing = _SQL.model_copy(update={"sql": _SQL.sql.replace("M.DOCID AS DOC_ID, ", "")})
         self.query.respond_rows(self._missing, [rows[0], {"PRODUCT_NAME": "乙"}])
@@ -132,7 +164,38 @@ class TestFakeRelatedQuery(RelatedQueryContract):
         harness.close()
 
 
-def test_fake_without_preset_finds_nothing() -> None:
+# ---------------------------------------------------------------- 只针对替代实现
+
+def test_fake_without_data_finds_nothing() -> None:
     harness = FakeRelatedQueryHarness()
     assert harness.query.find(harness.uow, _RELATION, _GOODS) == []
+    harness.close()
+
+
+@pytest.mark.parametrize("bad_row", [{"DOC_ID": None, "PRODUCT_NAME": "乙"}, {"DOC_ID": Decimal("2002"), "PRODUCT_NAME": "乙"}],
+                         ids=["record-key-null", "row-key-column-missing"])
+def test_fake_sql_rows_without_identity(bad_row: dict[str, object]) -> None:
+    """替代实现：主键为空、或缺少 rowKeyColumns 中的列，与缺少 recordKeyColumn 一样整个查找失败。"""
+    harness = FakeRelatedQueryHarness()
+    update: dict[str, object] = {"sql": _SQL.sql + " AND 1 = 1"}
+    if bad_row["DOC_ID"] is not None:
+        update["row_key_columns"] = ["DTL_ID"]
+    finder = _SQL.model_copy(update=update)
+    good = {"DOC_ID": Decimal("2001"), "PRODUCT_NAME": "甲", "DTL_ID": Decimal("1")}
+    harness.query.respond_rows(finder, [good, bad_row])
+    with pytest.raises(PlatformError) as caught:
+        harness.query.find(harness.uow, finder, _GOODS)
+    assert caught.value.code is ErrorCode.INTERNAL_ERROR
+    harness.close()
+
+
+def test_fake_records_source_as_received() -> None:
+    """调用记录保存参数的副本：调用方之后修改传入的单据，记录不变。"""
+    harness = FakeRelatedQueryHarness()
+    source = copy.deepcopy(_SOURCE)
+    harness.query.find(harness.uow, _RELATION, source)
+    source.details["COST_MATERIAL"].clear()
+    recorded = harness.query.calls_to("find")[0].args[2]
+    assert len(recorded.details["COST_MATERIAL"]) == 2
+    assert harness.query.calls_to("find")[0].args[0] is harness.uow
     harness.close()

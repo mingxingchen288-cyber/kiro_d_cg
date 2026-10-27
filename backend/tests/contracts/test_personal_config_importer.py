@@ -54,6 +54,15 @@ class PersonalConfigImporterContract:
         assert harness.stored("9201", "COST_PINGGU") == CONFIG
         assert harness.stored("9202", "COST_PINGGU") == ENTRIES[1].config
 
+    def test_same_user_other_page_is_new(self, harness: PersonalConfigImporterHarness) -> None:
+        """是否已有按（用户、页面）判断：同一用户在另一个页面的配置照常导入。"""
+        harness.importer.import_batch(PersonalConfigBatch(entries=ENTRIES[:1]))
+        other_page = PersonalConfigEntry(user_id="9201", page_code="CT_OTHER_PAGE", config=PersonalConfig(detail_mode="stack"))
+        report = harness.importer.import_batch(PersonalConfigBatch(entries=[other_page]))
+        assert (report.imported, report.skipped) == (1, [])
+        assert harness.stored("9201", "CT_OTHER_PAGE") == other_page.config
+        assert harness.stored("9201", "COST_PINGGU") == CONFIG
+
 
 class FakePersonalConfigImporterHarness:
     def __init__(self) -> None:

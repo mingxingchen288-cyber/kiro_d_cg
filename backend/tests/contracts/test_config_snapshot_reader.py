@@ -1,13 +1,12 @@
 """`ConfigSnapshotReader` 和 `ConfigSnapshot` 的契约测试（C08 第 4 节，C04）。
 
 真实实现（config）的测试继承 `ConfigSnapshotReaderContract`，提供 `harness` fixture，实现 `ConfigSnapshotReaderHarness`。
-页面视图的生成（CF-03）、菜单的过滤（CF-12）、规则包的编译和 Redis 往返次数、缺项时回查 Oracle（CF-06）
-由 config 自己的测试验证；这里检查回查后仍取不到时的错误。
+测试用的配置是 support 中自洽的最小配置，能经 config 的真实保存流程保存。页面视图的生成（CF-03）、菜单的过滤（CF-12）、
+规则包的编译、Redis 往返次数和缺项时回查 Oracle（CF-06）由 config 自己的测试验证；这里检查回查后仍取不到时的错误。
 """
 
 from __future__ import annotations
 
-import copy
 from typing import Any, Protocol
 
 import pytest
@@ -16,37 +15,28 @@ from cost_platform.contracts.fakes import FakeConfigSnapshot, FakeConfigSnapshot
 from cost_platform.contracts.ports import ConfigSnapshot, ConfigSnapshotReader
 from cost_platform.contracts.types import ConfigDraft, ErrorCode, PageView, PlatformError, parse_config_content, parse_wire
 
-from .support import doc_json
+from .support import (
+    CT_ENTITY,
+    CT_PAGE_A,
+    CT_PAGE_B,
+    CT_ROLE_A,
+    CT_ROLE_B,
+    CT_SAVE_A,
+    CT_SAVE_B,
+    ct_base_items,
+    ct_flow,
+    ct_role,
+    doc_json,
+    without_created_seq,
+)
 
-ROLE_CODE = "CT_ACCOUNTANT"
-VISIBLE_PAGE = "COST_PINGGU"      # 角色配置（C06 第 8 节样例）中有这个页面
-HIDDEN_PAGE = "CT_HIDDEN_PAGE"    # 配置中有这个页面，角色配置中没有
-
-
-def _flow(seq: int, key: str, operation: str) -> ConfigDraft:
-    item = doc_json("C06", 6)  # 7.4 样例一
-    content = copy.deepcopy(item["content"])
-    content.pop("display")
-    content.update(createdSeq=seq, sourceOperation=operation)
-    return ConfigDraft(type="approvalFlow", key=key, name=key, content=content)
-
-
-def _items(role_name: str = "成本会计") -> list[ConfigDraft]:
-    return [
-        ConfigDraft(type="role", key=ROLE_CODE, name=role_name, content={**doc_json("C06", 10), "name": role_name}),
-        ConfigDraft(type="entity", key="COST_PINGGU", name="成本核算", content=doc_json("C06", 1)),
-        ConfigDraft(type="page", key=VISIBLE_PAGE, name="成本核算", content=doc_json("C06", 2)),
-        ConfigDraft(type="page", key=HIDDEN_PAGE, name="不给这个角色的页面", content=doc_json("C06", 2)),
-        ConfigDraft(type="operation", key="COST_PINGGU.save", name="保存", content=doc_json("C06", 3)),
-        _flow(7, "CT_FLOW_LATE", "COST_PINGGU.save"),
-        _flow(3, "CT_FLOW_EARLY", "COST_PINGGU.save"),
-        _flow(5, "CT_FLOW_OTHER", "COST_GOODS_PRICE.save"),
-    ]
+EARLY = ct_flow("CT_FLOW_EARLY", CT_SAVE_A, "先建的审批流")
+LATE = ct_flow("CT_FLOW_LATE", CT_SAVE_A, "后建的审批流")
+OTHER = ct_flow("CT_FLOW_OTHER", CT_SAVE_B, "另一个操作的审批流")
 
 
-def _parsed(items: list[ConfigDraft], key: str) -> Any:
-    item = next(i for i in items if i.key == key)
-    return parse_config_content(item.type, item.content)
+def _parsed(item: ConfigDraft) -> Any:
+    return without_created_seq(parse_config_content(item.type, item.content))
 
 
 def _code(call: Any, *args: Any) -> ErrorCode:
@@ -59,16 +49,23 @@ class ConfigSnapshotReaderHarness(Protocol):
     reader: ConfigSnapshotReader
 
     def save(self, items: list[ConfigDraft]) -> None:
-        """保存这些配置项（其他已保存的配置项不变），保存后生效（配置代号加一）。"""
+        """经保存流程保存这些配置项（其他已保存的配置项不变），保存后生效。配置引用的表和序列由 harness 自己准备。"""
         ...
 
     def delete(self, config_type: str, key: str) -> None:
-        """删除一个配置项，删除后生效。"""
+        """删除一个配置项（没有被其他配置引用），删除后生效。"""
         ...
 
     def make_unavailable(self) -> None:
         """让配置读不到：Redis 和 Oracle 都不可用。"""
         ...
+
+
+def save_all(harness: ConfigSnapshotReaderHarness) -> None:
+    """依次保存基础配置和三条审批流，审批流的创建先后为 EARLY、LATE、OTHER。"""
+    harness.save(ct_base_items())
+    for flow in (EARLY, LATE, OTHER):
+        harness.save([flow])
 
 
 class ConfigSnapshotReaderContract:
@@ -78,33 +75,43 @@ class ConfigSnapshotReaderContract:
 
     @pytest.fixture
     def snapshot(self, harness: ConfigSnapshotReaderHarness) -> ConfigSnapshot:
-        harness.save(_items())
-        return harness.reader.read(ROLE_CODE)
+        save_all(harness)
+        return harness.reader.read(CT_ROLE_A)
 
     def test_snapshot_belongs_to_role(self, snapshot: ConfigSnapshot) -> None:
-        assert snapshot.role_code == ROLE_CODE
+        assert snapshot.role_code == CT_ROLE_A
         assert isinstance(snapshot.version, int)
-        assert snapshot.role() == _parsed(_items(), ROLE_CODE)
+        assert snapshot.role() == _parsed(ct_role(CT_ROLE_A, CT_PAGE_A, "契约测试角色甲"))
+
+    def test_snapshots_are_per_role(self, harness: ConfigSnapshotReaderHarness) -> None:
+        save_all(harness)
+        a, b = harness.reader.read(CT_ROLE_A), harness.reader.read(CT_ROLE_B)
+        assert (a.role_code, b.role_code) == (CT_ROLE_A, CT_ROLE_B)
+        assert b.role() == _parsed(ct_role(CT_ROLE_B, CT_PAGE_B, "契约测试角色乙"))
+        assert b.page_view(CT_PAGE_B).page_code == CT_PAGE_B
+        assert _code(b.page_view, CT_PAGE_A) is ErrorCode.PERMISSION_DENIED
 
     def test_items_by_code(self, snapshot: ConfigSnapshot) -> None:
-        items = _items()
-        assert snapshot.entity("COST_PINGGU") == _parsed(items, "COST_PINGGU")
-        assert snapshot.operation("COST_PINGGU.save") == _parsed(items, "COST_PINGGU.save")
-        assert snapshot.approval_flow("CT_FLOW_OTHER") == _parsed(items, "CT_FLOW_OTHER")
+        base = {(i.type, i.key): i for i in ct_base_items()}
+        assert snapshot.entity(CT_ENTITY) == _parsed(base[("entity", CT_ENTITY)])
+        assert snapshot.operation(CT_SAVE_A) == _parsed(base[("operation", CT_SAVE_A)])
+        assert without_created_seq(snapshot.approval_flow("CT_FLOW_OTHER")) == _parsed(OTHER)
 
     def test_approval_flows_by_operation_in_created_order(self, snapshot: ConfigSnapshot) -> None:
-        flows = snapshot.approval_flows("COST_PINGGU.save")
-        assert [(f.created_seq, f.source_operation) for f in flows] == [(3, "COST_PINGGU.save"), (7, "COST_PINGGU.save")]
+        flows = snapshot.approval_flows(CT_SAVE_A)
+        assert [f.levels[0].entries[0].name for f in flows] == ["先建的审批流", "后建的审批流"]
+        assert {f.source_operation for f in flows} == {CT_SAVE_A}
+        assert flows[0].created_seq < flows[1].created_seq
 
     def test_page_view(self, snapshot: ConfigSnapshot) -> None:
-        view = snapshot.page_view(VISIBLE_PAGE)
+        view = snapshot.page_view(CT_PAGE_A)
         assert isinstance(view, PageView)
-        assert view.page_code == VISIBLE_PAGE
+        assert view.page_code == CT_PAGE_A
 
     def test_page_view_errors(self, snapshot: ConfigSnapshot) -> None:
         """页面不存在为 NOT_FOUND，该角色不能访问为 PERMISSION_DENIED（C08 第 4 节，与 C09 的页面视图接口一致）。"""
         assert _code(snapshot.page_view, "CT_NO_SUCH_PAGE") is ErrorCode.NOT_FOUND
-        assert _code(snapshot.page_view, HIDDEN_PAGE) is ErrorCode.PERMISSION_DENIED
+        assert _code(snapshot.page_view, CT_PAGE_B) is ErrorCode.PERMISSION_DENIED
 
     @pytest.mark.parametrize("method", ["entity", "operation", "approval_flow", "rules_pack"])
     def test_broken_reference_is_internal_error(self, snapshot: ConfigSnapshot, method: str) -> None:
@@ -113,51 +120,64 @@ class ConfigSnapshotReaderContract:
 
     def test_snapshot_does_not_change_after_save(self, harness: ConfigSnapshotReaderHarness) -> None:
         """C04：已经取得的快照在之后的保存中不变；保存后读到的是更新的版本。"""
-        harness.save(_items())
-        before = harness.reader.read(ROLE_CODE)
+        save_all(harness)
+        before = harness.reader.read(CT_ROLE_A)
         role_before = before.role()
-        harness.save(_items(role_name="成本会计（改）"))
-        after = harness.reader.read(ROLE_CODE)
+        harness.save([ct_role(CT_ROLE_A, CT_PAGE_A, "契约测试角色甲（改）")])
+        after = harness.reader.read(CT_ROLE_A)
         assert before.role() == role_before
-        assert after.role().name == "成本会计（改）"
+        assert after.role().name == "契约测试角色甲（改）"
         assert after.version > before.version
 
     def test_deleted_role(self, harness: ConfigSnapshotReaderHarness) -> None:
-        """角色被删除后，新的读取为 SESSION_ROLE_REVOKED；已经取得的快照照常可用。"""
-        harness.save(_items())
-        before = harness.reader.read(ROLE_CODE)
-        harness.delete("role", ROLE_CODE)
-        assert _code(harness.reader.read, ROLE_CODE) is ErrorCode.SESSION_ROLE_REVOKED
-        assert before.role() == _parsed(_items(), ROLE_CODE)
-        assert before.entity("COST_PINGGU") == _parsed(_items(), "COST_PINGGU")
+        """角色被删除后，新的读取为 SESSION_ROLE_REVOKED；已经取得的快照照常可用；其他角色不受影响。"""
+        save_all(harness)
+        before = harness.reader.read(CT_ROLE_A)
+        harness.delete("role", CT_ROLE_A)
+        assert _code(harness.reader.read, CT_ROLE_A) is ErrorCode.SESSION_ROLE_REVOKED
+        assert before.role() == _parsed(ct_role(CT_ROLE_A, CT_PAGE_A, "契约测试角色甲"))
+        assert before.entity(CT_ENTITY).table == "T_CT_GOODS"
+        assert harness.reader.read(CT_ROLE_B).role_code == CT_ROLE_B
 
     def test_unavailable(self, harness: ConfigSnapshotReaderHarness) -> None:
-        harness.save(_items())
+        save_all(harness)
         harness.make_unavailable()
-        assert _code(harness.reader.read, ROLE_CODE) is ErrorCode.CONFIG_UNAVAILABLE
+        assert _code(harness.reader.read, CT_ROLE_A) is ErrorCode.CONFIG_UNAVAILABLE
 
 
 class FakeConfigSnapshotReaderHarness:
-    """把配置项合在一起，每次保存或删除后重建快照；角色配置中有的页面给出 C05 样例形状的页面视图。"""
+    """模拟 config 的保存：按 CF-07 给第一次保存的审批流分配递增的 createdSeq，每次保存或删除后为每个角色重建快照；
+    角色配置中有的页面给出 C05 样例形状的页面视图。"""
 
     def __init__(self) -> None:
         self.reader = FakeConfigSnapshotReader()
         self._items: dict[tuple[str, str], ConfigDraft] = {}
+        self._seq = 0
         self._version = 0
 
     def _publish(self) -> None:
         self._version += 1
-        items = list(self._items.values())
-        if ("role", ROLE_CODE) not in self._items:
-            self.reader.remove(ROLE_CODE)
-            return
-        role = parse_config_content("role", self._items[("role", ROLE_CODE)].content)
-        views = {i.key: parse_wire(PageView, {**doc_json("C05", 0), "pageCode": i.key})
-                 for i in items if i.type == "page" and i.key in role.pages}
-        self.reader.put(FakeConfigSnapshot.from_items(version=self._version, role_code=ROLE_CODE, items=items, page_views=views))
+        # 按编码倒序交给快照：审批流的先后只能来自 createdSeq，不能来自保存的先后
+        items = sorted(self._items.values(), key=lambda i: (i.type, i.key), reverse=True)
+        roles = {i.key: parse_config_content("role", i.content) for i in items if i.type == "role"}
+        for code in [c for c in ("CT_ROLE_A", "CT_ROLE_B") if c not in roles]:
+            self.reader.remove(code)
+        for code, role in roles.items():
+            views = {i.key: parse_wire(PageView, {**doc_json("C05", 0), "pageCode": i.key})
+                     for i in items if i.type == "page" and i.key in role.pages}
+            self.reader.put(FakeConfigSnapshot.from_items(version=self._version, role_code=code, items=items, page_views=views))
 
     def save(self, items: list[ConfigDraft]) -> None:
-        self._items.update({(i.type, i.key): i for i in items})
+        for item in items:
+            old = self._items.get((item.type, item.key))
+            if item.type == "approvalFlow":
+                if old is None:
+                    self._seq += 1
+                    seq = self._seq
+                else:
+                    seq = old.content["createdSeq"]
+                item = item.model_copy(update={"content": {**item.content, "createdSeq": seq}})
+            self._items[(item.type, item.key)] = item
         self._publish()
 
     def delete(self, config_type: str, key: str) -> None:
@@ -174,15 +194,30 @@ class TestFakeConfigSnapshotReader(ConfigSnapshotReaderContract):
         return FakeConfigSnapshotReaderHarness()
 
 
+# ---------------------------------------------------------------- 只针对替代实现
+
 def test_fake_snapshot_returns_given_views_menus_and_packs() -> None:
     """替代实现：页面视图、菜单和规则包句柄按给出的内容返回。"""
     from cost_platform.contracts.types import MenuItem
 
-    view = parse_wire(PageView, doc_json("C05", 0))
+    view = parse_wire(PageView, {**doc_json("C05", 0), "pageCode": CT_PAGE_A})
     handle = object()
-    menu = [MenuItem(key="COST_PINGGU", title="成本核算", kind="page", page_code="COST_PINGGU")]
-    snapshot = FakeConfigSnapshot.from_items(version=1, role_code=ROLE_CODE, items=_items(), page_views={"COST_PINGGU": view},
-                                             packs={"COST_PINGGU": handle})
-    assert snapshot.page_view("COST_PINGGU") is view
-    assert snapshot.rules_pack("COST_PINGGU") is handle
-    assert FakeConfigSnapshot(version=1, role_code=ROLE_CODE, role=snapshot.role(), menus=menu).menus() == menu
+    menu = [MenuItem(key=CT_PAGE_A, title="页面 A", kind="page", page_code=CT_PAGE_A)]
+    snapshot = FakeConfigSnapshot.from_items(version=1, role_code=CT_ROLE_A, items=ct_base_items(), page_views={CT_PAGE_A: view},
+                                             packs={"CT_GOODS": handle})
+    assert snapshot.page_view(CT_PAGE_A) is view
+    assert snapshot.rules_pack("CT_GOODS") is handle
+    assert FakeConfigSnapshot(version=1, role_code=CT_ROLE_A, role=snapshot.role(), menus=menu).menus() == menu
+
+
+def test_fake_from_items_filters_menus_and_requires_views() -> None:
+    """from_items 按角色去掉菜单中不能访问的页面（CF-12）；角色可以访问却没有给出页面视图时，是准备数据的错误。"""
+    menu = ConfigDraft(type="menu", key="CT_MENU", name="菜单", content={"items": [
+        {"key": "ct", "title": "契约测试", "kind": "group", "children": [
+            {"key": CT_PAGE_A, "title": "页面 A", "kind": "page", "pageCode": CT_PAGE_A},
+            {"key": CT_PAGE_B, "title": "页面 B", "kind": "page", "pageCode": CT_PAGE_B}]}]})
+    snapshot = FakeConfigSnapshot.from_items(version=1, role_code=CT_ROLE_A, items=[*ct_base_items(), menu])
+    assert [c.page_code for c in snapshot.menus()[0].children] == [CT_PAGE_A]
+    with pytest.raises(ValueError):
+        snapshot.page_view(CT_PAGE_A)
+    assert _code(snapshot.page_view, CT_PAGE_B) is ErrorCode.PERMISSION_DENIED
