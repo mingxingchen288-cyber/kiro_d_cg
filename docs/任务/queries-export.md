@@ -21,7 +21,7 @@
 - 负责范围：queries 的 Lookup、字典、个人配置和三个端口；表 `PF_PERSONAL_CONFIG` 的迁移脚本。
 - 交付物：C09 第 4 节的 Lookup、字典和个人配置接口；三个端口。
 - 接入责任：approval、operations 使用 `RelatedQuery`、`DocumentReader`（T-AS-6）；migration 使用 `PersonalConfigImporter`（T-AS-8）。
-- 验收标准：模拟验证：个人配置只替换请求中给出的部分；Lookup 的 `keywordColumns` 为空时，只有空白的关键字照常分页返回全部候选，非空关键字返回 400 INVALID_REQUEST，响应的 `keywordSearch` 为 false；关联 SQL 缺少 `recordKeyColumn` 或 `rowKeyColumns` 中的列时返回 500 INTERNAL_ERROR，不返回部分结果；关联 SQL 查出 3 行、其中一行的 `recordKeyColumn` 为空时，返回 3 个对象，这一个 `missing` 为 True、`record_key` 为空，另外两个照常；按关联键查找时用传入单据中 `sourceKey` 所指实体的全部行；通过 `RelatedQuery`、`DocumentReader`、`PersonalConfigImporter` 的契约测试；真实验证：C06 7.5 的两条关联 SQL 在 d_cg 上查出成本单。
+- 验收标准：模拟验证：个人配置只替换请求中给出的部分；Lookup 的 `keywordColumns` 为空时，只有空白的关键字照常分页返回全部候选，非空关键字返回 400 INVALID_REQUEST，响应的 `keywordSearch` 为 false；关联 SQL 缺少 `recordKeyColumn` 或 `rowKeyColumns` 中的列时返回 500 INTERNAL_ERROR，不返回部分结果；关联 SQL 查出 3 行、其中一行的 `recordKeyColumn` 为空时，返回 3 个对象，这一个 `missing` 为 True、`record_key` 为空，另外两个照常；按关联键查找时用传入单据中 `sourceKey` 所指实体的全部行；关联 SQL 绑定原辅料的物料编号、传入单据有物料 115、116 两行时，按两行各执行一次，含两种物料的成本单只返回一次；通过 `RelatedQuery`、`DocumentReader`、`PersonalConfigImporter` 的契约测试；真实验证：C06 7.5 的两条关联 SQL 在 d_cg 上查出成本单。
 - 状态与证据：未开始。
 
 ### T-QE-3 导出

@@ -45,6 +45,15 @@ class RelatedQueryHarness(Protocol):
         """按关联 SQL 查找：查找方式、来源单据和应找到的目标。"""
         ...
 
+    def sql_detail_bind_case(self) -> Case:
+        """绑定变量引用明细字段的关联 SQL：查找方式、来源单据和应找到的目标（C08 第 9 节）。
+
+        绑定变量引用一个明细的字段，还引用主表的字段；来源单据中这个明细至少两行，绑定的字段值各不相同。每行都能找到
+        别的行找不到的对象；至少一个正常对象、一个 `missing` 对象被两行都找到；结果中至少两个 `record_key` 为空、
+        `display` 不同的 `missing` 对象。
+        """
+        ...
+
     def missing_record_key_case(self) -> tuple[SqlFinder, DocumentData]:
         """一个查出的行缺少 `recordKeyColumn` 的关联 SQL 和它的来源单据。"""
         ...
@@ -70,12 +79,27 @@ def _ids(targets: list[TargetObject]) -> set[tuple[str, str | None, tuple[str, .
     return {(o.entity, o.record_key, o.row_keys) for o in targets}
 
 
-def _with_source_rows(finder: RelationKeyFinder, source: DocumentData, rows: list[Row]) -> DocumentData:
-    """来源单据的副本，`sourceKey` 所指明细只留下 `rows`。"""
-    entity = finder.source_key.split(".", 1)[0]
+def _identity(o: TargetObject) -> tuple[object, ...]:
+    """同一对象的判断（C08 第 9 节）：按实体和主键；`missing` 的对象按 `record_key` 和 `display`。"""
+    if o.missing:
+        return (o.entity, o.record_key, True, tuple(sorted(o.display.items())))
+    return (o.entity, o.record_key, o.row_keys, False)
+
+
+def _with_rows(source: DocumentData, entity: str, rows: list[Row]) -> DocumentData:
+    """来源单据的副本，明细 `entity` 只留下 `rows`。"""
     reduced = copy.deepcopy(source)
     reduced.details[entity] = copy.deepcopy(rows)
     return reduced
+
+
+def _with_source_rows(finder: RelationKeyFinder, source: DocumentData, rows: list[Row]) -> DocumentData:
+    """来源单据的副本，`sourceKey` 所指明细只留下 `rows`。"""
+    return _with_rows(source, finder.source_key.split(".", 1)[0], rows)
+
+
+def _bound_entities(finder: SqlFinder) -> set[str]:
+    return {ref.split(".", 1)[0] for ref in finder.binds.values()}
 
 
 class RelatedQueryContract:
@@ -107,7 +131,35 @@ class RelatedQueryContract:
         changed = finder.model_copy(update={"rows": "changed"})
         assert _sorted(harness.query.find(harness.uow, changed, source)) == _sorted(expected)
 
-    @pytest.mark.parametrize("case_name", ["relation_key_case", "sql_case"])
+    def test_sql_detail_bind_runs_once_per_row(self, harness: RelatedQueryHarness) -> None:
+        """绑定变量引用明细字段时，按传入单据中这个明细的每一行各执行一次，主表字段取主表的值，结果合并，同一对象只出现
+        一次；`missing` 的对象按 record_key 和 display 判断是否相同；这个明细没有行时不执行（C08 第 9 节）。"""
+        finder, source, expected = harness.sql_detail_bind_case()
+        assert isinstance(finder, SqlFinder), "harness 的查找方式不符合要求"
+        details = _bound_entities(finder) - {source.master.entity}
+        assert len(details) == 1 and source.master.entity in _bound_entities(finder), "harness 的绑定变量不符合要求"
+        entity = details.pop()
+        rows = source.details.get(entity, [])
+        assert len(rows) >= 2, "harness 的来源单据不符合要求"
+        expected_ids = [_identity(o) for o in expected]
+        assert len(set(expected_ids)) == len(expected_ids), "harness 的应找到的目标中有重复"
+        lost = {_identity(o) for o in expected if o.missing and o.record_key is None}
+        assert len(lost) >= 2, "harness 的结果中没有两个 record_key 为空、display 不同的 missing 对象"
+
+        found = harness.query.find(harness.uow, finder, source)
+        assert _sorted(found) == _sorted(expected)
+        assert len({_identity(o) for o in found}) == len(found)
+
+        per_row = [{_identity(o) for o in harness.query.find(harness.uow, finder, _with_rows(source, entity, [row]))} for row in rows]
+        assert set().union(*per_row) == set(expected_ids)
+        for i, ids in enumerate(per_row):
+            others: set[tuple[object, ...]] = set().union(*(p for j, p in enumerate(per_row) if j != i))
+            assert ids - others, f"第 {i + 1} 行没有找到别的行找不到的对象"
+        shared = [o for o in expected if sum(_identity(o) in p for p in per_row) >= 2]
+        assert any(not o.missing for o in shared) and any(o.missing for o in shared), "harness 中没有被两行都找到的正常对象和 missing 对象"
+        assert harness.query.find(harness.uow, finder, _with_rows(source, entity, [])) == []
+
+    @pytest.mark.parametrize("case_name", ["relation_key_case", "sql_case", "sql_detail_bind_case"])
     def test_source_not_modified(self, harness: RelatedQueryHarness, case_name: str) -> None:
         finder, source, _ = getattr(harness, case_name)()
         before = copy.deepcopy(source)
@@ -164,6 +216,12 @@ _LOST = SqlFinder(kind="sql", entity="COST_PINGGU",
                   "LEFT JOIN T_COST_PINGGU M ON M.DOCID = D.DOCID WHERE D.GOODSID = :goodsId",
                   binds={"goodsId": "COST_GOODS_PRICE.GOODSID"}, record_key_column="DOC_ID", row_key_columns=["DTL_ID"],
                   label_column="PRODUCT_NAME", display_columns=["DOC_ID"])
+# 含某个物料的其他成本单（C06 7.7 样例三的 freeze）：物料编号取原辅料明细，排除来源单据自己取主表
+_SQL_DETAIL = SqlFinder(kind="sql", entity="COST_PINGGU",
+                        sql="SELECT M.DOCID AS DOC_ID, M.GOODSNAME AS PRODUCT_NAME FROM T_COST_PINGGU_DTL D "
+                        "LEFT JOIN T_COST_PINGGU M ON M.DOCID = D.DOCID WHERE D.GOODSID = :goodsId AND D.DOCID <> :docId",
+                        binds={"goodsId": "COST_MATERIAL.GOODSID", "docId": "COST_PINGGU.DOCID"}, record_key_column="DOC_ID",
+                        label_column="PRODUCT_NAME", display_columns=["DOC_ID"])
 _GOODS = DocumentData(ref=DocumentRef(entity="COST_GOODS_PRICE", record_key="115"),
                       master=Row(entity="COST_GOODS_PRICE", row_key="115", client_row_id=None, values={"GOODSID": Decimal("115")}),
                       details={})
@@ -198,6 +256,18 @@ class FakeRelatedQueryHarness:
             TargetObject("COST_PINGGU", None, (), {"DOC_ID": None, "PRODUCT_NAME": None}, True),
             TargetObject("COST_PINGGU", "2003", (), {"DOC_ID": Decimal("2003"), "PRODUCT_NAME": "丁"}, True)]
         self.query.respond_rows(_LOST, lost_rows, source=_GOODS.ref)
+        # 绑定明细字段：来源成本单 1001 的物料 115、116 各执行一次。2002 两种物料都有；"丙"是两次都查到的已删除成本单的明细
+        doc = lambda key, name: {"DOC_ID": None if key is None else Decimal(key), "PRODUCT_NAME": name}  # noqa: E731
+        self.query.respond_rows(_SQL_DETAIL, [doc("2001", "甲"), doc("2002", "乙"), doc(None, "丙")],
+                                binds={"goodsId": Decimal("115"), "docId": Decimal("1001")})
+        self.query.respond_rows(_SQL_DETAIL, [doc("2002", "乙"), doc("2003", "丁"), doc(None, "丙"), doc(None, "戊")],
+                                binds={"goodsId": Decimal("116"), "docId": Decimal("1001")})
+        self._detail_expected = [
+            TargetObject("COST_PINGGU", "2001", (), doc("2001", "甲"), False),
+            TargetObject("COST_PINGGU", "2002", (), doc("2002", "乙"), False),
+            TargetObject("COST_PINGGU", "2003", (), doc("2003", "丁"), False),
+            TargetObject("COST_PINGGU", None, (), doc(None, "丙"), True),
+            TargetObject("COST_PINGGU", None, (), doc(None, "戊"), True)]
 
     def close(self) -> None:
         self._stack.close()
@@ -207,6 +277,9 @@ class FakeRelatedQueryHarness:
 
     def sql_case(self) -> Case:
         return _SQL, copy.deepcopy(_GOODS), list(self._sql)
+
+    def sql_detail_bind_case(self) -> Case:
+        return _SQL_DETAIL, copy.deepcopy(_SOURCE), list(self._detail_expected)
 
     def missing_record_key_case(self) -> tuple[SqlFinder, DocumentData]:
         return self._missing, copy.deepcopy(_GOODS)

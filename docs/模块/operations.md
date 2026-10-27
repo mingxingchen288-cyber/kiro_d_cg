@@ -24,7 +24,7 @@
 - OP-04：逃生舱只在用户点名时启用。它在命令事务内、加锁和冻结检查之后执行，自身不提交也不回滚；每次调用记录逃生舱、参数、执行人、时间和请求键，随命令记录一起写入。
 - OP-05：按钮操作的 `requiresSelection` 为 true 而 `params.selectedRows` 为空时，返回 422 VALIDATION_FAILED。`requiresSelection` 只规定执行的前提；操作实际处理的行和执行权限，照常按操作配置、按钮权限和行权限检查。
 - OP-06：审批流的 `afterApproval` 只在全部审批节点都通过后展开执行（approval AP-20）；动作中的 `params.名称` 取各级审批人提交或后端求值的参数值。
-- OP-07：`updateRecords` 按 `find` 经 `RelatedQuery` 查找记录，传入的来源单据按 C08 第 9 节准备。在按钮操作中，来源是选中单据在数据库中的当前数据，`rows` 只能为 `all`；在审批流中，`rows` 为 `changed` 时用只含有变化的行的副本，不改变随后计算和保存用的完整单据。`RelatedQuery` 返回的 `missing` 对象（记录已不存在，C08 第 9 节）跳过，不更新，也不报错。找到的单据不在本命令涉及的单据中时，由 write-pipeline 加锁并做冻结检查后再合并（WP-18）。在审批流中，`updateRecords` 在最终批准的命令中按当时的数据查找，不像 `targets.find` 那样在保存时查找（C06 7.2）。
+- OP-07：`updateRecords` 按 `find` 经 `RelatedQuery` 查找记录，传入的来源单据按 C08 第 9 节准备。在按钮操作中，来源是选中单据在数据库中的当前数据，`rows` 只能为 `all`，绑定明细字段的关联 SQL 也用全部行；在审批流中，`rows` 为 `changed`，或关联 SQL 的绑定变量引用明细字段时，用只含有变化的行的副本，不改变随后计算和保存用的完整单据。`RelatedQuery` 返回的 `missing` 对象（记录已不存在，C08 第 9 节）跳过，不更新，也不报错。找到的单据不在本命令涉及的单据中时，由 write-pipeline 加锁并做冻结检查后再合并（WP-18）。在审批流中，`updateRecords` 在最终批准的命令中按当时的数据查找，不像 `targets.find` 那样在保存时查找（C06 7.2）。
 - OP-08：按钮操作只按选中行的主键执行（C02 第 1 节）。"确定涉及的单据"阶段按 `params.selectedRows` 找出所属单据，写入 `involved`；命令带了 `documents` 时返回 400 INVALID_REQUEST。动作的来源都取 write-pipeline 加锁读到的当前数据，不用前端的值；选中的行已不存在时按 WP-05 处理。
 
 ## 4. 依赖
