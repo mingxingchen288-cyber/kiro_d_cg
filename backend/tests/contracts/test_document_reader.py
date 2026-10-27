@@ -75,6 +75,12 @@ class DocumentReaderContract:
         assert _normalized(found[DOC_A.ref]) == _normalized(DOC_A)
         assert _normalized(found[DOC_B.ref]) == _normalized(DOC_B)
 
+    def test_load_many_omits_missing(self, arranged: DocumentReaderHarness) -> None:
+        """不存在的单据不在结果中，与 load 返回 None 对应（C08 第 9 节）。"""
+        found = arranged.reader.load_many([DOC_A.ref, MISSING])
+        assert set(found) == {DOC_A.ref}
+        assert arranged.reader.load_many([MISSING]) == {}
+
 
 class FakeDocumentReaderHarness:
     def __init__(self) -> None:

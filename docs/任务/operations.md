@@ -6,12 +6,12 @@
 
 ### T-OP-1 通用动作与按钮操作
 
-- 归属与目标：实现 OP-01–OP-03、OP-05，按钮操作的"确定涉及的单据"和"动作执行"中的展开。
+- 归属与目标：实现 OP-01–OP-03、OP-05、OP-07，按钮操作的"确定涉及的单据"和"动作执行"中的展开。
 - 前置输入：开始前 T-CT-1、T-CT-3；C06 第 4、6 节经用户确认。
 - 负责范围：`backend/src/cost_platform/operations/`。
 - 交付物：`applyPendingChanges`、`recalculate`、`updateTargets`、`updateRecords` 的展开；字段映射；传播边界。
 - 接入责任：T-AS-5 注册按钮操作的阶段；T-AS-6 接入批准后动作。
-- 验收标准（模拟验证）：每种动作的展开结果正确；字段映射取来源计算后的值；同一目标被多行来源找到且值不同时返回 VALIDATION_FAILED；映射到计算字段，或映射到 ERP 行的 ERP 列被拒绝；传播边界为 `end` 时目标不触发审批；按钮需要选中行而没有时返回 VALIDATION_FAILED。
+- 验收标准（模拟验证）：每种动作的展开结果正确；字段映射取来源计算后的值；同一目标被多行来源找到且值不同时返回 VALIDATION_FAILED；映射到计算字段，或映射到 ERP 行的 ERP 列被拒绝；传播边界为 `end` 时目标不触发审批；按钮需要选中行而没有时返回 VALIDATION_FAILED；`updateRecords` 的 `find` 为 `rows: changed` 时，一张有 10 条明细的单据只改了第 3 条，`RelatedQuery` 收到的来源单据中这个明细只有第 3 条，整单计算和保存仍用 10 条（C08 第 9 节）。
 - 状态与证据：未开始。
 
 ### T-OP-2 逃生舱机制

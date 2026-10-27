@@ -2111,6 +2111,17 @@ PackHandle: TypeAlias = object
 """rules-core 的 load_pack 返回的句柄，对调用方不透明。"""
 
 
+class PackInvalidError(Exception):
+    """规则包不合法（包括 C07 第 1 节的依赖成环），由 `RulesEngine.load_pack` 抛出（C08 第 8 节）。"""
+
+    message: str
+    """原因；依赖成环时列出环上的规则。"""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
 @dataclass
 class RowChange:
     """变更计划中的一行。"""

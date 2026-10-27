@@ -18,6 +18,8 @@ from cost_platform.contracts.ports import RelatedQuery, UnitOfWork
 from cost_platform.contracts.types import (
     DocumentData,
     DocumentRef,
+    ErrorCode,
+    PlatformError,
     RelationKeyFinder,
     Row,
     SqlFinder,
@@ -38,6 +40,10 @@ class RelatedQueryHarness(Protocol):
 
     def sql_case(self) -> Case:
         """按关联 SQL 查找：查找方式、来源单据和应找到的目标。"""
+        ...
+
+    def missing_record_key_case(self) -> tuple[SqlFinder, DocumentData]:
+        """一个查出的行缺少 `recordKeyColumn` 的关联 SQL 和它的来源单据。"""
         ...
 
 
@@ -63,6 +69,13 @@ class RelatedQueryContract:
         before = copy.deepcopy(source)
         harness.query.find(harness.uow, finder, source)
         assert source == before
+
+    def test_missing_record_key_fails_whole_query(self, harness: RelatedQueryHarness) -> None:
+        """结果缺少 recordKeyColumn 时整个查找失败（500 INTERNAL_ERROR），不返回部分结果。"""
+        finder, source = harness.missing_record_key_case()
+        with pytest.raises(PlatformError) as caught:
+            harness.query.find(harness.uow, finder, source)
+        assert caught.value.code is ErrorCode.INTERNAL_ERROR
 
 
 _SOURCE = DocumentData(
@@ -91,10 +104,12 @@ class FakeRelatedQueryHarness:
         self.query = FakeRelatedQuery()
         self._relation = [TargetObject("COST_GOODS_PRICE", "115", (), {"GOODSID": Decimal("115")}),
                           TargetObject("COST_GOODS_PRICE", "116", (), {"GOODSID": Decimal("116")})]
-        self._sql = [TargetObject("COST_PINGGU", "2001", (), {"DOC_ID": Decimal("2001"), "PRODUCT_NAME": "甲"}),
-                     TargetObject("COST_PINGGU", "2002", (), {"DOC_ID": Decimal("2002"), "PRODUCT_NAME": "乙"})]
+        rows = [{"DOC_ID": Decimal("2001"), "PRODUCT_NAME": "甲"}, {"DOC_ID": Decimal("2002"), "PRODUCT_NAME": "乙"}]
+        self._sql = [TargetObject("COST_PINGGU", "2001", (), rows[0]), TargetObject("COST_PINGGU", "2002", (), rows[1])]
         self.query.respond(_RELATION, self._relation, source=_SOURCE.ref)
-        self.query.respond(_SQL, self._sql, source=_GOODS.ref)
+        self.query.respond_rows(_SQL, rows, source=_GOODS.ref)
+        self._missing = _SQL.model_copy(update={"sql": _SQL.sql.replace("M.DOCID AS DOC_ID, ", "")})
+        self.query.respond_rows(self._missing, [rows[0], {"PRODUCT_NAME": "乙"}])
 
     def close(self) -> None:
         self._stack.close()
@@ -104,6 +119,9 @@ class FakeRelatedQueryHarness:
 
     def sql_case(self) -> Case:
         return _SQL, copy.deepcopy(_GOODS), list(self._sql)
+
+    def missing_record_key_case(self) -> tuple[SqlFinder, DocumentData]:
+        return self._missing, copy.deepcopy(_GOODS)
 
 
 class TestFakeRelatedQuery(RelatedQueryContract):

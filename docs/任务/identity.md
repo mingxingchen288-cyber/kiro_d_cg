@@ -11,7 +11,7 @@
 - 负责范围：`backend/src/cost_platform/identity/` 的账号存储；表 `PF_USER`、`PF_USER_ROLE`、`PF_DEPARTMENT` 的迁移脚本。
 - 交付物：账号读写；Argon2 哈希和 BCrypt 校验；admin 初始化函数；账号导入。
 - 接入责任：T-AS-4 在启动时调用 admin 初始化；approval 使用 `DirectoryReader`（T-AS-6）；migration 使用 `AccountImporter`（T-AS-8）。
-- 验收标准：模拟验证和真实验证（d_cg）都通过：BCrypt 账号登录成功后哈希改为 Argon2，失败时不改；admin 初始化执行两次，第二次不改任何数据；导入时已存在的账号不覆盖，列入报告；账号名重复返回 VALIDATION_FAILED。
+- 验收标准：模拟验证和真实验证（d_cg）都通过：BCrypt 账号登录成功后哈希改为 Argon2，失败时不改；admin 初始化执行两次，第二次不改任何数据；导入时已存在的账号不覆盖（角色分配也不改），列入报告，报告的计数和标识按 C08 第 1 节；通过 `DirectoryReader`、`AccountImporter` 的契约测试；账号名重复返回 VALIDATION_FAILED。
 - 状态与证据：未开始。
 
 ### T-ID-2 登录、会话与认证

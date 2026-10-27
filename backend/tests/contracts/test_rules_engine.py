@@ -13,7 +13,7 @@ import pytest
 
 from cost_platform.contracts.fakes import FakeRulesEngine
 from cost_platform.contracts.ports import RulesEngine
-from cost_platform.contracts.types import EvalComputed, EvalEntry, EvalFailure, EvaluationResult, parse_wire
+from cost_platform.contracts.types import EvalComputed, EvalEntry, EvalFailure, EvaluationResult, PackInvalidError, parse_wire
 
 from .support import doc_json
 
@@ -33,6 +33,10 @@ class RulesEngineHarness(Protocol):
         """对这个规则包的一个审批入口请求（`purpose` 为 `approvalEntry`）。"""
         ...
 
+    def invalid_pack(self) -> bytes:
+        """一个不合法的规则包（真实实现用依赖成环的规则包）。"""
+        ...
+
 
 def _result(text: str) -> EvalComputed | EvalEntry | EvalFailure:
     return parse_wire(EvaluationResult, json.loads(text))
@@ -46,6 +50,13 @@ class RulesEngineContract:
     def test_core_version(self, harness: RulesEngineHarness) -> None:
         version = harness.engine.core_version()
         assert isinstance(version, str) and version
+
+    def test_invalid_pack(self, harness: RulesEngineHarness) -> None:
+        """不合法的规则包由 load_pack 抛 PackInvalidError，消息说明原因（C08 第 8 节）。"""
+        with pytest.raises(PackInvalidError) as caught:
+            harness.engine.load_pack(harness.invalid_pack())
+        assert caught.value.message
+        assert "Traceback" not in caught.value.message and "panicked" not in caught.value.message
 
     def test_operation_result_shape(self, harness: RulesEngineHarness) -> None:
         handle = harness.engine.load_pack(harness.pack())
@@ -85,6 +96,11 @@ class FakeRulesEngineHarness:
 
     def entry_request(self) -> str:
         return json.dumps({**doc_json("C07", 1), "purpose": "approvalEntry", "flow": "COST_TO_GOODS", "level": 1}, ensure_ascii=False)
+
+    def invalid_pack(self) -> bytes:
+        broken = doc_json("C07", 0)
+        del broken["rules"]
+        return json.dumps(broken).encode("utf-8")
 
 
 class TestFakeRulesEngine(RulesEngineContract):

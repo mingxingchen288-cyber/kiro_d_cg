@@ -24,6 +24,7 @@
 - OP-04：逃生舱只在用户点名时启用。它在命令事务内、加锁和冻结检查之后执行，自身不提交也不回滚；每次调用记录逃生舱、参数、执行人、时间和请求键，随命令记录一起写入。
 - OP-05：按钮操作的 `requiresSelection` 为 true 而 `params.selectedRows` 为空时，返回 422 VALIDATION_FAILED。`requiresSelection` 只规定执行的前提；操作实际处理的行和执行权限，照常按操作配置、按钮权限和行权限检查。
 - OP-06：审批流的 `levelActions` 与 `afterApproval` 用同一组通用动作，展开方式相同；动作中的 `params.名称` 取审批人提交或后端求值的参数值。
+- OP-07：`updateRecords` 按 `find` 经 `RelatedQuery` 查找记录，传入的来源单据按 C08 第 9 节准备：`rows` 为 `changed` 时用只含有变化的行的副本，不改变随后计算和保存用的完整单据。
 
 ## 4. 依赖
 

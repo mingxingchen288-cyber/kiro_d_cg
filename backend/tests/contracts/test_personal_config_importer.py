@@ -43,6 +43,17 @@ class PersonalConfigImporterContract:
         for entry in ENTRIES:
             assert harness.stored(entry.user_id, entry.page_code) == entry.config
 
+    def test_existing_entries_are_not_overwritten(self, harness: PersonalConfigImporterHarness) -> None:
+        """已有个人配置的（用户、页面）不覆盖，列入 skipped，标识为 personal:<userId>/<pageCode>。"""
+        harness.importer.import_batch(PersonalConfigBatch(entries=ENTRIES[:1]))
+        changed = PersonalConfigEntry(user_id="9201", page_code="COST_PINGGU", config=PersonalConfig(detail_mode="stack"))
+        report = harness.importer.import_batch(PersonalConfigBatch(entries=[changed, ENTRIES[1]]))
+        assert report.imported == 1
+        assert [ident for ident, _ in report.skipped] == ["personal:9201/COST_PINGGU"]
+        assert all(reason for _, reason in report.skipped)
+        assert harness.stored("9201", "COST_PINGGU") == CONFIG
+        assert harness.stored("9202", "COST_PINGGU") == ENTRIES[1].config
+
 
 class FakePersonalConfigImporterHarness:
     def __init__(self) -> None:

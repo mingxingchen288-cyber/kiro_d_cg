@@ -27,7 +27,7 @@
 - RC-06：两个产物的 `core_version()` 相同；样例集在两个产物上的结果按 C01 判定一致。
 - RC-07：Python 包 `cost_rules_core` 提供 `RulesEngine`（C08 第 8 节）；WASM 以 ES 模块交付；另交付 Worker 脚本和 `createCalcWorkerClient(wasmUrl)`，返回 C11 的 `CalcWorkerClient`，消息格式见 C07 第 5 节。这三样一起放在 `rules-core/dist/web/`。
 - RC-08：按 C06 第 5 节的取值约定组装表达式的输入：主表规则每张单据求值一次，明细规则每行求值一次，并提供 `master`、`old`、`context`、`data`。`old` 取自请求中各行的 `old`，没有时等于当前值；rules-core 不查数据库。
-- RC-09：`load_pack` 按 C06 第 5 节的规定，从表达式和条件引用的字段算出规则之间的依赖并排序；依赖成环时返回 `PACK_INVALID`，列出环上的规则。config 保存配置时调用它，把这个错误转成 422 VALIDATION_FAILED。
+- RC-09：`load_pack` 按 C06 第 5 节的规定，从表达式和条件引用的字段算出规则之间的依赖并排序；依赖成环时返回 `PACK_INVALID`（Python 包中抛 C08 第 8 节的 `PackInvalidError`），列出环上的规则。config 保存配置时调用它，把这个错误转成 422 VALIDATION_FAILED。
 
 ## 4. 依赖
 

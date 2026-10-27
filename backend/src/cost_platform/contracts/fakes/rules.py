@@ -8,7 +8,18 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from ..types import EvalComputed, EvalEntry, EvalError, EvalFailure, EvaluationRequest, EvaluationResult, RulesPack, dump_wire, parse_wire
+from ..types import (
+    EvalComputed,
+    EvalEntry,
+    EvalError,
+    EvalFailure,
+    EvaluationRequest,
+    EvaluationResult,
+    PackInvalidError,
+    RulesPack,
+    dump_wire,
+    parse_wire,
+)
 from ._script import Scripted
 
 
@@ -44,7 +55,7 @@ def _failure(code: str, message: str) -> str:
 class FakeRulesEngine(Scripted):
     """`RulesEngine`：不执行规则，求值结果由 `respond` 预设。
 
-    - `load_pack` 按 C07 第 1 节解析规则包，返回 `FakePack`。
+    - `load_pack` 按 C07 第 1 节解析规则包，返回 `FakePack`；不符合时抛 `PackInvalidError`（不检查依赖成环）。
     - `evaluate` 按 C07 第 2 节解析请求；请求不合法时返回 INPUT_INVALID，句柄不是本实例加载的时返回 PACK_INVALID。
       否则返回最近一条条件匹配的预设结果；没有匹配时，计算结果为空（`{"ok": true, "rows": [], "effects": []}`），
       审批入口为满足（`{"ok": true, "satisfied": true}`）。
@@ -68,7 +79,10 @@ class FakeRulesEngine(Scripted):
 
     def load_pack(self, pack_json: bytes) -> FakePack:
         self._record("load_pack", pack_json)
-        pack = FakePack(parse_wire(RulesPack, json.loads(pack_json)))
+        try:
+            pack = FakePack(parse_wire(RulesPack, json.loads(pack_json)))
+        except (ValueError, ValidationError) as e:
+            raise PackInvalidError(f"规则包不符合 C07 第 1 节：{type(e).__name__}") from None
         self.packs.append(pack)
         return pack
 

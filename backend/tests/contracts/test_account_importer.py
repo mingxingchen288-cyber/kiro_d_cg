@@ -50,22 +50,35 @@ class AccountImporterContract:
         raise NotImplementedError("由具体实现的测试类提供")
 
     def test_imports_accounts_and_assignments(self, harness: AccountImporterHarness) -> None:
+        """imported 只数账号，角色、分配和部门不计入（C08 第 1 节）。"""
         report = harness.importer.import_batch(BATCH)
         assert report.skipped == []
-        assert report.imported >= len(ACCOUNTS)
+        assert report.imported == len(ACCOUNTS)
         for account in ACCOUNTS:
             assert harness.reader.account(account.user_id) == _ref(account)
         # 停用的账号也导入，但不在启用账号中
         assert harness.reader.enabled_accounts_with_role("CT_IMPORTED") == [_ref(ACCOUNTS[0])]
 
     def test_existing_accounts_are_not_overwritten(self, harness: AccountImporterHarness) -> None:
+        """已存在的账号不覆盖，角色分配也不改，列入 skipped，标识为 account:<userId>。"""
         harness.importer.import_batch(BATCH)
-        changed = replace(BATCH, accounts=[replace(a, display_name="改过的名字", enabled=True) for a in ACCOUNTS])
+        changed = replace(BATCH, accounts=[replace(a, display_name="改过的名字", enabled=True) for a in ACCOUNTS],
+                          assignments=[*BATCH.assignments, RoleAssignment(user_id="9101", role_code="CT_EXTRA")])
         report = harness.importer.import_batch(changed)
+        assert report.imported == 0
+        assert sorted(ident for ident, _ in report.skipped) == ["account:9101", "account:9102"]
+        assert all(reason for _, reason in report.skipped)
         for account in ACCOUNTS:
             assert harness.reader.account(account.user_id) == _ref(account)
-            assert any(account.user_id in ident or account.username in ident for ident, _ in report.skipped), report.skipped
         assert harness.reader.enabled_accounts_with_role("CT_IMPORTED") == [_ref(ACCOUNTS[0])]
+        assert harness.reader.enabled_accounts_with_role("CT_EXTRA") == []
+
+    def test_mixed_batch_counts_only_imported(self, harness: AccountImporterHarness) -> None:
+        harness.importer.import_batch(replace(BATCH, accounts=ACCOUNTS[:1], assignments=BATCH.assignments[:1]))
+        report = harness.importer.import_batch(BATCH)
+        assert report.imported == 1
+        assert [ident for ident, _ in report.skipped] == ["account:9101"]
+        assert harness.reader.account("9102") == _ref(ACCOUNTS[1])
 
 
 class FakeAccountImporterHarness:
