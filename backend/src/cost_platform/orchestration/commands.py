@@ -20,9 +20,12 @@ from cost_platform.contracts.ports import (
 from cost_platform.contracts.types import (
     Command,
     CommandResult,
+    DetailChange,
+    DocumentPatch,
     EntityConfig,
     ErrorCode,
     ExecutionContext,
+    MasterNone,
     PlatformError,
     ResultRow,
     Row,
@@ -46,7 +49,7 @@ def _result_row(entity: EntityConfig, row: Row) -> ResultRow:
 
 
 class SaveFlow:
-    """页面保存（operation.kind = save）：加锁读取 → 合并 → 写入。目前只开放修改主表。"""
+    """页面保存（operation.kind = save）：锁主表行（单据锁）→ 读明细 → 合并 → 写入。目前开放主表和明细的修改。"""
 
     def __init__(self, store: DocumentStore, merger: ChangeMerger, permission: PermissionChecker,
                  log: CommandRecorder) -> None:
@@ -61,18 +64,36 @@ class SaveFlow:
         affected: list[tuple[EntityConfig, Row]] = []
         skipped: list[SkippedRow] = []
         entities: dict[str, EntityConfig] = {}
+
+        def entity_of(code: str) -> EntityConfig:
+            return entities.setdefault(code, ctx.config.entity(code))
+
+        def merge(entity: EntityConfig, current: dict[str, Row], patch: DocumentPatch, code: str) -> None:
+            found = self._merger.merge(entity, current, patch, self._permission.writable_fields(ctx, page, code))
+            changes.extend(found)
+            affected.extend((entity, current[c.row_key or ""]) for c in found)
+
+        # WP-03：按（实体、主键）排序加单据锁
         for patch in sorted(command.documents, key=lambda p: (p.entity, p.master.row_key)):  # type: ignore[union-attr]
-            entity = entities.setdefault(patch.entity, ctx.config.entity(patch.entity))
+            entity = entity_of(patch.entity)
             row_key = patch.master.row_key  # type: ignore[union-attr]
             current = self._store.lock_load(uow, patch.entity, entity, [row_key])
             if row_key not in current:  # WP-05：默认跳过
                 skipped.append(SkippedRow(entity=patch.entity, row_key=row_key, reason="ROW_NOT_FOUND"))
                 continue
-            writable = self._permission.writable_fields(ctx, page, patch.entity)
-            found = self._merger.merge(entity, current, patch, writable)
-            if found:
-                changes += found
-                affected.append((entity, current[row_key]))
+            merge(entity, current, patch.model_copy(update={"details": []}), patch.entity)
+            parent_keys = {link.entity: link.parent_key for link in entity.details}
+            by_entity: dict[str, list[DetailChange]] = {}
+            for detail in patch.details:
+                by_entity.setdefault(detail.entity, []).append(detail)
+            for code, details in by_entity.items():
+                detail_entity = entity_of(code)
+                rows = self._store.load_details(uow, code, detail_entity, parent_keys[code], row_key)
+                keys = [d.row_key for d in details]  # type: ignore[union-attr]
+                skipped += [SkippedRow(entity=code, row_key=k, reason="ROW_NOT_FOUND") for k in keys if k not in rows]
+                present = [d for d, k in zip(details, keys) if k in rows]
+                merge(detail_entity, rows, DocumentPatch(entity=patch.entity, master=MasterNone(op="none", row_key=row_key),
+                                                         details=present), code)
         if not changes:
             return CommandResult(request_key=command.request_key, outcome="unchanged", rows=[], id_map={},
                                  prompts=[], skipped=skipped, approvals=[])

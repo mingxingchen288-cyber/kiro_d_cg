@@ -35,7 +35,8 @@ class RolePermissionChecker:
     def writable_fields(self, ctx: ExecutionContext, page: str, entity: str) -> frozenset[str]:
         """AZ-04：页面视图中可编辑的字段，再与页面保存操作的 writableFields 取交集。"""
         view = ctx.config.page_view(page)
-        editable = {f.name for f in view.master.fields if f.editable} if view.master.entity == entity else set()
+        areas = [view.master, *view.details]
+        editable = {f.name for area in areas if area.entity == entity for f in area.fields if f.editable}
         allowed = set(ctx.config.operation(view.save_operation).writable_fields.get(entity, []))
         return frozenset(editable & allowed)
 

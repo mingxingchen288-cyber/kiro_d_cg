@@ -178,6 +178,13 @@ class DocumentStore(Protocol):
         读出实体的全部字段；不存在的主键不在结果中。"""
         ...
 
+    def load_details(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, parent_key: str,
+                     record_key: str) -> dict[str, Row]:
+        """读取一张单据在这个明细实体中的全部行，不加锁：调用方已用 lock_load 锁住所属的主表行（单据锁，WP-03）。
+        有 readView 时经视图读取；多表视图加 FOR UPDATE 会把关联表（例如物料表）的行也锁住，所以这里不加锁。
+        parent_key 为明细中关联主表的字段，record_key 为主单主键；读出实体的全部字段。"""
+        ...
+
     def write(self, uow: UnitOfWork, entity: EntityConfig, changes: list[RowChange]) -> None:
         """按变更计划写入，只写有变化的列（WP-09）。"""
         ...

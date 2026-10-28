@@ -1,4 +1,4 @@
-"""HTTP 应用（C09 中链路 0 用到的接口）和请求处理（AS-02）。
+"""HTTP 应用（C09 中链路 0、链路 1 用到的接口）和请求处理（AS-02）。
 
 启动：`uv run uvicorn cost_platform.assembly.app:create_app --factory --port 8080`。
 """
@@ -27,6 +27,7 @@ from cost_platform.contracts.types import (
     Origin,
     PageView,
     PlatformError,
+    RecordResponse,
     RoleRef,
     dump_wire,
     parse_wire,
@@ -107,6 +108,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ctx = context(request, is_write=True)
         req: ListRequest = await body(request, ListRequest)
         return dump_wire(ListResponse, c.queries.list(ctx, page_code, req))
+
+    @app.get("/api/pages/{page_code}/records/{record_key}")
+    def record(page_code: str, record_key: str, request: Request) -> Any:
+        ctx = context(request, is_write=False)
+        return dump_wire(RecordResponse, c.queries.record(ctx, page_code, record_key))
 
     @app.post("/api/commands")
     async def commands(request: Request) -> Any:

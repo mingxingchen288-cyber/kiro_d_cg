@@ -4,7 +4,7 @@
   "name": "成本核算",
   "content": {
     "title": "成本核算",
-    "layout": "single",
+    "layout": "masterDetail",
     "detailMode": "tabs",
     "audit": true,
     "saveOperation": "COST_PINGGU.save",
@@ -20,6 +20,26 @@
         "cellSelection": true,
         "groupBy": []
       }
-    }
+    },
+    "details": [
+      {
+        "entity": "COST_MATERIAL",
+        "title": "原料/辅料",
+        "grid": {
+          "sideBar": true,
+          "cellSelection": true,
+          "groupBy": []
+        }
+      },
+      {
+        "entity": "COST_PACKAGE",
+        "title": "包材",
+        "grid": {
+          "sideBar": true,
+          "cellSelection": true,
+          "groupBy": []
+        }
+      }
+    ]
   }
 }

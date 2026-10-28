@@ -56,14 +56,24 @@ def from_wire(field_type: FieldType, value: BusinessValue) -> Value:
 
 
 def from_db(field_type: FieldType, value: object) -> Value:
-    """数据库驱动读出的值转为后端内部的值：整数转 Decimal（DB-01），日期字段只取日期。"""
+    """数据库驱动读出的值转为后端内部的值：整数转 Decimal（DB-01），日期字段只取日期；
+    是非字段在数据库中是 NUMBER(1) 的 0/1（C01），转为 bool。"""
     if value is None:
         return None
     if field_type == "number" and isinstance(value, int) and not isinstance(value, bool):
         return Decimal(value)
+    if field_type == "boolean":
+        return bool(value)
     if field_type == "date" and isinstance(value, datetime):
         return value.date()
     return value  # type: ignore[return-value]
+
+
+def to_db(field_type: FieldType, value: Value) -> object:
+    """后端内部的值转为写入数据库的值：是非字段写 1/0（NUMBER(1)），其余原样。"""
+    if field_type == "boolean" and value is not None:
+        return 1 if value else 0
+    return value
 
 
 def same_value(field_type: FieldType, a: Value, b: Value) -> bool:

@@ -13,10 +13,20 @@
         "MEMO",
         "PINGGU_CLASS",
         "BUSINESS_USER"
+      ],
+      "COST_MATERIAL": [
+        "CUSTOMER_SPECIFIED",
+        "MEMO"
+      ],
+      "COST_PACKAGE": [
+        "CUSTOMER_SPECIFIED",
+        "MEMO"
       ]
     },
     "impact": [
-      "COST_PINGGU"
+      "COST_PINGGU",
+      "COST_MATERIAL",
+      "COST_PACKAGE"
     ],
     "propagation": "continue"
   }

@@ -1,6 +1,6 @@
 /**
  * 平台后端的 HTTP 客户端（C09）：会话 Cookie 由浏览器带上；POST 请求带 X-CSRF-Token；错误体按 C03 解析。
- * 链路 0 只用到登录、/api/me、页面视图、列表和命令。
+ * 目前用到登录、/api/me、页面视图、列表、单据加载和命令。
  */
 import { sessionStg } from '@/utils/storage';
 import { getServiceBaseURL } from '@/utils/service';
@@ -107,12 +107,29 @@ export interface ViewField {
   pinned: 'left' | 'right' | null;
 }
 
+export interface ViewMaster {
+  entity: string;
+  primaryKey: string;
+  fields: ViewField[];
+}
+
+export interface ViewDetail {
+  entity: string;
+  title: string;
+  primaryKey: string;
+  parentKey: string;
+  fields: ViewField[];
+}
+
 export interface PageView {
   pageCode: string;
   title: string;
   version: number;
+  layout: 'single' | 'masterDetail';
+  detailMode: 'tabs' | 'stack';
   saveOperation: string;
-  master: { entity: string; primaryKey: string; fields: ViewField[] };
+  master: ViewMaster;
+  details: ViewDetail[];
   systemButtons: string[];
 }
 
@@ -120,6 +137,12 @@ export interface DataRow {
   rowKey: string;
   values: Record<string, FieldValue>;
   frozen: { approvalId: string } | null;
+}
+
+/** 单据加载：主表行和每个明细实体的行 */
+export interface RecordResponse {
+  master: DataRow;
+  details: Record<string, DataRow[]>;
 }
 
 export interface ListRequest {
@@ -136,6 +159,13 @@ export function listRows(pageCode: string, request: ListRequest) {
   return platformRequest<{ rows: DataRow[]; total: number }>('POST', `/api/pages/${pageCode}/rows`, request);
 }
 
+export function loadRecord(pageCode: string, recordKey: string) {
+  return platformRequest<RecordResponse>(
+    'GET',
+    `/api/pages/${encodeURIComponent(pageCode)}/records/${encodeURIComponent(recordKey)}`
+  );
+}
+
 // ---- C02 命令与结果
 
 export interface MasterModify {
@@ -144,11 +174,30 @@ export interface MasterModify {
   changes: Record<string, FieldValue>;
 }
 
+/** 主表不改、只改明细 */
+export interface MasterNone {
+  op: 'none';
+  rowKey: string;
+}
+
+export interface DetailModify {
+  entity: string;
+  op: 'modify';
+  rowKey: string;
+  changes: Record<string, FieldValue>;
+}
+
+export interface DocumentPatch {
+  entity: string;
+  master: MasterModify | MasterNone;
+  details: DetailModify[];
+}
+
 export interface Command {
   requestKey: string;
   page: string;
   operation: string;
-  documents: Array<{ entity: string; master: MasterModify; details: [] }>;
+  documents: DocumentPatch[];
   params: Record<string, never>;
 }
 

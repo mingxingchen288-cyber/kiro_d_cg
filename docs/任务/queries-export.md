@@ -12,7 +12,7 @@
 - 交付物：AG Grid 排序、筛选模型和高级查询到 SQL 的转换（全部用绑定变量）；分页、总数和汇总；冻结标记。
 - 接入责任：T-AS-5 挂载路由并接入真实 authz；T-AS-6 接入 `FreezeReader`。
 - 验收标准：模拟验证：startRow 等于总数时返回 0 行；排序值相同时按主键稳定排序；用不可见或不存在的字段筛选、排序返回 VALIDATION_FAILED；行权限范围外的单据返回 NOT_FOUND；真实验证：在 d_cg 上分页和汇总正确，物料清单经视图读取。
-- 状态与证据：进行中。链路 0 已先交付最小部分，见 T-AS-9（[assembly](assembly.md)）；本卡的验收照常进行。
+- 状态与证据：进行中。链路 0 已先交付最小部分，见 T-AS-9（[assembly](assembly.md)）；本卡的验收照常进行。链路 1 加单据加载 `GET /api/pages/{pageCode}/records/{recordKey}`：主表行带行权限条件，明细经 readView 按主从关联字段读取、按主键排序。真实联调见 T-AS-9（[assembly](assembly.md)）。
 
 ### T-QE-2 Lookup、字典、个人配置与读取端口
 

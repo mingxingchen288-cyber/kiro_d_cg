@@ -367,6 +367,16 @@
         "role": "input"
       }
     ],
+    "details": [
+      {
+        "entity": "COST_MATERIAL",
+        "parentKey": "DOCID"
+      },
+      {
+        "entity": "COST_PACKAGE",
+        "parentKey": "DOCID"
+      }
+    ],
     "fieldDefaults": {
       "GOODSID": {
         "editable": false

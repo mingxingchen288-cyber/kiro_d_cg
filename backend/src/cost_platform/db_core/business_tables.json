@@ -51,5 +51,53 @@
       "Y_ML",
       "Y_SALE"
     ]
+  },
+  "T_COST_GOODS": {
+    "source": "旧物料清单页 goods-price-manage 的列元数据（CMX.T_COST_COLUMN_METADATA，TABLE_METADATA_ID=132）VISIBLE=1 的 10 列，加上成本核算两个明细视图从物料表读的 SUQTY、GOODSNAME_EN；没有虚拟列。已删除的物料不复制：未删除单据的明细视图行没有落在已删除物料上的（.reports/chain1/02 号）",
+    "excludeDeleted": true,
+    "columns": [
+      "GOODSID",
+      "GOODSNAME",
+      "PRICE",
+      "SUQTY",
+      "USEFLAG",
+      "FACTORYNAME",
+      "STANDARDTYPE",
+      "ISERP",
+      "GOODSTYPE",
+      "PACKTYPE",
+      "GOODSNAME_EN",
+      "ZX_PRICE"
+    ]
+  },
+  "T_COST_PINGGU_DTL": {
+    "source": "旧页面 cost-pinggu 明细 material、package 的列元数据（TABLE_METADATA_ID=122、123）VISIBLE=1 且值来自明细表本身的 10 列；BATCH_QTY、COST_BATCH 原为虚拟列。页面显示的 GOODSNAME 等 8 列由视图从物料表取，明细表自存的那份不复制；APEX_PL 等 5 个副本列、BATCH_QTY_OLD、COST_BATCH_OLD、FACTORYID、MODIFYDATE、DELETED、CREATE_*/UPDATE_* 不复制（migration 的 MG-12、MG-13）。已删除的明细和已删除单据的明细不复制",
+    "excludeDeleted": true,
+    "parent": {
+      "table": "T_COST_PINGGU",
+      "column": "DOCID"
+    },
+    "columns": [
+      "DOCID",
+      "GOODSID",
+      "PER_HL",
+      "EXADD_MATER",
+      "PRICE",
+      "MEMO",
+      "DTLID",
+      "CUSTOMER_SPECIFIED",
+      "BATCH_QTY",
+      "COST_BATCH"
+    ]
+  },
+  "V_COST_PINGGU_MATERIAL": {
+    "kind": "view",
+    "source": "CMX.V_COST_PINGGU_MATERIAL（原辅料明细 CostMaterial 的查询视图）：去掉方案名和 DELETED 条件，去掉不复制的 DELETED、CREATE_*/UPDATE_*、APEX_PL、P_PERPACK、S_PERBACK、X_PERBACK、M_PERPACK",
+    "sql": "SELECT d.DTLID, d.DOCID, d.GOODSID, d.PER_HL, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.EXADD_MATER, d.MEMO, f.GOODSNAME_EN, f.ZX_PRICE BASE_PRICE, f.SUQTY, f.GOODSNAME, f.USEFLAG DTL_USEFLAG, f.STANDARDTYPE, f.FACTORYNAME, f.GOODSTYPE, NVL(d.CUSTOMER_SPECIFIED, 0) CUSTOMER_SPECIFIED FROM T_COST_PINGGU_DTL d, T_COST_GOODS f WHERE f.USEFLAG IN ('原料', '辅料') AND d.GOODSID = f.GOODSID"
+  },
+  "V_COST_PINGGU_PACKAGE": {
+    "kind": "view",
+    "source": "CMX.V_COST_PINGGU_PACKAGE（包材明细 CostPackage 的查询视图）：改法同上",
+    "sql": "SELECT d.DTLID, d.DOCID, d.GOODSID, d.PER_HL, d.EXADD_MATER, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.MEMO, f.GOODSNAME_EN, f.PRICE BASE_PRICE, f.SUQTY, f.GOODSNAME, f.USEFLAG DTL_USEFLAG, f.STANDARDTYPE, f.FACTORYNAME, f.GOODSTYPE, NVL(d.CUSTOMER_SPECIFIED, 0) CUSTOMER_SPECIFIED FROM T_COST_PINGGU_DTL d, T_COST_GOODS f WHERE f.USEFLAG IN ('非印字包材', '印字包材') AND d.GOODSID = f.GOODSID"
   }
 }
