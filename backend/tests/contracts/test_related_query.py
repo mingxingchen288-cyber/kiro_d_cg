@@ -42,7 +42,10 @@ class RelatedQueryHarness(Protocol):
         ...
 
     def sql_case(self) -> Case:
-        """按只引用主表字段的关联 SQL 查找：查找方式、来源单据和应找到的目标，目标按 SQL 返回的顺序给出，至少两个。"""
+        """按只引用主表字段的关联 SQL 查找：查找方式、来源单据和应找到的目标，目标按 SQL 返回的顺序给出，至少两个。
+
+        SQL 必须带 `ORDER BY`，使返回顺序确定（下面按顺序比较的用例都一样）。
+        """
         ...
 
     def relation_key_detail_case(self) -> Case:
@@ -55,6 +58,7 @@ class RelatedQueryHarness(Protocol):
 
     def sql_detail_bind_case(self) -> Case:
         """绑定变量引用明细字段的关联 SQL：查找方式、来源单据和应找到的目标，目标按应返回的顺序给出（C08 第 9 节）。
+        SQL 必须带 `ORDER BY`。
 
         - 绑定变量引用一个明细的字段，还引用一个主表字段；这个主表字段在该明细的行中也有同名字段，值与主表不同。
         - 来源单据中这个明细至少两行，绑定的字段值各不相同；每行都能找到别的行找不到的对象。
@@ -78,8 +82,9 @@ class RelatedQueryHarness(Protocol):
     def lost_record_case(self) -> Case:
         """查出的行中有主键为空的关联 SQL（例如明细还在、所属单据已被删除），它的来源单据和应找到的目标。
 
-        应找到的目标按 SQL 返回的顺序给出。`finder.entity` 为明细实体，`rowKeyColumns` 不为空，`labelColumn` 和
-        `recordKeyColumn` 都不在 `displayColumns` 中；结果中至少一行各列都有值，至少一行主键完整而 `labelColumn` 为空，至少一行 `recordKeyColumn` 为空，至少一行
+        应找到的目标按 SQL 返回的顺序给出，SQL 必须带 `ORDER BY`。`finder.entity` 为明细实体，`rowKeyColumns` 不为空，
+        `labelColumn` 和 `recordKeyColumn` 都不在 `displayColumns` 中；结果中至少一行各列都有值，至少一行主键完整而
+        `labelColumn` 为空，至少一行 `recordKeyColumn` 为空，至少一行
         `recordKeyColumn` 有值而 `rowKeyColumns` 中的列为空。另外：同一张单据的两行明细（`record_key` 相同、`row_keys`
         不同）；两个 `display` 相同、`record_key` 不同且都不为空的 `missing` 对象；同一行查出两次（只算一个）。
         """
@@ -128,6 +133,7 @@ class RelatedQueryContract:
         found = harness.query.find(harness.uow, finder, source)
         assert all(isinstance(o, TargetObject) for o in found)
         if case_name == "sql_case":
+            assert len(expected) >= 2, "harness 的应找到的目标少于两个，检查不了顺序"
             assert found == expected  # 只引用主表字段的关联 SQL 执行一次，按 SQL 返回的顺序（C08 第 9 节）
         else:
             assert _sorted(found) == _sorted(expected)
@@ -261,20 +267,23 @@ _SOURCE = DocumentData(
 _RELATION = RelationKeyFinder(kind="relationKey", entity="COST_GOODS_PRICE", target_key="GOODSID", source_key="COST_MATERIAL.GOODSID",
                               rows="all")
 _SQL = SqlFinder(kind="sql", entity="COST_PINGGU", sql="SELECT M.DOCID AS DOC_ID, M.GOODSNAME AS PRODUCT_NAME FROM T_COST_PINGGU M "
-                 "WHERE EXISTS (SELECT 1 FROM T_COST_PINGGU_DTL D WHERE D.DOCID = M.DOCID AND D.GOODSID = :goodsId)",
+                 "WHERE EXISTS (SELECT 1 FROM T_COST_PINGGU_DTL D WHERE D.DOCID = M.DOCID AND D.GOODSID = :goodsId) "
+                 "ORDER BY M.DOCID",
                  binds={"goodsId": "COST_GOODS_PRICE.GOODSID"}, record_key_column="DOC_ID", label_column="PRODUCT_NAME",
                  display_columns=["DOC_ID", "PRODUCT_NAME"])
 # 找原辅料明细（明细实体）：成本单已删除时 DOC_ID 为空，明细已删除时 DTL_ID 为空。替代实现的预设行不受 SQL 文本约束；
 # 真实实现的 harness 要让同一行查出两次，需另写能查出重复行的 SQL（例如 UNION ALL）
 _LOST = SqlFinder(kind="sql", entity="COST_MATERIAL",
                   sql="SELECT M.DOCID AS DOC_ID, D.DTLID AS DTL_ID, M.GOODSNAME AS PRODUCT_NAME FROM T_COST_PINGGU_DTL D "
-                  "FULL JOIN T_COST_PINGGU M ON M.DOCID = D.DOCID WHERE D.GOODSID = :goodsId OR M.GOODSID = :goodsId",
+                  "FULL JOIN T_COST_PINGGU M ON M.DOCID = D.DOCID WHERE D.GOODSID = :goodsId OR M.GOODSID = :goodsId "
+                  "ORDER BY M.DOCID, D.DTLID",
                   binds={"goodsId": "COST_GOODS_PRICE.GOODSID"}, record_key_column="DOC_ID", row_key_columns=["DTL_ID"],
                   label_column="PRODUCT_NAME", display_columns=["DTL_ID"])
 _RELATION_DETAIL = RelationKeyFinder(kind="relationKey", entity="COST_MATERIAL", target_key="GOODSID",
                                      source_key="COST_GOODS_PRICE.GOODSID", rows="all")
 # 含某个物料、产品不同的成本单：物料编号取原辅料明细，产品取主表（主表和原辅料都有 GOODSID，值不同）；
-# DTL_DOC 取明细一侧，所属成本单已被删除时仍有值
+# DTL_DOC 取明细一侧，所属成本单已被删除时仍有值。替代实现的预设行不受 SQL 文本约束；这条 SQL 每行明细最多查出一次，
+# 真实实现的 harness 要让同一个 missing 对象在一次执行中出现两次，需另写能查出重复行的 SQL（例如 UNION ALL）
 _SQL_DETAIL = SqlFinder(kind="sql", entity="COST_PINGGU",
                         sql="SELECT D.DOCID AS DTL_DOC, M.DOCID AS DOC_ID, D.GOODSID AS HIT, D.DTLID AS DTL_ID "
                         "FROM T_COST_PINGGU_DTL D LEFT JOIN T_COST_PINGGU M ON M.DOCID = D.DOCID "
@@ -311,7 +320,8 @@ class FakeRelatedQueryHarness:
         self.query.respond_rows(_SQL, rows, source=_GOODS.ref)
         self._missing = _SQL.model_copy(update={"sql": _SQL.sql.replace("M.DOCID AS DOC_ID, ", "")})
         self.query.respond_rows(self._missing, [rows[0], {"PRODUCT_NAME": "乙"}])
-        self._missing_row_key = _SQL.model_copy(update={"sql": _SQL.sql + " AND 1 = 1", "row_key_columns": ["DTL_ID"]})
+        self._missing_row_key = _SQL.model_copy(update={"sql": _SQL.sql.replace(" ORDER BY", " AND 1 = 1 ORDER BY"),
+                                                        "row_key_columns": ["DTL_ID"]})
         self.query.respond_rows(self._missing_row_key, [{**rows[0], "DTL_ID": Decimal("5001")}, rows[1]])
         # 预设的七行：各列都有值（第一行查出两次）；同一张成本单的另一行明细；主键完整、产品名为空（照常返回）；
         # 成本单号为空（明细还在、所属成本单已被删除）；两张成本单号不同、明细主键为空、展示数据相同的行
