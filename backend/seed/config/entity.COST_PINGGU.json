@@ -383,7 +383,25 @@
       "MA_NO": {
         "editable": false
       },
+      "ANNUAL_QTY": {
+        "editable": false
+      },
+      "APEX_PL": {
+        "editable": false
+      },
       "MAH": {
+        "editable": false
+      },
+      "P_PERPACK": {
+        "editable": false
+      },
+      "S_PERBACK": {
+        "editable": false
+      },
+      "X_PERBACK": {
+        "editable": false
+      },
+      "M_PERPACK": {
         "editable": false
       },
       "TOTAL_FL": {
@@ -393,6 +411,15 @@
         "editable": false
       },
       "TOTAL_YL": {
+        "editable": false
+      },
+      "YIELD": {
+        "editable": false
+      },
+      "OUT_PRICE_F": {
+        "editable": false
+      },
+      "COST_PERQP": {
         "editable": false
       },
       "CUSTOMID": {
@@ -408,6 +435,9 @@
         "editable": false
       },
       "FMNAME": {
+        "editable": false
+      },
+      "FMRATE": {
         "editable": false
       },
       "TRANPOSID": {

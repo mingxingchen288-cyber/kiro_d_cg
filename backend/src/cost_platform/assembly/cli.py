@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
         missing = migrate.check(engine, MIGRATION_DIRS)
         print("平台表已是最新" if not missing else f"未执行的迁移：{', '.join(missing)}")
         return 0 if not missing else 1
-    for line in copy_tables.copy_business_tables(engine, copy_tables.table_list(), args.refresh):
+    for line in copy_tables.copy_business_tables(engine, copy_tables.table_specs(), args.refresh):
         print(line)
     return 0
 

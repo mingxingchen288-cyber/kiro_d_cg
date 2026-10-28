@@ -27,21 +27,19 @@
 - MG-03：旧审批配置中的存储过程动作 `PKG_APPROVAL_PRICE_ACTIONS.COST_TO_GOODS`、`GOODS_TO_COST`，改写为 C06 7.4、7.5 的通用动作。旧审批流的 `trigger.operations`（`modified`、`added`、`deleted`）分别转为 `modify`、`add`、`delete`。
 - MG-04：账号（含 BCrypt 哈希）、角色分配和部门经 identity 的 `AccountImporter` 导入；个人列配置经 queries-export 的 `PersonalConfigImporter` 导入；配置经 config 的 `ConfigImporter` 导入。
 - MG-05：对账：按迁移后的配置，用 rules-core 重算真实单据，与业务表中计算字段的现有值比较；差异归入旧项目 `D:\chonggou\my-project\公式差异.md` 中的某一条，或列为未解释的差异。
-- MG-06：切换手册写明每一步的操作和完成后的检查，包括停止旧系统写入、迁移配置和账号、虚拟列改为普通列并回填、核对，以及回退步骤。业务表整表复制到 d_cg 之后的数据同步由用户的 CDC 负责，手册只要求切换前确认同步已完成。
+- MG-06：切换手册写明每一步的操作和完成后的检查，包括停止旧系统写入、迁移配置和账号、核对，以及回退步骤。业务表复制到 d_cg（DB-03）之后的数据同步由用户的 CDC 负责，手册只要求切换前确认同步已完成；d_cg 中由 cmx 虚拟列转来的普通列，停止旧系统写入后再与 cmx 的计算结果核对一次，不一致（例如 CDC 没有同步虚拟列的值）时用 `--refresh` 重新复制这张表。
 - MG-07：旧导出配置迁移为 C06 第 9 节的 `export`：MASTER_SQL、DETAIL_SQL 原样保留；`PAGE_FK_COLUMN` 是页面主表主键时，`MASTER_LINK_COLUMN` 对应 `keyColumn`，`DETAIL_LINK_COLUMN` 对应 `linkColumn`，否则列入人工改写清单。
 - MG-08：旧角色权限迁移为 C06 第 8 节的格式：BUTTON_POLICY 的分组从区域标题换成区域编码（`系统默认按钮` 为 `system`，`自定义导出` 为 `export`），`approval.*` 不迁移（审批改为保存时自动触发，处理权限由审批流决定，进度所有人可看），列入报告；COLUMN_POLICY、ROW_POLICY 原样迁移。
 - MG-09：旧系统的以下配置原样转为新格式：`APPROVAL_REQUIRED` 规则转为实体的 `approvalRequired`；字段的默认值转为 `default`；`rulesConfig.compare` 转为 `compare`；Lookup 的 `multiple`、`filterColumn`、`filterValueFrom`、`noFillback` 转为 C06 第 3 节的写法；审批的 SQL 审批人和动作参数转为 C06 7.1 的写法。旧审批流在 `NODE_COMPLETED`、`FLOW_REJECTED`、`FLOW_CANCELED` 上的动作不迁移，列入审批确认清单：新平台中途某一级通过、驳回和撤回都不执行动作，全部审批节点通过后才生效（approval AP-20）。
 - MG-10：生成的配置项写出 C06 第 1.1 节要求必须写的全部字段（例如页面的 `audit`、`detailMode`，操作的 `propagation`，角色的 `admin`）。旧配置中没有对应项的，按旧系统的实际行为取值，并写入迁移报告；不能确定取值的，列入人工改写清单（MG-02）。
 - MG-11：生成的每个配置项都记下来源，即旧表名和行的主键（例如 `CMX.T_COST_PAGE_RULE` 中 `ID` 为 1234 的行），写在迁移输出中，不写进配置内容。`ConfigImporter` 拒绝整批时（422，C08 第 4 节），按错误明细 `path` 开头的 `items[<序号>]` 找回对应的配置项，在迁移输出目录写出拒绝清单：每个被拒绝的配置项一行，列出类型和编码、来源表和行、拒绝原因（中文，取错误明细的 `message`）。同一批中类型和编码重复的，重复的每一项各占一行，分别列出来源。被拒绝时什么都没有写入，修正后重新导入。
-- MG-12：成本核算的 12 个 Oracle 虚拟列（主表 OUT_PRICE_RMB、TOTAL_COST、SALEMONEY、JGF_BATCH、COST_PERBOX、JGF_PERQP、ML_PERQP、Y_JG_RE、Y_ML、Y_SALE，明细 BATCH_QTY、COST_BATCH）在切换时改为普通列，先用当前值回填，再启用计算规则。
+- MG-12：成本核算的 12 个 Oracle 虚拟列（主表 OUT_PRICE_RMB、TOTAL_COST、SALEMONEY、JGF_BATCH、COST_PERBOX、JGF_PERQP、ML_PERQP、Y_JG_RE、Y_ML、Y_SALE，明细 BATCH_QTY、COST_BATCH）在 d_cg 中是普通列（DB-03），由迁移生成的计算规则维护。
   - 计算规则按虚拟列的表达式转换，不按旧前端的 CALC：虚拟列已经包含 `公式差异.md` 定下的业务口径（胶囊乘额外投料量，干燥剂、序列化按盒，大纸箱、托盘、中盒乘额外投料量）。
-  - 明细的计算取主表的 APEX_PL、P_PERPACK、S_PERBACK、X_PERBACK、M_PERPACK，物料名和分类取页面视图中物料表的值；分支都不成立时保持原值（C06 第 5 节），代替虚拟列的 BATCH_QTY_OLD 兜底。
-  - 依据：2026-10-28 用 cmx 当前数据按这个写法重算 7781 条页面可见的未删除明细，BATCH_QTY 与现值 0 条不同（`.reports/virtual-columns/07-换输入后重算.sql`）。明细上的主表值副本与主表不同的 3 行都在已删除的单据上；落入兜底分支的 67 行回填后保持原值。
-- MG-13：删除页面不显示的列，只能在 MG-12 回填之后进行（虚拟列引用的列，Oracle 不允许先删）。成本核算各列的处理：
-  - 可以删：主表 10 个 `*_OLD`（TOTAL_COST_OLD 等）、明细 COST_BATCH_OLD；回填之后可以删：明细 BATCH_QTY_OLD 和主表值的 5 个副本列（APEX_PL、P_PERPACK、S_PERBACK、X_PERBACK、M_PERPACK）。
-  - 明细 FACTORYID、SUQTY、GOODSNAME_EN：页面和导出读的是物料表的同名字段，旧项目 2026-10-16 的盘点列为可删。
-  - 保留：明细自存的 GOODSNAME、DTL_USEFLAG、STANDARDTYPE、FACTORYNAME、GOODSTYPE、BASE_PRICE、MODIFYDATE（"由BOM生成明细"的存储过程 P_COST_BOM_INSERT 写入，这个按钮改写成通用动作之前不删）；主表 FORM、USEFLAG、YIELD_TIME、APEX_PL_TIME 见待确认。
-  - 来源：cmx 只读查询（`.reports/virtual-columns/`）和旧项目的字段盘点 `D:\chonggou\my-project\docs\cost-field-audit-20261016\`。
+  - 明细的计算取主表的 APEX_PL、P_PERPACK、S_PERBACK、X_PERBACK、M_PERPACK，物料名和分类取页面视图中物料表的值；分支都不成立时保持原值（C06 第 5 节），代替虚拟列的 BATCH_QTY_OLD 兜底。所以明细上的这 5 个副本列和 BATCH_QTY_OLD 都不需要复制。
+  - 依据：2026-10-28 用 cmx 当前数据按这个写法重算 7781 条页面可见的未删除明细，BATCH_QTY 与现值 0 条不同（`.reports/virtual-columns/07-换输入后重算.sql`）。明细上的主表值副本与主表不同的 3 行都在已删除的单据上；落入兜底分支的 67 行复制后保持原值。
+- MG-13：页面不显示的列不复制到 d_cg（DB-03，用户 2026-10-28）。
+  - 成本核算主表保留旧页面显示的 43 列和 FORM、USEFLAG、YIELD_TIME、APEX_PL_TIME（用户 2026-10-28 要求保留），不复制 10 个 `*_OLD`、DELETED、CREATE_TIME、UPDATE_TIME、CREATE_BY、UPDATE_BY（`db_core/business_tables.json`）。明细表复制时按同样的规则列出，见待确认。
+  - 迁移的配置中引用了不复制的列的地方，不能原样迁移，列入人工改写清单（MG-02）。成本核算目前有两处：导出 `cost-pinggu-export` 的 MASTER_SQL 带 `WHERE m.DELETED = 0`，已删除的行没有复制，去掉这个条件后导出的行不变；角色 123 的行权限中有一项 `CREATE_BY = '委托转移'`，cmx 中没有满足它的行（2026-10-28 查询为 0 行），与其他条件是"或"，去掉后能看到的行不变。
 - MG-14：按用户决定调整的旧配置：成本核算主表的 MEMO 迁移为可编辑，旧系统为不可编辑（用户 2026-10-28："可以编辑"）。
 
 ## 4. 依赖
@@ -72,4 +70,4 @@
 
 ## 待确认
 
-- 成本核算主表的 FORM、USEFLAG、YIELD_TIME、APEX_PL_TIME 页面不显示，只被 cmx 的历史备份作业（JOB_BACKUP_PINGGU 调用 SP_BACKUP_PINGGU_TABLES）读取。新平台是否保留这个历史备份作业，决定这 4 列能否删除（MG-13），在 T-MG-4 编写删列脚本前确认。
+- 成本核算明细表 T_COST_PINGGU_DTL 复制时（T-DB-3）：GOODSNAME、DTL_USEFLAG、STANDARDTYPE、FACTORYNAME、GOODSTYPE、BASE_PRICE、SUQTY、GOODSNAME_EN 在页面上有同名的列，但显示的是视图从物料表 T_COST_GOODS 取的值，明细表里自存的那份页面上看不到。按 MG-13 这些自存的列是否复制，复制明细表前确认。明细的 APEX_PL 等 5 个副本列、BATCH_QTY_OLD、COST_BATCH_OLD、FACTORYID、MODIFYDATE、DELETED、CREATE_*/UPDATE_* 按 MG-12、MG-13 不复制。
