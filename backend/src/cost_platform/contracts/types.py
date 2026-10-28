@@ -955,8 +955,22 @@ class UpdateFields(Wire):
     field_mapping: list[FieldMap]
 
 
-BlockAction = Annotated[UpdateFields | EscapeHatch, Field(discriminator="action")]
-"""审批流展示与动作中的动作（C06 7.6）。"""
+class InsertRows(Wire):
+    """每个勾选的行在 `entity` 中新增一行（C06 7.6）：`from` 为来源字段、`row.字段`（这一行的字段）或 `params.名称`。"""
+
+    action: Literal["insertRows"]
+    entity: Code
+    field_mapping: list[FieldMap]
+
+
+class DeleteRows(Wire):
+    """删除勾选的行（C06 7.6）：主表的行连同明细删除整张单据，明细行只删这一行。"""
+
+    action: Literal["deleteRows"]
+
+
+BlockAction = Annotated[UpdateFields | InsertRows | DeleteRows | EscapeHatch, Field(discriminator="action")]
+"""审批流展示与动作中的公共方法（C06 7.6）。"""
 
 
 class SourceDetailDisplay(Wire):
@@ -967,11 +981,10 @@ class SourceDetailDisplay(Wire):
 
 
 class SourceDisplay(Wire):
-    """来源单据显示的列，以及应用修改之后另外执行的动作（C06 7.6）。"""
+    """来源单据显示的列（C06 7.6）；来源单据的动作固定为应用修改。"""
 
     master: list[DisplayColumn] = []
     details: list[SourceDetailDisplay] = []
-    actions: list[BlockAction] = []
 
 
 class AffectedBlock(Wire):
@@ -1752,7 +1765,7 @@ class ViewAffectedTable(Wire):
     title: str
     selection: Literal["checked", "all"]
     editable: Bool
-    """当前用户这次通过能不能取消勾选。"""
+    """当前用户这次通过能不能改勾选。"""
     columns: list[str]
     rows: list[ViewRow]
 
@@ -1788,8 +1801,8 @@ class ApprovalDetail(Wire):
     actions: ApprovalActions
 
 
-class UncheckedRow(Wire):
-    """审批人这次取消勾选的一行：哪个审批流的哪一块，以及这一行（C06 7.6）。"""
+class CheckedRow(Wire):
+    """审批人这次通过时勾选的一行：哪个审批流的哪一块，以及这一行（C06 7.6）。"""
 
     flow: Code
     block: Code
@@ -1801,7 +1814,8 @@ class UncheckedRow(Wire):
 class PassRequest(Wire):
     request_key: RequestKey
     fingerprint: str
-    unchecked_rows: list[UncheckedRow] = []
+    checked_rows: list[CheckedRow] = []
+    """当前用户能改勾选的块中勾选的行；只能从上一级保留的行中选。"""
     comment: str | None = None
     params: dict[str, JsonValue] = {}
 

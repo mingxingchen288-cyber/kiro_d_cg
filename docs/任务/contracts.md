@@ -46,7 +46,7 @@
 
 ### T-CT-5 审批处理与动作执行之间的交接字段
 
-- 归属与目标：补上 C08 第 6 节中"审批处理"交给"动作执行"的数据。审批到达终点时，approval 要把待审修改、各审批流的动作（`source.actions` 和各块的 `actions`，C06 7.6）、各级和最终批准的人工参数，以及每个审批流影响对象各块勾选的行（`all`、`hidden` 为全部行，不含记录已不存在的）和找到它们的来源行交给 write-pipeline 和 operations（AP-02、AP-10、AP-20，OP-02、OP-06）。阶段之间只经 `CommandState` 传递（C08 第 6 节），现在除了 `actions` 都没有字段（`.reports/review/T-CT-3-7.md` 问题 5）。
+- 归属与目标：补上 C08 第 6 节中"审批处理"交给"动作执行"的数据。审批到达终点时，approval 要把待审修改、各审批流各块的动作（C06 7.6）、各级和最终批准的人工参数，以及每个审批流影响对象各块勾选的行（`all`、`hidden` 为全部行，不含记录已不存在的）和找到它们的来源行交给 write-pipeline 和 operations（AP-02、AP-10、AP-20，OP-02、OP-06）。阶段之间只经 `CommandState` 传递（C08 第 6 节），现在除了 `actions` 都没有字段（`.reports/review/T-CT-3-7.md` 问题 5）。
 - 前置输入：开始前 T-CT-3。
 - 负责范围：C08 第 6 节；`backend/src/cost_platform/contracts/types.py`；`backend/tests/contracts/test_pipeline_stage.py` 的写入样例；approval 模块第 5 节"审批处理阶段"中交接的说明（现在暂写"交接字段由 T-CT-5 补上"），改为写明写入哪些新字段。
 - 交付物：`CommandState` 的新字段和类型；C08 版本加一（只涉及实现细节，按架构第 5 节由实施者决定，头部写明）。

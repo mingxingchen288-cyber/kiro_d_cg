@@ -15,6 +15,7 @@ from ..types import (
     ErrorDetail,
     EscapeHatch,
     ImportReport,
+    InsertRows,
     MenuItem,
     OperationConfig,
     PackHandle,
@@ -56,6 +57,8 @@ def _references(config_type: str, content: Any) -> list[tuple[str, str, str]]:
                         refs.append(("entity", target.detail_entity, f"{here}.targets[{j}].detailEntity"))
             elif isinstance(step, UpdateRecords):
                 refs.append(("entity", step.find.entity, f"{here}.find.entity"))
+            elif isinstance(step, InsertRows):
+                refs.append(("entity", step.entity, f"{here}.entity"))
             elif isinstance(step, EscapeHatch):
                 refs.append(("operation", step.operation, f"{here}.operation"))
 
@@ -91,7 +94,6 @@ def _references(config_type: str, content: Any) -> list[tuple[str, str, str]]:
             if content.display.source:
                 refs += [("entity", d.entity, f".display.source.details[{i}].entity")
                          for i, d in enumerate(content.display.source.details)]
-                actions(content.display.source.actions, ".display.source.actions")
             for i, block in enumerate(content.display.affected):
                 refs.append(("entity", block.find.entity, f".display.affected[{i}].find.entity"))
                 actions(block.actions, f".display.affected[{i}].actions")

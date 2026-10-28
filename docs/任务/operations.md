@@ -9,7 +9,7 @@
 - 归属与目标：实现 OP-01–OP-03、OP-05–OP-08，按钮操作的"确定涉及的单据"和"动作执行"中的展开，以及审批流动作的展开。
 - 前置输入：开始前 T-CT-1、T-CT-3、T-CT-5；C06 第 4、6 节经用户确认。
 - 负责范围：`backend/src/cost_platform/operations/`。
-- 交付物：按钮的 `recalculate`、`updateTargets`、`updateRecords` 和审批流的 `updateFields` 的展开；字段映射；传播边界。
+- 交付物：按钮的 `recalculate`、`updateTargets`、`updateRecords` 和审批流的 `updateFields`、`insertRows`、`deleteRows` 的展开；字段映射；传播边界。
 - 接入责任：T-AS-5 注册按钮操作的阶段；T-AS-6 接入审批流的动作。
 - 验收标准（模拟验证）：每种动作的展开结果正确；字段映射取来源计算后的值；同一目标行被写入不同的值时返回 VALIDATION_FAILED，同一目标被几行找到而各自写不同的明细行（`match`）时不冲突；映射到计算字段，或映射到 ERP 行的 ERP 列被拒绝；传播边界为 `end` 时目标不触发审批；按钮需要选中行而没有时返回 VALIDATION_FAILED；按钮命令带了 `documents` 时返回 INVALID_REQUEST；选中成本单 D 点按钮时，`updateRecords` 按 D 在数据库中的当前数据查找和写入；选中的行在点按钮前已被删除时，`rowNotFound` 为 `skip` 写入 `skipped`，为 `reject` 返回 ROW_NOT_FOUND；审批流影响对象的 `updateFields` 只写勾选的行，单价取找到这一行的那一行来源的值（C06 7.7 样例三：由 115 找到的写 115 的新价，由 116 找到的写 116 的新价）；按钮的 `updateRecords` 的关联 SQL 绑定明细字段时，传入选中单据的全部行，并按行分别调用 `RelatedQuery`：按钮"同步单价"选中的成本单 D 中 115 单价 80、116 单价 12，由 116 那一行找到的其他成本单明细写 12，由 115 找到的写 80；`updateRecords` 的关联 SQL 查出的行中有一行主键为空时，跳过这一行，其余行照常更新；按钮操作的 `updateRecords` 找到的成本单被审批冻结时，整个命令返回 FROZEN_BY_APPROVAL（WP-18）；影响对象中记录已不存在的行不更新；按钮操作的"确定涉及的单据"和"动作执行"中的展开通过 `PipelineStage` 的契约测试（C08 第 14 节）。
 - 状态与证据：未开始。

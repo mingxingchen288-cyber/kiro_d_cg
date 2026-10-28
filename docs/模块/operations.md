@@ -23,7 +23,7 @@
 - OP-03：`propagation` 为 `end` 时，写到目标的修改带上本审批或本操作的来源，目标只执行自身的计算和校验规则，不触发审批，也不再执行同步动作。
 - OP-04：逃生舱只在用户点名时启用。它在命令事务内、加锁和冻结检查之后执行，自身不提交也不回滚；每次调用记录逃生舱、参数、执行人、时间和请求键，随命令记录一起写入。
 - OP-05：按钮操作的 `requiresSelection` 为 true 而 `params.selectedRows` 为空时，返回 422 VALIDATION_FAILED。`requiresSelection` 只规定执行的前提；操作实际处理的行和执行权限，照常按操作配置、按钮权限和行权限检查。
-- OP-06：审批流的动作只在全部审批节点都通过后展开执行（approval AP-20）：`source.actions` 作用于来源单据；`display.affected[]` 每块的 `actions` 作用于这一块勾选的行（`all`、`hidden` 为全部行），`updateFields` 把 `fieldMapping` 的值写到这一行（C06 7.6）。动作中的 `params.名称` 取各级审批人提交或后端求值的参数值。
+- OP-06：审批流的动作只在全部审批节点都通过后展开执行（approval AP-20）：`display.affected[]` 每块的 `actions` 作用于这一块勾选的行（`all`、`hidden` 为全部行）：`updateFields` 修改这一行，`insertRows` 为这一行新增一条记录，`deleteRows` 删除这一行（C06 7.6）。动作中的 `params.名称` 取各级审批人提交或后端求值的参数值。
 - OP-07：按钮操作的 `updateRecords` 按 `find` 经 `RelatedQuery` 查找记录，传入选中单据在数据库中的当前数据，`rows` 只能为 `all`，绑定明细字段的关联 SQL 也用全部行（C08 第 9 节）。按关联键或按绑定明细字段的关联 SQL 查找时，按选出的行分别调用 `find`，记下每个目标由哪几行找到，字段映射按这些行取值（C06 第 6 节，C08 第 9 节）。`RelatedQuery` 返回的 `missing` 对象（记录已不存在，C08 第 9 节）跳过，不更新，也不报错。找到的单据不在本命令涉及的单据中时，由 write-pipeline 加锁并做冻结检查后再合并（WP-18）。
 - OP-08：按钮操作只按选中行的主键执行（C02 第 1 节）。"确定涉及的单据"阶段按 `params.selectedRows` 找出所属单据，写入 `involved`；命令带了 `documents` 时返回 400 INVALID_REQUEST。动作的来源都取 write-pipeline 加锁读到的当前数据，不用前端的值；选中的行已不存在时按 WP-05 处理。
 
