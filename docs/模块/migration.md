@@ -38,7 +38,8 @@
   - 明细的计算取主表的 APEX_PL、P_PERPACK、S_PERBACK、X_PERBACK、M_PERPACK，物料名和分类取页面视图中物料表的值；分支都不成立时保持原值（C06 第 5 节），代替虚拟列的 BATCH_QTY_OLD 兜底。所以明细上的这 5 个副本列和 BATCH_QTY_OLD 都不需要复制。
   - 依据：2026-10-28 用 cmx 当前数据按这个写法重算 7781 条页面可见的未删除明细，BATCH_QTY 与现值 0 条不同（`.reports/virtual-columns/07-换输入后重算.sql`）。明细上的主表值副本与主表不同的 3 行都在已删除的单据上；落入兜底分支的 67 行复制后保持原值。
 - MG-13：页面不显示的列不复制到 d_cg（DB-03，用户 2026-10-28）。
-  - 成本核算主表保留旧页面显示的 43 列和 FORM、USEFLAG、YIELD_TIME、APEX_PL_TIME（用户 2026-10-28 要求保留），不复制 10 个 `*_OLD`、DELETED、CREATE_TIME、UPDATE_TIME、CREATE_BY、UPDATE_BY（`db_core/business_tables.json`）。明细表复制时按同样的规则列出，见待确认。
+  - 成本核算主表保留旧页面显示的 43 列和 FORM、USEFLAG、YIELD_TIME、APEX_PL_TIME（用户 2026-10-28 要求保留），不复制 10 个 `*_OLD`、DELETED、CREATE_TIME、UPDATE_TIME、CREATE_BY、UPDATE_BY（`db_core/business_tables.json`）。
+  - 成本核算明细表只复制值来自明细表本身的 10 列：DTLID、DOCID、GOODSID、PER_HL、EXADD_MATER、PRICE、BATCH_QTY、COST_BATCH、MEMO、CUSTOMER_SPECIFIED。页面上的物料名称、分类（包材类型）、质量标准、生产厂商、规格、参考采购价、最后采购数量、英文名显示的是视图从物料表取的值，明细表里自存的那份页面上看不到，不复制；这几个字段在实体中 `column` 为 null，只读。旧系统包材页签的"包材类型"可以改，但改了之后页面重新读取时显示的仍是物料表的分类，计算中印字包材、非印字包材也走同一套公式，所以改为只读（2026-10-28，按用户规则推出）。明细的 5 个主表值副本列、BATCH_QTY_OLD、COST_BATCH_OLD、FACTORYID、MODIFYDATE、DELETED、CREATE_*/UPDATE_* 也不复制。
   - 迁移的配置中引用了不复制的列的地方，不能原样迁移，列入人工改写清单（MG-02）。成本核算目前有两处：导出 `cost-pinggu-export` 的 MASTER_SQL 带 `WHERE m.DELETED = 0`，已删除的行没有复制，去掉这个条件后导出的行不变；角色 123 的行权限中有一项 `CREATE_BY = '委托转移'`，cmx 中没有满足它的行（2026-10-28 查询为 0 行），与其他条件是"或"，去掉后能看到的行不变。
 - MG-14：按用户决定调整的旧配置：成本核算主表的 MEMO 迁移为可编辑，旧系统为不可编辑（用户 2026-10-28："可以编辑"）。
 
@@ -70,4 +71,4 @@
 
 ## 待确认
 
-- 成本核算明细表 T_COST_PINGGU_DTL 复制时（T-DB-3）：GOODSNAME、DTL_USEFLAG、STANDARDTYPE、FACTORYNAME、GOODSTYPE、BASE_PRICE、SUQTY、GOODSNAME_EN 在页面上有同名的列，但显示的是视图从物料表 T_COST_GOODS 取的值，明细表里自存的那份页面上看不到。按 MG-13 这些自存的列是否复制，复制明细表前确认。明细的 APEX_PL 等 5 个副本列、BATCH_QTY_OLD、COST_BATCH_OLD、FACTORYID、MODIFYDATE、DELETED、CREATE_*/UPDATE_* 按 MG-12、MG-13 不复制。
+- 迁移生成的三份清单（`.reports/migration/` 的人工改写清单、候选逃生舱清单、审批确认清单）逐条交用户确认（T-MG-3 的前置）。

@@ -12,7 +12,12 @@
 - 交付物：按 C06 生成的配置项（实体、页面、角色、菜单、字典、Lookup、导出）及每项的来源（旧表和行）；人工改写清单；完整的业务表清单（交 T-DB-3）。
 - 接入责任：生成的配置由 T-MG-3 导入。
 - 验收标准：重复运行生成逐字节相同的结果；生成的每个配置项都能按 C06 解析，C06 第 1.1 节要求必须写的字段都已写出，按旧系统行为取值的字段列在迁移报告中，取不到值的列入人工改写清单（MG-10）；清单中的每一项能追溯到旧数据的位置；新平台没有对应配置项的旧配置（例如 `SUMMARY_CONFIG`）列入人工改写清单并注明需要新增的能力；同一张表对应多个旧实体的（例如成本核算的材料和包材明细都在 `T_COST_PINGGU_DTL`），列出区分方式交用户确认。
-- 状态与证据：未开始。
+- 状态与证据：待联调（2026-10-28；还没有独立复核，三份清单待用户确认）。
+  - 入口：`cost_platform.migration.generate(connection_factory, output_dir, confirmed_rewrites=None)`；真实的 `ConnectionFactory` 为新增的 `db_core/legacy.py` 的 `OracleLegacyConnectionFactory`（d_cg 账号、`SET TRANSACTION READ ONLY`、以 `CMX.表名` 读取、每条语句 25 秒）。命令行 `platform migrate generate` 待 assembly 接入。
+  - 范围：cost-pinggu、cost-pinggu-lq、goods-price-manage。生成 66 个配置项（entity 7、page 3、operation 3、rule 34、approvalFlow 2、role 8、menu 1、dict 1、lookup 6、export 1），另有 2 项等清单确认后生成（导出 cost-pinggu-export、角色 003）。
+  - 模拟验证：`uv run pytest tests/migration -v`（用 cmx 只读快照 `tests/migration/data/cmx-snapshot.json`）27 passed、0 failed：重复生成逐字节相同、每项能按 C06 解析、每项和每条清单的来源都能在旧数据中找到、MG-12/13/14、确认改写后生成暂缓的项。`uv run lint-imports` 3 kept、0 broken。输出 `.reports/migration/证据/pytest-2.txt`、`lint-imports-2.txt`。
+  - 真实验证：`.reports/migration/run-twice.ps1` 只读连接 cmx 生成两次，比较 74 个文件 0 个不同（`.reports/migration/证据/run-twice.txt`）；用 config 现有的 `FileConfigSnapshotReader` 按 8 个角色构建全部页面视图和菜单，引用检查 0 个问题（`证据/smoke-config.txt`）。
+  - 输出：`.reports/migration/`：`config/`（配置项）、`来源.json`、`迁移报告.md`（按旧系统行为取值的字段、同一张表对应多个实体的区分方式等）、`人工改写清单.md`、`业务表清单.json`（交 T-DB-3）、`cmx-snapshot.json`。
 
 ### T-MG-2 规则、行权限与审批的转换
 
@@ -22,7 +27,9 @@
 - 交付物：旧 CALC、VALIDATION、EDITABLE、GRID_STYLE 规则转成 C06 第 5 节的写法（例如 `CostPinggu.APEX_PL` 改为 `master.APEX_PL`）；成本核算 12 个虚拟列的计算规则按 MG-12 从虚拟列表达式转换；行权限原样迁移；旧审批定义转成 C06 第 7 节，两个价格同步的存储过程动作改为通用动作；转换出的规则和审批流按 MG-10 写出必须写的字段（例如规则的 `order`、审批流参数的 `required`）；候选逃生舱清单；审批确认清单。
 - 接入责任：由 T-MG-3 导入。
 - 验收标准：旧数据中出现的每种公式写法至少一个转换测试；无法转换的不生成近似结果，列入清单；转换后的两个审批流与 C06 7.4、7.5 一致。
-- 状态与证据：未开始。
+- 状态与证据：待联调（2026-10-28；还没有独立复核，审批确认清单中有待用户决定的项）。
+  - 模拟验证：`tests/migration/test_expressions.py` 12 passed（虚拟列的 NVL、除数为 0、CASE 分支、REGEXP_INSTR、CEIL、去掉 `_OLD` 兜底、换成其他虚拟列；旧 CALC 的 SUM_IF、三目、`||`、`&`、`== null`、正则分支、断言正则和隐藏字段不转换）；`test_generator.py` 中两个审批流与 C06 7.4、7.5 的写法一致（changedFields、ADMIN 审批、freeze、updateFields）。合计 27 passed（`.reports/migration/证据/pytest-2.txt`）。
+  - 输出：`.reports/migration/候选逃生舱清单.md`（4 项）、`审批确认清单.md`（8 项）；与 C06 样例的差异（包材也触发和同步、物料清单一块按旧行为不显示、不含液体成本核算等）列在审批确认清单中。
 
 ### T-MG-3 导入与对账
 
@@ -39,7 +46,7 @@
 - 归属与目标：实现 MG-06。
 - 前置输入：开始前 T-MG-3。
 - 负责范围：`docs/切换手册.md`。业务表的列（只有页面显示的列，虚拟列为普通列）在复制时已经确定（db-core 的 DB-03）。
-- 交付物：切换手册（停止旧系统写入、让 d_cg 的业务数据跟上 cmx（方式见 migration 的待确认）、迁移配置和账号、核对、回退）。
+- 交付物：切换手册（停止旧系统写入、用 `--refresh` 重新复制业务表（MG-06）、迁移配置和账号、核对、回退）。
 - 接入责任：T-AS-8 演练。
 - 验收标准：在 d_cg 上按手册演练一次切换和一次回退：切换后各表行数不变，抽查单据的非计算字段不变、计算字段与对账一致；回退后业务表的结构和数据恢复到切换前。
 - 状态与证据：未开始。
