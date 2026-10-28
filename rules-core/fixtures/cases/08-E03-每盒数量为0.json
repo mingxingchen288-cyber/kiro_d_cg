@@ -1,0 +1,119 @@
+{
+  "kind": "evaluate",
+  "name": "E03-每盒数量为0",
+  "source": "业务例子 E03：P_PERPACK=0 时 BATCH_QTY=0（除以 0 为 0，不出提示）",
+  "pack": "packs/cost-pinggu.json",
+  "match": "full",
+  "request": {
+    "purpose": "operation",
+    "operation": "COST_PINGGU.save",
+    "page": "COST_PINGGU",
+    "phase": "commit",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "COST_PINGGU",
+      "master": {
+        "rowKey": "900002",
+        "values": {
+          "DOCID": "900002",
+          "GOODSNAME": null,
+          "MEMO": null,
+          "APEX_PL": "100000",
+          "P_PERPACK": "0",
+          "S_PERBACK": "40",
+          "X_PERBACK": "20",
+          "M_PERPACK": "10",
+          "OUT_PRICE_F": "0.2",
+          "FMRATE": "7.1",
+          "YIELD": "98",
+          "COST_PERQP": "15",
+          "ANNUAL_QTY": "5000000",
+          "TOTAL_YL": "0",
+          "TOTAL_FL": "0",
+          "TOTAL_BC": "0",
+          "TOTAL_COST": "0",
+          "OUT_PRICE_RMB": "0",
+          "SALEMONEY": "0",
+          "JGF_BATCH": "0",
+          "COST_PERBOX": "0",
+          "JGF_PERQP": "0",
+          "ML_PERQP": "0",
+          "Y_JG_RE": "0",
+          "Y_ML": "0",
+          "Y_SALE": "0"
+        }
+      },
+      "details": {
+        "COST_MATERIAL": [],
+        "COST_PACKAGE": [
+          {
+            "rowKey": "910003",
+            "values": {
+              "DTLID": "910003",
+              "DOCID": "900002",
+              "GOODSID": "200500",
+              "GOODSNAME": "塑料瓶",
+              "DTL_USEFLAG": "印字包材",
+              "PER_HL": null,
+              "EXADD_MATER": "2",
+              "PRICE": "0.35",
+              "BATCH_QTY": "0",
+              "COST_BATCH": "0"
+            }
+          }
+        ]
+      }
+    },
+    "changed": [],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "COST_PINGGU",
+        "rowKey": "900002",
+        "computed": {
+          "TOTAL_YL": "0",
+          "TOTAL_FL": "0",
+          "TOTAL_BC": "0",
+          "TOTAL_COST": "0",
+          "OUT_PRICE_RMB": "1.42",
+          "SALEMONEY": "0",
+          "JGF_BATCH": "0",
+          "COST_PERBOX": "0",
+          "JGF_PERQP": "0",
+          "ML_PERQP": "-15",
+          "Y_JG_RE": "0",
+          "Y_ML": "-75000",
+          "Y_SALE": "0"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_PACKAGE",
+        "rowKey": "910003",
+        "computed": {
+          "BATCH_QTY": "0",
+          "COST_BATCH": "0"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      }
+    ],
+    "effects": []
+  }
+}

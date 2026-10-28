@@ -1,0 +1,55 @@
+{
+  "kind": "evaluate",
+  "name": "T-RC-1-除以0",
+  "source": "T-RC-1 样例：除以 0 为 0",
+  "pack": "packs/expr-demo.json",
+  "match": "full",
+  "request": {
+    "purpose": "operation",
+    "operation": "EXPR_DEMO.save",
+    "page": "EXPR_DEMO",
+    "phase": "preview",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "EXPR_DEMO",
+      "master": {
+        "rowKey": "1",
+        "values": {
+          "ID": "1",
+          "A": "10",
+          "B": "0",
+          "SUM": null,
+          "QUOT": null
+        }
+      },
+      "details": {}
+    },
+    "changed": [],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "EXPR_DEMO",
+        "rowKey": "1",
+        "computed": {
+          "SUM": "10",
+          "QUOT": "0"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      }
+    ],
+    "effects": []
+  }
+}

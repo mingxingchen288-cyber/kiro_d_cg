@@ -1,0 +1,145 @@
+{
+  "packId": "CYC",
+  "version": 1,
+  "coreVersion": "0.1.0",
+  "fields": {
+    "CYC": {
+      "ID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "SUM_X": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      }
+    },
+    "CYC_DTL": {
+      "DTLID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "X": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "Y": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      }
+    }
+  },
+  "rules": [
+    {
+      "id": "R_SUM_X",
+      "layer": "entity",
+      "entity": "CYC",
+      "category": "calc",
+      "order": 10,
+      "serverOnly": false,
+      "jdm": "R_SUM_X"
+    },
+    {
+      "id": "R_X",
+      "layer": "entity",
+      "entity": "CYC_DTL",
+      "category": "calc",
+      "order": 20,
+      "serverOnly": false,
+      "jdm": "R_X"
+    }
+  ],
+  "approvalEntries": [],
+  "jdm": {
+    "R_SUM_X": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_SUM_X",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "SUM_X",
+                "value": "sum(map(CYC_DTL, #.X))"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_X": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_X",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "X",
+                "value": "master.SUM_X + Y"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    }
+  }
+}

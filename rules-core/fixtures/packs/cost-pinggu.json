@@ -1,0 +1,1295 @@
+{
+  "packId": "COST_PINGGU",
+  "version": 1,
+  "coreVersion": "0.1.0",
+  "fields": {
+    "COST_PINGGU": {
+      "DOCID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "GOODSNAME": {
+        "type": "text",
+        "role": "input",
+        "source": "erp"
+      },
+      "MEMO": {
+        "type": "text",
+        "role": "input",
+        "source": "own"
+      },
+      "APEX_PL": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "P_PERPACK": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "S_PERBACK": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "X_PERBACK": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "M_PERPACK": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "OUT_PRICE_F": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "FMRATE": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "YIELD": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "COST_PERQP": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "ANNUAL_QTY": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "TOTAL_YL": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "TOTAL_FL": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "TOTAL_BC": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "TOTAL_COST": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "OUT_PRICE_RMB": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "SALEMONEY": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "JGF_BATCH": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "COST_PERBOX": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "JGF_PERQP": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "ML_PERQP": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "Y_JG_RE": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "Y_ML": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "Y_SALE": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      }
+    },
+    "COST_MATERIAL": {
+      "DTLID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "DOCID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "GOODSID": {
+        "type": "number",
+        "role": "input",
+        "source": "own",
+        "scale": 0
+      },
+      "GOODSNAME": {
+        "type": "text",
+        "role": "input",
+        "source": "erp"
+      },
+      "DTL_USEFLAG": {
+        "type": "text",
+        "role": "input",
+        "source": "erp"
+      },
+      "PER_HL": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "EXADD_MATER": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "PRICE": {
+        "type": "number",
+        "role": "input",
+        "source": "own",
+        "scale": 4
+      },
+      "BATCH_QTY": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "COST_BATCH": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 2
+      }
+    },
+    "COST_PACKAGE": {
+      "DTLID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "DOCID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "GOODSID": {
+        "type": "number",
+        "role": "input",
+        "source": "own",
+        "scale": 0
+      },
+      "GOODSNAME": {
+        "type": "text",
+        "role": "input",
+        "source": "erp"
+      },
+      "DTL_USEFLAG": {
+        "type": "text",
+        "role": "input",
+        "source": "erp"
+      },
+      "PER_HL": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "EXADD_MATER": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "PRICE": {
+        "type": "number",
+        "role": "input",
+        "source": "own",
+        "scale": 4
+      },
+      "BATCH_QTY": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 4
+      },
+      "COST_BATCH": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 2
+      }
+    }
+  },
+  "rules": [
+    {
+      "id": "R_MASTER_Y_SALE",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 1,
+      "serverOnly": false,
+      "jdm": "R_MASTER_Y_SALE"
+    },
+    {
+      "id": "R_MASTER_Y_ML",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 2,
+      "serverOnly": false,
+      "jdm": "R_MASTER_Y_ML"
+    },
+    {
+      "id": "R_MASTER_Y_JG_RE",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 3,
+      "serverOnly": false,
+      "jdm": "R_MASTER_Y_JG_RE"
+    },
+    {
+      "id": "R_MASTER_ML_PERQP",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 4,
+      "serverOnly": false,
+      "jdm": "R_MASTER_ML_PERQP"
+    },
+    {
+      "id": "R_MASTER_JGF_PERQP",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 5,
+      "serverOnly": false,
+      "jdm": "R_MASTER_JGF_PERQP"
+    },
+    {
+      "id": "R_MASTER_COST_PERBOX",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 6,
+      "serverOnly": false,
+      "jdm": "R_MASTER_COST_PERBOX"
+    },
+    {
+      "id": "R_MASTER_JGF_BATCH",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 7,
+      "serverOnly": false,
+      "jdm": "R_MASTER_JGF_BATCH"
+    },
+    {
+      "id": "R_MASTER_SALEMONEY",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 8,
+      "serverOnly": false,
+      "jdm": "R_MASTER_SALEMONEY"
+    },
+    {
+      "id": "R_MASTER_OUT_PRICE_RMB",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 9,
+      "serverOnly": false,
+      "jdm": "R_MASTER_OUT_PRICE_RMB"
+    },
+    {
+      "id": "R_MASTER_TOTAL_COST",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 10,
+      "serverOnly": false,
+      "jdm": "R_MASTER_TOTAL_COST"
+    },
+    {
+      "id": "R_MASTER_TOTAL_BC",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 11,
+      "serverOnly": false,
+      "jdm": "R_MASTER_TOTAL_BC"
+    },
+    {
+      "id": "R_MASTER_TOTAL_FL",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 12,
+      "serverOnly": false,
+      "jdm": "R_MASTER_TOTAL_FL"
+    },
+    {
+      "id": "R_MASTER_TOTAL_YL",
+      "layer": "entity",
+      "entity": "COST_PINGGU",
+      "category": "calc",
+      "order": 13,
+      "serverOnly": false,
+      "jdm": "R_MASTER_TOTAL_YL"
+    },
+    {
+      "id": "R_MAT_COST_BATCH",
+      "layer": "entity",
+      "entity": "COST_MATERIAL",
+      "category": "calc",
+      "order": 14,
+      "serverOnly": false,
+      "jdm": "R_MAT_COST_BATCH"
+    },
+    {
+      "id": "R_MAT_BATCH_QTY",
+      "layer": "entity",
+      "entity": "COST_MATERIAL",
+      "category": "calc",
+      "order": 15,
+      "serverOnly": false,
+      "jdm": "R_MAT_BATCH_QTY"
+    },
+    {
+      "id": "R_PKG_COST_BATCH",
+      "layer": "entity",
+      "entity": "COST_PACKAGE",
+      "category": "calc",
+      "order": 16,
+      "serverOnly": false,
+      "jdm": "R_PKG_COST_BATCH"
+    },
+    {
+      "id": "R_PKG_BATCH_QTY",
+      "layer": "entity",
+      "entity": "COST_PACKAGE",
+      "category": "calc",
+      "order": 17,
+      "serverOnly": false,
+      "jdm": "R_PKG_BATCH_QTY"
+    },
+    {
+      "id": "R_V_PRICE",
+      "layer": "entity",
+      "entity": "COST_MATERIAL",
+      "category": "validate",
+      "order": 100,
+      "serverOnly": false,
+      "jdm": "R_V_PRICE"
+    },
+    {
+      "id": "R_UI_ERP",
+      "layer": "page",
+      "page": "COST_PINGGU",
+      "category": "ui",
+      "order": 200,
+      "serverOnly": false,
+      "jdm": "R_UI_ERP"
+    },
+    {
+      "id": "R_AT_PRICE",
+      "layer": "operation",
+      "operation": "COST_PINGGU.save",
+      "category": "approvalTrigger",
+      "order": 300,
+      "serverOnly": false,
+      "jdm": "R_AT_PRICE",
+      "flow": "COST_TO_GOODS"
+    }
+  ],
+  "approvalEntries": [],
+  "jdm": {
+    "R_MASTER_Y_SALE": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_Y_SALE",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "Y_SALE",
+                "value": "SALEMONEY / APEX_PL * ANNUAL_QTY"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_Y_ML": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_Y_ML",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "Y_ML",
+                "value": "ML_PERQP / 1000 * ANNUAL_QTY"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_Y_JG_RE": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_Y_JG_RE",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "Y_JG_RE",
+                "value": "JGF_PERQP / 1000 * ANNUAL_QTY"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_ML_PERQP": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_ML_PERQP",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "ML_PERQP",
+                "value": "JGF_PERQP - COST_PERQP"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_JGF_PERQP": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_JGF_PERQP",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "JGF_PERQP",
+                "value": "JGF_BATCH / APEX_PL * 1000"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_COST_PERBOX": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_COST_PERBOX",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "COST_PERBOX",
+                "value": "TOTAL_COST / APEX_PL * P_PERPACK"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_JGF_BATCH": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_JGF_BATCH",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "JGF_BATCH",
+                "value": "SALEMONEY - TOTAL_COST"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_SALEMONEY": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_SALEMONEY",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "SALEMONEY",
+                "value": "OUT_PRICE_RMB / P_PERPACK * APEX_PL * (YIELD / 100)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_OUT_PRICE_RMB": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_OUT_PRICE_RMB",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "OUT_PRICE_RMB",
+                "value": "OUT_PRICE_F * FMRATE"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_TOTAL_COST": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_TOTAL_COST",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "TOTAL_COST",
+                "value": "TOTAL_YL + TOTAL_FL + TOTAL_BC"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_TOTAL_BC": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_TOTAL_BC",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "TOTAL_BC",
+                "value": "sum(map(filter(COST_PACKAGE, #.DTL_USEFLAG == '印字包材' or #.DTL_USEFLAG == '非印字包材'), #.COST_BATCH)) * (sum(map(filter(COST_MATERIAL, #.DTL_USEFLAG == '原料'), #.COST_BATCH)) > 0 ? 1 / 1.13 : 1)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_TOTAL_FL": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_TOTAL_FL",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "TOTAL_FL",
+                "value": "sum(map(filter(COST_MATERIAL, #.DTL_USEFLAG == '辅料'), #.COST_BATCH)) * (sum(map(filter(COST_MATERIAL, #.DTL_USEFLAG == '原料'), #.COST_BATCH)) > 0 ? 1 / 1.13 : 1)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_TOTAL_YL": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_TOTAL_YL",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "TOTAL_YL",
+                "value": "sum(map(filter(COST_MATERIAL, #.DTL_USEFLAG == '原料'), #.COST_BATCH)) * (sum(map(filter(COST_MATERIAL, #.DTL_USEFLAG == '原料'), #.COST_BATCH)) > 0 ? 1 / 1.13 : 1)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MAT_COST_BATCH": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MAT_COST_BATCH",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "COST_BATCH",
+                "value": "BATCH_QTY * PRICE"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MAT_BATCH_QTY": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MAT_BATCH_QTY",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "BATCH_QTY",
+                "value": "((DTL_USEFLAG == '原料' or DTL_USEFLAG == '辅料') and matches(GOODSNAME, '胶囊')) ? (master.APEX_PL / 10000 * (1 + EXADD_MATER / 100)) : (((DTL_USEFLAG == '原料' or DTL_USEFLAG == '辅料')) ? (PER_HL * master.APEX_PL * (1 + EXADD_MATER / 100) / 1000000) : (((DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '桶|说明书|小盒|标签|瓶|盖|干燥剂|序列化')) ? (master.APEX_PL / master.P_PERPACK * (1 + EXADD_MATER / 100)) : (((DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '硬片|铝箔|复合膜')) ? (PER_HL * master.APEX_PL * (1 + EXADD_MATER / 100) / 1000000) : (((DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '大纸箱')) ? (ceil(master.APEX_PL / (master.P_PERPACK * master.S_PERBACK) * (1 + EXADD_MATER / 100))) : (((DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '托盘')) ? (ceil(master.APEX_PL / (master.P_PERPACK * master.S_PERBACK * master.X_PERBACK) * (1 + EXADD_MATER / 100))) : (((DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '中盒')) ? (ceil(master.APEX_PL / (master.M_PERPACK * master.S_PERBACK) * (1 + EXADD_MATER / 100))) : (BATCH_QTY)))))))"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_PKG_COST_BATCH": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_PKG_COST_BATCH",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "COST_BATCH",
+                "value": "BATCH_QTY * PRICE"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_PKG_BATCH_QTY": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_PKG_BATCH_QTY",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "BATCH_QTY",
+                "value": "((DTL_USEFLAG == '原料' or DTL_USEFLAG == '辅料') and matches(GOODSNAME, '胶囊')) ? (master.APEX_PL / 10000 * (1 + EXADD_MATER / 100)) : (((DTL_USEFLAG == '原料' or DTL_USEFLAG == '辅料')) ? (PER_HL * master.APEX_PL * (1 + EXADD_MATER / 100) / 1000000) : (((DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '桶|说明书|小盒|标签|瓶|盖|干燥剂|序列化')) ? (master.APEX_PL / master.P_PERPACK * (1 + EXADD_MATER / 100)) : (((DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '硬片|铝箔|复合膜')) ? (PER_HL * master.APEX_PL * (1 + EXADD_MATER / 100) / 1000000) : (((DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '大纸箱')) ? (ceil(master.APEX_PL / (master.P_PERPACK * master.S_PERBACK) * (1 + EXADD_MATER / 100))) : (((DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '托盘')) ? (ceil(master.APEX_PL / (master.P_PERPACK * master.S_PERBACK * master.X_PERBACK) * (1 + EXADD_MATER / 100))) : (((DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '中盒')) ? (ceil(master.APEX_PL / (master.M_PERPACK * master.S_PERBACK) * (1 + EXADD_MATER / 100))) : (BATCH_QTY)))))))"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_V_PRICE": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_V_PRICE",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "PRICE < 0"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_UI_ERP": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_UI_ERP",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "DTL_USEFLAG == '原料'"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_AT_PRICE": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_AT_PRICE",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "PRICE != old.PRICE"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    }
+  }
+}

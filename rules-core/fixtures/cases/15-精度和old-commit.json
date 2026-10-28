@@ -1,0 +1,77 @@
+{
+  "kind": "evaluate",
+  "name": "精度和old-commit",
+  "source": "同上，commit 阶段执行操作层的 serverOnly 规则，用 data",
+  "pack": "packs/demo-order.json",
+  "match": "full",
+  "request": {
+    "purpose": "operation",
+    "operation": "DEMO_ORDER.save",
+    "page": "DEMO_ORDER",
+    "phase": "commit",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "DEMO_ORDER",
+      "master": {
+        "rowKey": "1",
+        "values": {
+          "ID": "1",
+          "QTY": "1",
+          "PRICE": "3.50",
+          "AMOUNT": null,
+          "THIRD": null,
+          "BACK": null,
+          "PRICE_DELTA": null,
+          "QTY_DELTA": null,
+          "NET": null
+        },
+        "old": {
+          "PRICE": "3.20"
+        }
+      },
+      "details": {}
+    },
+    "changed": [
+      {
+        "entity": "DEMO_ORDER",
+        "rowKey": "1",
+        "op": "modify",
+        "fields": [
+          "PRICE"
+        ]
+      }
+    ],
+    "data": {
+      "discountRate": "0.1"
+    }
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "DEMO_ORDER",
+        "rowKey": "1",
+        "computed": {
+          "BACK": "0.9999999999999999999999999999",
+          "THIRD": "0.3333333333333333333333333333",
+          "AMOUNT": "3.5",
+          "PRICE_DELTA": "0.3",
+          "QTY_DELTA": "0",
+          "NET": "3.15"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      }
+    ],
+    "effects": []
+  }
+}

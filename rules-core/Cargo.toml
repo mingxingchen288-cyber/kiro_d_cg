@@ -1,0 +1,24 @@
+# rules-core 的 Cargo 工作区：core 写一次业务衔接逻辑，两个包装层只做 JSON 文本进出（RC-01）。
+# Python 包和 WASM 用同一个 Cargo.lock 构建（模块说明第 5 节）。
+[workspace]
+resolver = "2"
+members = ["core", "bindings/python", "bindings/wasm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace.dependencies]
+zen-engine = "=2.1.6"
+zen-expression = "=2.1.6"
+rust_decimal = { version = "=1.43.0", default-features = false, features = ["std", "maths-nopanic"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.154", features = ["preserve_order"] }
+pollster = "=1.0.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "unwind"

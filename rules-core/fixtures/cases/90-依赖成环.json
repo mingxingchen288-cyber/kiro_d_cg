@@ -1,0 +1,13 @@
+{
+  "kind": "packInvalid",
+  "name": "依赖成环",
+  "source": "RC-09：跨实体成环，load_pack 返回 PACK_INVALID",
+  "pack": "packs/cycle.json",
+  "expected": {
+    "code": "PACK_INVALID",
+    "messageContains": [
+      "R_SUM_X",
+      "R_X"
+    ]
+  }
+}

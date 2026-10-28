@@ -1,0 +1,69 @@
+{
+  "kind": "evaluate",
+  "name": "E04-正数不舍入",
+  "source": "业务例子 E04：计算值 1.234567885 原样返回，保存时才处理小数位（WP-15）",
+  "pack": "packs/demo-order.json",
+  "match": "full",
+  "request": {
+    "purpose": "operation",
+    "operation": "DEMO_ORDER.save",
+    "page": "DEMO_ORDER",
+    "phase": "preview",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "DEMO_ORDER",
+      "master": {
+        "rowKey": "1",
+        "values": {
+          "ID": "1",
+          "QTY": "0.5",
+          "PRICE": "2.46913577",
+          "AMOUNT": null,
+          "THIRD": null,
+          "BACK": null,
+          "PRICE_DELTA": null,
+          "QTY_DELTA": null,
+          "NET": null
+        }
+      },
+      "details": {}
+    },
+    "changed": [
+      {
+        "entity": "DEMO_ORDER",
+        "rowKey": "1",
+        "op": "modify",
+        "fields": []
+      }
+    ],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "DEMO_ORDER",
+        "rowKey": "1",
+        "computed": {
+          "BACK": "0.5000000000000000000000000001",
+          "THIRD": "0.1666666666666666666666666667",
+          "AMOUNT": "1.234567885",
+          "PRICE_DELTA": "0",
+          "QTY_DELTA": "0"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      }
+    ],
+    "effects": []
+  }
+}

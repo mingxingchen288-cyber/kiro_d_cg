@@ -1,0 +1,431 @@
+{
+  "kind": "evaluate",
+  "name": "成本核算-新增行和删除行",
+  "source": "C07 第 3 节：汇总包含新增行，不含标为删除的行（在 200726 上新增一行辅料、删除 208519）",
+  "pack": "packs/cost-pinggu.json",
+  "match": "full",
+  "request": {
+    "purpose": "operation",
+    "operation": "COST_PINGGU.save",
+    "page": "COST_PINGGU",
+    "phase": "preview",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "COST_PINGGU",
+      "master": {
+        "rowKey": "200726",
+        "values": {
+          "DOCID": "200726",
+          "GOODSNAME": null,
+          "MEMO": null,
+          "APEX_PL": "600000",
+          "P_PERPACK": "50",
+          "S_PERBACK": "450",
+          "X_PERBACK": "20",
+          "M_PERPACK": null,
+          "OUT_PRICE_F": "0.125",
+          "FMRATE": "7.1",
+          "YIELD": "98",
+          "COST_PERQP": "15.32",
+          "ANNUAL_QTY": "12000000",
+          "TOTAL_YL": "0",
+          "TOTAL_FL": "0",
+          "TOTAL_BC": "0",
+          "TOTAL_COST": "0",
+          "OUT_PRICE_RMB": "0",
+          "SALEMONEY": "0",
+          "JGF_BATCH": "0",
+          "COST_PERBOX": "0",
+          "JGF_PERQP": "0",
+          "ML_PERQP": "0",
+          "Y_JG_RE": "0",
+          "Y_ML": "0",
+          "Y_SALE": "0"
+        }
+      },
+      "details": {
+        "COST_MATERIAL": [
+          {
+            "rowKey": "208517",
+            "values": {
+              "DTLID": "208517",
+              "DOCID": "200726",
+              "GOODSID": "10593",
+              "GOODSNAME": "醋酸氟氢可的松",
+              "DTL_USEFLAG": "原料",
+              "PER_HL": "0.031",
+              "EXADD_MATER": null,
+              "PRICE": "205.13",
+              "BATCH_QTY": "0.0186",
+              "COST_BATCH": "3.815418"
+            }
+          },
+          {
+            "rowKey": "208518",
+            "values": {
+              "DTLID": "208518",
+              "DOCID": "200726",
+              "GOODSID": "2007",
+              "GOODSNAME": "一水乳糖80目（直压）",
+              "DTL_USEFLAG": "辅料",
+              "PER_HL": "6.875",
+              "EXADD_MATER": null,
+              "PRICE": "54",
+              "BATCH_QTY": "4.125",
+              "COST_BATCH": "222.75"
+            }
+          },
+          {
+            "rowKey": "208519",
+            "values": {
+              "DTLID": "208519",
+              "DOCID": "200726",
+              "GOODSID": "311",
+              "GOODSNAME": "一水乳糖（200目）",
+              "DTL_USEFLAG": "辅料",
+              "PER_HL": "23.25",
+              "EXADD_MATER": null,
+              "PRICE": "26",
+              "BATCH_QTY": "13.95",
+              "COST_BATCH": "362.7"
+            }
+          },
+          {
+            "rowKey": "208520",
+            "values": {
+              "DTLID": "208520",
+              "DOCID": "200726",
+              "GOODSID": "5412",
+              "GOODSNAME": "羧甲淀粉钠（A类）",
+              "DTL_USEFLAG": "辅料",
+              "PER_HL": "0.781",
+              "EXADD_MATER": null,
+              "PRICE": null,
+              "BATCH_QTY": "0.4686",
+              "COST_BATCH": "0"
+            }
+          },
+          {
+            "rowKey": "208521",
+            "values": {
+              "DTLID": "208521",
+              "DOCID": "200726",
+              "GOODSID": "12618",
+              "GOODSNAME": "硬脂酸镁",
+              "DTL_USEFLAG": "辅料",
+              "PER_HL": "0.156",
+              "EXADD_MATER": null,
+              "PRICE": "22",
+              "BATCH_QTY": "0.0936",
+              "COST_BATCH": "2.0592"
+            }
+          },
+          {
+            "clientRowId": "tmp-0b8f5a6e-4c1d-4e2a-9f3b-7d6c5e4a3b21",
+            "values": {
+              "DOCID": "200726",
+              "GOODSID": "12618",
+              "GOODSNAME": "硬脂酸镁",
+              "DTL_USEFLAG": "辅料",
+              "PER_HL": "0.1",
+              "EXADD_MATER": null,
+              "PRICE": "22",
+              "BATCH_QTY": "0",
+              "COST_BATCH": "0"
+            }
+          }
+        ],
+        "COST_PACKAGE": [
+          {
+            "rowKey": "208522",
+            "values": {
+              "DTLID": "208522",
+              "DOCID": "200726",
+              "GOODSID": "200361",
+              "GOODSNAME": "说明书",
+              "DTL_USEFLAG": "印字包材",
+              "PER_HL": null,
+              "EXADD_MATER": null,
+              "PRICE": "0.064",
+              "BATCH_QTY": "12000",
+              "COST_BATCH": "768"
+            }
+          },
+          {
+            "rowKey": "208523",
+            "values": {
+              "DTLID": "208523",
+              "DOCID": "200726",
+              "GOODSID": "200360",
+              "GOODSNAME": "小盒",
+              "DTL_USEFLAG": "印字包材",
+              "PER_HL": null,
+              "EXADD_MATER": null,
+              "PRICE": null,
+              "BATCH_QTY": "12000",
+              "COST_BATCH": "0"
+            }
+          },
+          {
+            "rowKey": "208524",
+            "values": {
+              "DTLID": "208524",
+              "DOCID": "200726",
+              "GOODSID": "200186",
+              "GOODSNAME": "铝箔",
+              "DTL_USEFLAG": "印字包材",
+              "PER_HL": "45",
+              "EXADD_MATER": null,
+              "PRICE": "48",
+              "BATCH_QTY": "27",
+              "COST_BATCH": "1296"
+            }
+          },
+          {
+            "rowKey": "208525",
+            "values": {
+              "DTLID": "208525",
+              "DOCID": "200726",
+              "GOODSID": "200105",
+              "GOODSNAME": "托盘",
+              "DTL_USEFLAG": "非印字包材",
+              "PER_HL": null,
+              "EXADD_MATER": null,
+              "PRICE": "147.48",
+              "BATCH_QTY": "2",
+              "COST_BATCH": "294.96"
+            }
+          },
+          {
+            "rowKey": "208526",
+            "values": {
+              "DTLID": "208526",
+              "DOCID": "200726",
+              "GOODSID": "14142",
+              "GOODSNAME": "聚氯乙烯/聚乙烯/聚偏二氯乙烯固体药用复合硬片",
+              "DTL_USEFLAG": "非印字包材",
+              "PER_HL": "185",
+              "EXADD_MATER": null,
+              "PRICE": "54",
+              "BATCH_QTY": "111",
+              "COST_BATCH": "5994"
+            }
+          },
+          {
+            "rowKey": "208527",
+            "values": {
+              "DTLID": "208527",
+              "DOCID": "200726",
+              "GOODSID": "7445",
+              "GOODSNAME": "大纸箱",
+              "DTL_USEFLAG": "非印字包材",
+              "PER_HL": null,
+              "EXADD_MATER": null,
+              "PRICE": null,
+              "BATCH_QTY": "27",
+              "COST_BATCH": "0"
+            }
+          }
+        ]
+      }
+    },
+    "changed": [
+      {
+        "entity": "COST_MATERIAL",
+        "clientRowId": "tmp-0b8f5a6e-4c1d-4e2a-9f3b-7d6c5e4a3b21",
+        "op": "add",
+        "fields": [
+          "GOODSID",
+          "PER_HL",
+          "PRICE"
+        ]
+      },
+      {
+        "entity": "COST_MATERIAL",
+        "rowKey": "208519",
+        "op": "delete",
+        "fields": []
+      }
+    ],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "COST_PINGGU",
+        "rowKey": "200726",
+        "computed": {
+          "TOTAL_YL": "3.3764761061946902654867256636",
+          "TOTAL_FL": "200.11433628318584070796460176",
+          "TOTAL_BC": "7391.9999999999999999999999998",
+          "TOTAL_COST": "7595.4908123893805309734513272",
+          "OUT_PRICE_RMB": "0.8875",
+          "SALEMONEY": "10437",
+          "JGF_BATCH": "2841.5091876106194690265486728",
+          "COST_PERBOX": "0.63295756769911504424778761",
+          "JGF_PERQP": "4.7358486460176991150442478",
+          "ML_PERQP": "-10.5841513539823008849557522",
+          "Y_JG_RE": "56830.1837522123893805309736",
+          "Y_ML": "-127009.8162477876106194690264",
+          "Y_SALE": "208740"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_MATERIAL",
+        "rowKey": "208517",
+        "computed": {
+          "BATCH_QTY": "0.0186",
+          "COST_BATCH": "3.815418"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_MATERIAL",
+        "rowKey": "208518",
+        "computed": {
+          "BATCH_QTY": "4.125",
+          "COST_BATCH": "222.75"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_MATERIAL",
+        "rowKey": "208520",
+        "computed": {
+          "BATCH_QTY": "0.4686",
+          "COST_BATCH": "0"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_MATERIAL",
+        "rowKey": "208521",
+        "computed": {
+          "BATCH_QTY": "0.0936",
+          "COST_BATCH": "2.0592"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_MATERIAL",
+        "clientRowId": "tmp-0b8f5a6e-4c1d-4e2a-9f3b-7d6c5e4a3b21",
+        "computed": {
+          "BATCH_QTY": "0.06",
+          "COST_BATCH": "1.32"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_PACKAGE",
+        "rowKey": "208522",
+        "computed": {
+          "BATCH_QTY": "12000",
+          "COST_BATCH": "768"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_PACKAGE",
+        "rowKey": "208523",
+        "computed": {
+          "BATCH_QTY": "12000",
+          "COST_BATCH": "0"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_PACKAGE",
+        "rowKey": "208524",
+        "computed": {
+          "BATCH_QTY": "27",
+          "COST_BATCH": "1296"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_PACKAGE",
+        "rowKey": "208525",
+        "computed": {
+          "BATCH_QTY": "2",
+          "COST_BATCH": "294.96"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_PACKAGE",
+        "rowKey": "208526",
+        "computed": {
+          "BATCH_QTY": "111",
+          "COST_BATCH": "5994"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_PACKAGE",
+        "rowKey": "208527",
+        "computed": {
+          "BATCH_QTY": "27",
+          "COST_BATCH": "0"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      }
+    ],
+    "effects": []
+  }
+}

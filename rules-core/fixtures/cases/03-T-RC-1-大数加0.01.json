@@ -1,0 +1,55 @@
+{
+  "kind": "evaluate",
+  "name": "T-RC-1-大数加0.01",
+  "source": "T-RC-1 样例",
+  "pack": "packs/expr-demo.json",
+  "match": "full",
+  "request": {
+    "purpose": "operation",
+    "operation": "EXPR_DEMO.save",
+    "page": "EXPR_DEMO",
+    "phase": "preview",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "EXPR_DEMO",
+      "master": {
+        "rowKey": "1",
+        "values": {
+          "ID": "1",
+          "A": "123456789012345.67",
+          "B": "0.01",
+          "SUM": null,
+          "QUOT": null
+        }
+      },
+      "details": {}
+    },
+    "changed": [],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "EXPR_DEMO",
+        "rowKey": "1",
+        "computed": {
+          "SUM": "123456789012345.68",
+          "QUOT": "12345678901234567"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      }
+    ],
+    "effects": []
+  }
+}

@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin==1.15.0"]
+build-backend = "maturin"
+
+[project]
+name = "cost-rules-core"
+version = "0.1.0"
+description = "成本平台规则内核的 Python 包（C07、C08 第 8 节）"
+requires-python = ">=3.13"
+
+[tool.maturin]
+python-source = "python"
+module-name = "cost_rules_core._native"
+manifest-path = "Cargo.toml"
+locked = true

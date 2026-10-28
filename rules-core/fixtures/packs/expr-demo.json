@@ -1,0 +1,142 @@
+{
+  "packId": "EXPR_DEMO",
+  "version": 1,
+  "coreVersion": "0.1.0",
+  "fields": {
+    "EXPR_DEMO": {
+      "ID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "A": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "B": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "SUM": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "QUOT": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      }
+    }
+  },
+  "rules": [
+    {
+      "id": "R_SUM",
+      "layer": "entity",
+      "entity": "EXPR_DEMO",
+      "category": "calc",
+      "order": 10,
+      "serverOnly": false,
+      "jdm": "R_SUM"
+    },
+    {
+      "id": "R_QUOT",
+      "layer": "entity",
+      "entity": "EXPR_DEMO",
+      "category": "calc",
+      "order": 20,
+      "serverOnly": false,
+      "jdm": "R_QUOT"
+    }
+  ],
+  "approvalEntries": [],
+  "jdm": {
+    "R_SUM": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_SUM",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "SUM",
+                "value": "A + B"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_QUOT": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_QUOT",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "QUOT",
+                "value": "A / B"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    }
+  }
+}

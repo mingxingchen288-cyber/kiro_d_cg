@@ -1,0 +1,7 @@
+/target/
+/dist/
+/.venv/
+/web/test-results/
+/web/playwright-report/
+__pycache__/
+*.pyd

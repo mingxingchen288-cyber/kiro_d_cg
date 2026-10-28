@@ -1,0 +1,374 @@
+{
+  "packId": "DEMO_ORDER",
+  "version": 1,
+  "coreVersion": "0.1.0",
+  "fields": {
+    "DEMO_ORDER": {
+      "ID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "QTY": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "PRICE": {
+        "type": "number",
+        "role": "input",
+        "source": "own",
+        "scale": 8
+      },
+      "AMOUNT": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 8
+      },
+      "THIRD": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 8
+      },
+      "BACK": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 8
+      },
+      "PRICE_DELTA": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 8
+      },
+      "QTY_DELTA": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 8
+      },
+      "NET": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own",
+        "scale": 8
+      }
+    }
+  },
+  "rules": [
+    {
+      "id": "R_BACK",
+      "layer": "entity",
+      "entity": "DEMO_ORDER",
+      "category": "calc",
+      "order": 10,
+      "serverOnly": false,
+      "jdm": "R_BACK"
+    },
+    {
+      "id": "R_THIRD",
+      "layer": "entity",
+      "entity": "DEMO_ORDER",
+      "category": "calc",
+      "order": 20,
+      "serverOnly": false,
+      "jdm": "R_THIRD"
+    },
+    {
+      "id": "R_AMOUNT",
+      "layer": "entity",
+      "entity": "DEMO_ORDER",
+      "category": "calc",
+      "order": 30,
+      "serverOnly": false,
+      "jdm": "R_AMOUNT"
+    },
+    {
+      "id": "R_PRICE_DELTA",
+      "layer": "entity",
+      "entity": "DEMO_ORDER",
+      "category": "calc",
+      "order": 40,
+      "serverOnly": false,
+      "jdm": "R_PRICE_DELTA"
+    },
+    {
+      "id": "R_QTY_DELTA",
+      "layer": "entity",
+      "entity": "DEMO_ORDER",
+      "category": "calc",
+      "order": 41,
+      "serverOnly": false,
+      "jdm": "R_QTY_DELTA"
+    },
+    {
+      "id": "R_NET",
+      "layer": "operation",
+      "entity": "DEMO_ORDER",
+      "operation": "DEMO_ORDER.save",
+      "category": "calc",
+      "order": 50,
+      "serverOnly": true,
+      "jdm": "R_NET"
+    }
+  ],
+  "approvalEntries": [],
+  "jdm": {
+    "R_BACK": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_BACK",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "BACK",
+                "value": "THIRD * 3"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_THIRD": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_THIRD",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "THIRD",
+                "value": "QTY / 3"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_AMOUNT": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_AMOUNT",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "AMOUNT",
+                "value": "QTY * PRICE"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_PRICE_DELTA": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_PRICE_DELTA",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "PRICE_DELTA",
+                "value": "PRICE - old.PRICE"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_QTY_DELTA": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_QTY_DELTA",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "QTY_DELTA",
+                "value": "QTY - old.QTY"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_NET": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_NET",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "NET",
+                "value": "AMOUNT * (1 - data.discountRate)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,18 @@
+[package]
+name = "rules-core"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "成本平台的规则内核：选规则、组装输入、调用 zen-engine、解释结果（C07）"
+
+[lib]
+name = "rules_core"
+path = "src/lib.rs"
+
+[dependencies]
+zen-engine.workspace = true
+zen-expression.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+pollster.workspace = true

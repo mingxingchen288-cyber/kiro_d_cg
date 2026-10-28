@@ -1,0 +1,176 @@
+{
+  "kind": "evaluate",
+  "name": "成本核算-胶囊中盒和分支都不匹配",
+  "source": "胶囊分支、中盒分支（假设值）；分支都不匹配保持原值（cmx 200203 的 PVC 250μm）",
+  "pack": "packs/cost-pinggu.json",
+  "match": "full",
+  "request": {
+    "purpose": "operation",
+    "operation": "COST_PINGGU.save",
+    "page": "COST_PINGGU",
+    "phase": "preview",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "COST_PINGGU",
+      "master": {
+        "rowKey": "900003",
+        "values": {
+          "DOCID": "900003",
+          "GOODSNAME": null,
+          "MEMO": null,
+          "APEX_PL": "600000",
+          "P_PERPACK": "50",
+          "S_PERBACK": "450",
+          "X_PERBACK": "20",
+          "M_PERPACK": "10",
+          "OUT_PRICE_F": "0.125",
+          "FMRATE": "7.1",
+          "YIELD": "98",
+          "COST_PERQP": "15.32",
+          "ANNUAL_QTY": "12000000",
+          "TOTAL_YL": "0",
+          "TOTAL_FL": "0",
+          "TOTAL_BC": "0",
+          "TOTAL_COST": "0",
+          "OUT_PRICE_RMB": "0",
+          "SALEMONEY": "0",
+          "JGF_BATCH": "0",
+          "COST_PERBOX": "0",
+          "JGF_PERQP": "0",
+          "ML_PERQP": "0",
+          "Y_JG_RE": "0",
+          "Y_ML": "0",
+          "Y_SALE": "0"
+        }
+      },
+      "details": {
+        "COST_MATERIAL": [
+          {
+            "rowKey": "920001",
+            "values": {
+              "DTLID": "920001",
+              "DOCID": "900003",
+              "GOODSID": "3001",
+              "GOODSNAME": "空心胶囊",
+              "DTL_USEFLAG": "辅料",
+              "PER_HL": "1",
+              "EXADD_MATER": "2",
+              "PRICE": "0.05",
+              "BATCH_QTY": "0",
+              "COST_BATCH": "0"
+            }
+          }
+        ],
+        "COST_PACKAGE": [
+          {
+            "rowKey": "920002",
+            "values": {
+              "DTLID": "920002",
+              "DOCID": "900003",
+              "GOODSID": "3002",
+              "GOODSNAME": "中盒",
+              "DTL_USEFLAG": "非印字包材",
+              "PER_HL": null,
+              "EXADD_MATER": null,
+              "PRICE": "0.8",
+              "BATCH_QTY": "0",
+              "COST_BATCH": "0"
+            }
+          },
+          {
+            "rowKey": "920003",
+            "values": {
+              "DTLID": "920003",
+              "DOCID": "900003",
+              "GOODSID": "3003",
+              "GOODSNAME": "PVC 250μm",
+              "DTL_USEFLAG": "印字包材",
+              "PER_HL": null,
+              "EXADD_MATER": null,
+              "PRICE": "16",
+              "BATCH_QTY": "370.16",
+              "COST_BATCH": "5922.56"
+            }
+          }
+        ]
+      }
+    },
+    "changed": [],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "COST_PINGGU",
+        "rowKey": "900003",
+        "computed": {
+          "TOTAL_YL": "0",
+          "TOTAL_FL": "3.06",
+          "TOTAL_BC": "6029.76",
+          "TOTAL_COST": "6032.82",
+          "OUT_PRICE_RMB": "0.8875",
+          "SALEMONEY": "10437",
+          "JGF_BATCH": "4404.18",
+          "COST_PERBOX": "0.502735",
+          "JGF_PERQP": "7.3403",
+          "ML_PERQP": "-7.9797",
+          "Y_JG_RE": "88083.6",
+          "Y_ML": "-95756.4",
+          "Y_SALE": "208740"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_MATERIAL",
+        "rowKey": "920001",
+        "computed": {
+          "BATCH_QTY": "61.2",
+          "COST_BATCH": "3.06"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_PACKAGE",
+        "rowKey": "920002",
+        "computed": {
+          "BATCH_QTY": "134",
+          "COST_BATCH": "107.2"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_PACKAGE",
+        "rowKey": "920003",
+        "computed": {
+          "BATCH_QTY": "370.16",
+          "COST_BATCH": "5922.56"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      }
+    ],
+    "effects": []
+  }
+}
