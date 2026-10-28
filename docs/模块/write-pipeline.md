@@ -5,7 +5,7 @@
 ## 1. 职责
 
 - 负责：实现 `CommandExecutor`；按[架构第 7 节](../架构与组装.md)的顺序执行阶段；判重；加锁读取；合并修改；生成只含变化列的变更计划；写入业务表（含物理删除和级联删除）；必填检查；审计差异；写入命令记录并提交；提交后调用投递。
-- 不负责：冻结和审批（approval）、操作展开和批准后动作（operations）、计算和规则（rules-core）、权限判断（authz）、发送通知（delivery）。
+- 不负责：冻结和审批（approval）、按钮和审批流动作的展开（operations）、计算和规则（rules-core）、权限判断（authz）、发送通知（delivery）。
 
 ## 2. 所有权
 
@@ -36,7 +36,7 @@
 - WP-11：页面视图的 `audit` 为 true 时，命令记录中写入审计差异：修改的行逐字段记旧值和新值，新增行记写入的值，删除的行（包括级联删除的明细）记删除前的值。审计差异随完成命令记录的同一条语句写入。
 - WP-12：命令结果中的受影响行取自候选数据，不再查询数据库，每行包含实体的全部字段。
 - WP-13：命令只执行一次，写入管道不自动重试。
-- WP-18：动作执行中，operations 把每个动作展开为 `CommandState.intents`（C08 第 6 节）。write-pipeline 取出 `intents`，其中所属单据不在"确定涉及的单据"阶段给出的 `involved` 中的（例如 `updateRecords` 按关联查询找到的单据，按钮操作和批准后动作都一样），先把这些单据加入 `involved`，按（实体、主键）排序用 WP-03 的方式加数据库行锁并读入 `current`，再对它们执行一次冻结检查阶段（approval AP-03，来源为本审批时放行本审批的冻结），都通过后才把 `intents` 合并进 `candidate` 并清空；被别的审批冻结时整个命令返回 409 FROZEN_BY_APPROVAL，超出行权限返回 403 PERMISSION_DENIED（来源为审批时不查行权限，C08 第 7 节）。行锁在命令结束时释放，不登记冻结记录。这次加锁在已有的锁之后，可能与其他命令交叉等待：等锁超时，或 Oracle 检出死锁，都返回 409 DOCUMENT_BUSY，整个命令回滚。
+- WP-18：动作执行中，operations 把每个动作展开为 `CommandState.intents`（C08 第 6 节）。write-pipeline 取出 `intents`，其中所属单据不在"确定涉及的单据"阶段给出的 `involved` 中的（例如按钮的 `updateRecords` 按关联查询找到的单据，或审批流影响对象中不在锁定范围内的行所属的单据），先把这些单据加入 `involved`，按（实体、主键）排序用 WP-03 的方式加数据库行锁并读入 `current`，再对它们执行一次冻结检查阶段（approval AP-03，来源为本审批时放行本审批的冻结），都通过后才把 `intents` 合并进 `candidate` 并清空；被别的审批冻结时整个命令返回 409 FROZEN_BY_APPROVAL，超出行权限返回 403 PERMISSION_DENIED（来源为审批时不查行权限，C08 第 7 节）。行锁在命令结束时释放，不登记冻结记录。这次加锁在已有的锁之后，可能与其他命令交叉等待：等锁超时，或 Oracle 检出死锁，都返回 409 DOCUMENT_BUSY，整个命令回滚。
 
 ## 4. 依赖
 

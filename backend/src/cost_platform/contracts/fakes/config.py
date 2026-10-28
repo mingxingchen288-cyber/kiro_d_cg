@@ -86,9 +86,15 @@ def _references(config_type: str, content: Any) -> list[tuple[str, str, str]]:
         refs += [("role", a.role, f".levels[{i}].entries[{j}].approvers[{k}].role")
                  for i, level in enumerate(content.levels) for j, entry in enumerate(level.entries)
                  for k, a in enumerate(entry.approvers) if isinstance(a, RoleApprover)]
-        refs += [("entity", f.entity, f".targets.find[{i}].entity") for i, f in enumerate(content.targets.find if content.targets else [])]
         refs += [("entity", f.entity, f".freeze[{i}].entity") for i, f in enumerate(content.freeze)]
-        actions(content.after_approval, ".afterApproval")
+        if content.display:
+            if content.display.source:
+                refs += [("entity", d.entity, f".display.source.details[{i}].entity")
+                         for i, d in enumerate(content.display.source.details)]
+                actions(content.display.source.actions, ".display.source.actions")
+            for i, block in enumerate(content.display.affected):
+                refs.append(("entity", block.find.entity, f".display.affected[{i}].find.entity"))
+                actions(block.actions, f".display.affected[{i}].actions")
     elif config_type == "role":
         refs += [("page", p, f".pages.{p}") for p in content.pages]
     elif config_type == "menu":

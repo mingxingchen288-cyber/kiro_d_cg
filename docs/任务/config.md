@@ -11,7 +11,7 @@
 - 负责范围：`backend/src/cost_platform/config/` 的配置校验和存储；表 `PF_CONFIG_ITEM` 的迁移脚本。
 - 交付物：C06 第 10 节的全部校验（配置的数据结构使用 contracts 中的 C06 类型，见 contracts 的 CT-02）；配置项的读写。
 - 接入责任：frontend-config 经 T-CF-3 的接口使用；migration 经 `ConfigImporter` 使用，T-AS-8 联调。
-- 验收标准：模拟验证：C06 的每个样例都能保存；第 10 节每条校验各有一个通过和一个不通过的样例，不通过时什么都不写；通过 `ConfigImporter` 的契约测试，另按 C08 第 4 节验证：本批的项可以引用已有配置和本批的其他项，有一项不通过时整批不写，已有的项不覆盖、列入 `skipped`；同一批中两项类型和编码相同时整批拒绝，明细列出这两项，即使它们与已有配置项相同；错误明细的 `path` 以 `items[序号]` 开头；其中审批流的 `trigger.changedFields` 另有这些样例：只监听新增、删除且字段数组为空的能保存，`changedFields` 为空对象、引用不属于来源单据的实体或不存在的字段、含 `modify` 却没有任何实体列出字段的都被拒绝；关联 SQL 的 `rowKeyColumns` 填了 `DTL_ID` 而 SQL 没有选出这一列时被拒绝，提示缺少 `DTL_ID`，选出后能保存；`targets.find` 或 `freeze` 的实体写入表是视图，或实体的 `freezable` 为 false 时被拒绝；关联 SQL 的绑定变量同时引用原辅料和包材的字段时被拒绝；`freeze` 写 `{"kind": "targets"}` 或审批流写 `levelActions` 时被拒绝（候选对象总是冻结，中途某一级通过不执行动作）；真实验证：在 d_cg 上保存、读取、删除配置项。
+- 验收标准：模拟验证：C06 的每个样例都能保存；第 10 节每条校验各有一个通过和一个不通过的样例，不通过时什么都不写；通过 `ConfigImporter` 的契约测试，另按 C08 第 4 节验证：本批的项可以引用已有配置和本批的其他项，有一项不通过时整批不写，已有的项不覆盖、列入 `skipped`；同一批中两项类型和编码相同时整批拒绝，明细列出这两项，即使它们与已有配置项相同；错误明细的 `path` 以 `items[序号]` 开头；其中审批流的 `trigger.changedFields` 另有这些样例：只监听新增、删除且字段数组为空的能保存，`changedFields` 为空对象、引用不属于来源单据的实体或不存在的字段、含 `modify` 却没有任何实体列出字段的都被拒绝；关联 SQL 的 `rowKeyColumns` 填了 `DTL_ID` 而 SQL 没有选出这一列时被拒绝，提示缺少 `DTL_ID`，选出后能保存；`freeze` 的实体写入表是视图，或实体的 `freezable` 为 false 时被拒绝；关联 SQL 的绑定变量同时引用原辅料和包材的字段时被拒绝；`freeze` 写 `{"kind": "targets"}` 或审批流写 `levelActions` 时被拒绝（中途某一级通过不执行动作）；真实验证：在 d_cg 上保存、读取、删除配置项。
 - 状态与证据：未开始。
 
 ### T-CF-2 页面视图与规则包生成

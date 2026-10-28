@@ -21,7 +21,6 @@ from cost_platform.contracts.fakes import FakeStage, FakeUnitOfWorkFactory
 from cost_platform.contracts.ports import PipelineStage, UnitOfWork
 from cost_platform.contracts.types import (
     ApprovalState,
-    ApplyPendingChanges,
     ChangePlan,
     CommandState,
     DocumentData,
@@ -31,6 +30,7 @@ from cost_platform.contracts.types import (
     NotificationIntent,
     PlatformError,
     PromptEffect,
+    Recalculate,
     RecordRef,
     Row,
     RowChange,
@@ -156,7 +156,7 @@ _NOTICE = NotificationIntent(event="approvalSubmitted", recipients=("111",), tit
 
 _WRITERS = {
     "involved": lambda s: s.involved.append(_REF),
-    "actions": lambda s: s.actions.append(ApplyPendingChanges(action="applyPendingChanges")),
+    "actions": lambda s: s.actions.append(Recalculate(action="recalculate", target="source")),
     "intents": lambda s: s.intents.append(RowIntent(document=_REF, entity="COST_PINGGU", op="modify", row_key="1001",
                                                     client_row_id=None, values={"QTY": "12"})),
     "candidate": lambda s: s.candidate.__setitem__(_REF, copy.deepcopy(_DOC)),

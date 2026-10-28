@@ -17,7 +17,7 @@ from cost_platform.contracts.types import ConfigDraft, ErrorCode, PlatformError
 
 from .support import CT_PAGE_A, CT_SAVE_A, CT_TABLE, ct_entity, ct_page, ct_save_operation, doc_json
 
-DICT = ConfigDraft(type="dict", key="CT_STATUS", name="状态", content=doc_json("C06", 13))
+DICT = ConfigDraft(type="dict", key="CT_STATUS", name="状态", content=doc_json("C06", 11))
 DICT_CHANGED = ConfigDraft(type="dict", key="CT_STATUS", name="状态（改）",
                            content={"items": [{"value": "9", "label": "改过", "order": 1}]})
 LOOKUP = ConfigDraft(type="lookup", key="CT_GOODS_LOOKUP", name="物料",

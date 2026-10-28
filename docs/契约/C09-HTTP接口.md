@@ -1,6 +1,6 @@
 # C09 HTTP 接口
 
-版本：v6。维护：contracts。状态：已确认。
+版本：v7。维护：contracts。状态：已确认。v7 随 C06 v15 把审批详情的候选单据改为影响对象、按行勾选，通过请求改为提交取消勾选的行（用户 2026-10-28 确认审批流合并展示与动作）。
 
 ## 1. 通用规则
 
@@ -102,7 +102,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 |---|---|---|---|
 | GET | `/api/approvals` | `?box=todo` 或 `?box=mine`，以及 `startRow`、`endRow` | `{"rows": [ApprovalSummary], "total": 7}` |
 | GET | `/api/approvals/{approvalId}` | 无 | `ApprovalDetail`；只读，不加锁 |
-| POST | `/api/approvals/{approvalId}/pass` | `{"requestKey": "…", "fingerprint": "sha256:…", "selectedObjects": [{"flow": "GOODS_TO_COST", "entity": "COST_PINGGU", "recordKey": "2550"}], "comment": "价格已核对", "params": {"effectiveDate": "2026-11-01"}}`，`params` 为本次通过要填写的人工参数（C06 7.1） | 命令结果（C02），`outcome` 为 `approvalProcessed`；必填的人工参数没有填写时返回 422 |
+| POST | `/api/approvals/{approvalId}/pass` | `{"requestKey": "…", "fingerprint": "sha256:…", "uncheckedRows": [{"flow": "GOODS_TO_COST", "block": "costs", "entity": "COST_MATERIAL", "recordKey": "2551", "rowKeys": ["6102"]}], "comment": "价格已核对", "params": {"effectiveDate": "2026-11-01"}}`，`uncheckedRows` 为这次取消勾选的影响对象的行，`params` 为本次通过要填写的人工参数（C06 7.1） | 命令结果（C02），`outcome` 为 `approvalProcessed`；必填的人工参数没有填写时返回 422 |
 | POST | `/api/approvals/{approvalId}/reject` | `{"requestKey": "…", "comment": "价格偏高"}`，`comment` 为驳回原因，必填 | 命令结果；没填原因返回 422 VALIDATION_FAILED |
 | POST | `/api/approvals/{approvalId}/withdraw` | `{"requestKey": "…", "comment": "录入有误"}`，`comment` 可以不填 | 命令结果 |
 
@@ -133,12 +133,12 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
   "view": {
     "master": {"columns": ["物料ID", "名称", "价格变化"],
       "rows": [{"op": "modify", "flows": ["GOODS_TO_COST", "GOODS_PRICE_AUDIT"], "cells": [{"before": "115", "after": "115"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}]}]},
-    "details": [{"title": "受影响的成本单", "flow": "GOODS_TO_COST", "selection": "approverSelects",
-      "columns": ["单据号", "产品", "物料", "单价", "金额", "每盒成本", "千片加工费"], "mergedColumns": [0, 1, 5, 6],
-      "targets": [{"entity": "COST_PINGGU", "recordKey": "2550", "selectable": true, "selected": false}, {"entity": "COST_PINGGU", "recordKey": "2551", "selectable": true, "selected": false}],
+    "details": [],
+    "affected": [{"flow": "GOODS_TO_COST", "key": "costs", "title": "受影响的成本单", "selection": "checked", "editable": true,
+      "columns": ["单据号", "产品", "物料", "单价", "金额", "每盒成本", "千片加工费"],
       "rows": [
-        {"op": "modify", "target": {"entity": "COST_PINGGU", "recordKey": "2550"}, "cells": [{"before": "2550", "after": "2550"}, {"before": "250mg乙酰唑胺片", "after": "250mg乙酰唑胺片"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}, {"before": "1500", "after": "1200"}, {"before": "1.2034", "after": "1.1987"}, {"before": "30.50", "after": "30.21"}]},
-        {"op": "modify", "target": {"entity": "COST_PINGGU", "recordKey": "2551"}, "cells": [{"before": "2551", "after": "2551"}, {"before": "500mg乙酰唑胺片", "after": "500mg乙酰唑胺片"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}, {"before": "3000", "after": "2400"}, {"before": "0.9821", "after": "0.9790"}, {"before": "28.10", "after": "27.95"}]},
+        {"op": "modify", "ref": {"entity": "COST_MATERIAL", "recordKey": "2550", "rowKeys": ["6101"]}, "checked": true, "cells": [{"before": "2550", "after": "2550"}, {"before": "250mg乙酰唑胺片", "after": "250mg乙酰唑胺片"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}, {"before": "1500", "after": "1200"}, {"before": "1.2034", "after": "1.1987"}, {"before": "30.50", "after": "30.21"}]},
+        {"op": "modify", "ref": {"entity": "COST_MATERIAL", "recordKey": "2551", "rowKeys": ["6102"]}, "checked": true, "cells": [{"before": "2551", "after": "2551"}, {"before": "500mg乙酰唑胺片", "after": "500mg乙酰唑胺片"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}, {"before": "3000", "after": "2400"}, {"before": "0.9821", "after": "0.9790"}, {"before": "28.10", "after": "27.95"}]},
         {"op": "none", "missing": {"recordKey": null, "label": null}, "cells": [{"before": null, "after": null}, {"before": null, "after": null}, {"before": null, "after": null}, {"before": null, "after": null}, {"before": null, "after": null}, {"before": null, "after": null}, {"before": null, "after": null}]}
       ]}]
   },
@@ -152,10 +152,10 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 - 待办列表每个审批一行（`ApprovalSummary`）。详情分主表和从表：
   - 主表：来自页面（`pageTitle`、`operationLabel`）、提交时间（`submittedAt`）、提交人（`applicant`）、来源单据号（`source.recordKey`）。新增的单据在提交审批时已取得主键（approval AP-02），来源单据号总是有值。
   - 从表：`steps`，每个入口一项，按级别、再按审批流的 `createdSeq` 排列；`flow`、`flowName` 标出入口来自哪个审批流。只列已进入的入口，以及按当前数据推算后面会进入的入口（approval AP-08）。`status` 取 `passed`、`pending`（本级待处理）、`rejected`、`upcoming`（还没到，按当前数据推算会进入）。`members[].status` 取 `pending`、`passed`、`rejected`；`processedBy` 为实际处理的账号（`{"userId", "displayName"}`），按角色配置的成员由该角色的某个账号处理。
-- `view` 是按 C06 7.6 的 `display` 生成的"修改内容"：`master` 为主表，`details` 每张从表一项。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（`rowsFilter` 为 `all` 时未改动的行，以及记录已不存在的行）。来源单据的行总带 `flows`：这一行触发的审批流编码列表，为空数组表示没有触发、随审批等待；候选单据的行没有这个值，按 C01 第 1 节省略；一张单据命中多个审批流时，来源单据的主表和从表只返回一份，候选单据的从表每个审批流一张，带 `flow`（C06 7.6）。
-- 从表的行来自候选单据时，`target` 标出这一行属于哪张单据，同一张单据的行连续排列；`mergedColumns` 是取自候选单据主表、需要在这组行上合并显示的列；`targets` 给出每张候选单据能否勾选、是否已勾选。按单据勾选，可以勾选（`selectable` 为 true）需同时满足：该审批流的 `selection` 为 `approverSelects`；当前用户是该审批流本级入口的待处理审批人；单据在该审批流上一级选中的范围内。`selection` 为 `all` 的审批流不返回候选单据。
-- 候选对象的记录已不存在时（approval AP-21），在该审批流的从表最后为它加一行：`missing` 给出 `recordKey`（单据主键，取不到时为 null）和 `label`（关联 SQL 中 `labelColumn` 的值，没有时为 null）；`op` 为 `none`，`cells` 每格的 `before`、`after` 都为 null；没有 `target`，也不出现在 `targets` 中，不能勾选。前端整行红底，显示"记录已不存在"（frontend-approval FA-09）。样例从表的第三行是为说明而假设的：假设关联 SQL 从成本单明细出发、左连接成本单主表，保存前有一条含物料 115 的明细所属的成本单已被删除，查出的单据号和产品名都为空；C06 7.5 的 `GOODS_TO_COST` 从成本单主表查，不会查出这种行。
-- 同一账号在本级多个入口中待处理时，通过一次即计入这些入口（approval AP-16）；通过请求的 `selectedObjects` 用 `flow` 分别给出各审批流的勾选。
+- `view` 是按 C06 7.6 的 `display` 生成的"修改内容"：`master`、`details` 为来源单据的主表和明细，`affected` 为影响对象，每块一项，`selection` 为 `hidden` 的块不返回。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"，相同时只显示当前值。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（`rows` 为 `all` 时未改动的行，以及记录已不存在的行）。来源单据的行总带 `flows`：这一行触发的审批流编码列表，为空数组表示没有触发、随审批等待；影响对象的行没有这个值，按 C01 第 1 节省略。一张单据命中多个审批流时，来源单据只返回一份，影响对象每个审批流各自的块，带 `flow`（C06 7.6）。
+- 影响对象每行一个勾选框：`ref` 标出这一行（实体、所属单据的主键、明细主键），`checked` 为当前是否勾选，默认为 true，上一级取消的为 false。`editable` 为 true 时当前用户这次通过可以取消勾选：块的 `selection` 为 `checked`，且当前用户是该审批流本级入口的待处理审批人；上一级取消的行不能再勾回。样例中的明细主键 6101、6102 是为说明而假设的。
+- 影响对象中记录已不存在的行（approval AP-21）排在这一块最后：`missing` 给出 `recordKey`（单据主键，取不到时为 null）和 `label`（关联 SQL 中 `labelColumn` 的值，没有时为 null）；`op` 为 `none`，`cells` 每格的 `before`、`after` 都为 null；没有 `ref` 和 `checked`，不能勾选。前端整行红底，显示"记录已不存在"（frontend-approval FA-09）。样例的第三行是为说明而假设的：假设关联 SQL 从成本单明细出发、左连接成本单主表取单据号，保存前有一条含物料 115 的明细所属的成本单已被删除；C06 7.5 的 `GOODS_TO_COST` 只查明细表，不会查出这种行。
+- 同一账号在本级多个入口中待处理时，通过一次即计入这些入口（approval AP-16）；通过请求的 `uncheckedRows` 列出这次取消勾选的行，用 `flow`、`block` 指出属于哪个审批流的哪一块；没有列出的行保持原来的勾选。
 - 任何已登录的用户都能查看审批详情和进度，`actions` 给出当前用户能做的操作。
 - `params` 是当前用户这次通过要填写的人工参数，格式同 C06 7.1 的 `params`：取各审批流中 `source` 为 `manual`、`level` 为当前级别的参数；这次通过会使审批到达终点时，还包括不带 `level` 的参数。不是本级待处理的审批人，或者没有要填写的参数时，为空数组。
 - 打开详情之后结果发生变化时，通过返回 409 RECONFIRM_REQUIRED，前端重新读取详情。

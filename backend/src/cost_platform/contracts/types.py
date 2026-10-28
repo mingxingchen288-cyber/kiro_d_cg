@@ -784,7 +784,7 @@ class PageConfig(Wire):
     details: list[PageDetailConfig] = []
 
 
-# ---- 7.2 查找目标（通用动作 updateRecords 也使用）
+# ---- 7.2 查找方式（锁定范围、影响对象和按钮的 updateRecords 都使用）
 
 class RelationKeyFinder(Wire):
     kind: Literal["relationKey"]
@@ -816,10 +816,6 @@ class FieldMap(Wire):
     to: str
 
 
-class ApplyPendingChanges(Wire):
-    action: Literal["applyPendingChanges"]
-
-
 class Recalculate(Wire):
     action: Literal["recalculate"]
     target: Literal["source", "targets"]
@@ -849,9 +845,10 @@ class EscapeHatch(Wire):
 
 
 ActionStep = Annotated[
-    ApplyPendingChanges | Recalculate | UpdateTargets | UpdateRecords | EscapeHatch,
+    Recalculate | UpdateTargets | UpdateRecords | EscapeHatch,
     Field(discriminator="action"),
 ]
+"""按钮操作的通用动作（C06 第 6 节）。审批流的动作见 `BlockAction`。"""
 
 
 # ---- 4. operation
@@ -939,41 +936,60 @@ class FlowLevel(Wire):
     entries: list[LevelEntry]
 
 
-class FlowTargets(Wire):
-    find: list[TargetFinder]
-    selection: Literal["all", "approverSelects"]
-
-
 FreezeSpec = TargetFinder
-"""来源单据和候选对象之外还要锁定的单据：按来源的字段关联其他表找到（C06 7.3）。只决定锁定什么，改不改由批准后动作决定。
-来源单据和全部候选对象总是锁定，不用配置。"""
+"""锁定范围中的一项（C06 7.3）：触发审批的单据总是锁定，这里配还要锁定的目标。"""
 
 _IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 
 
 class DisplayColumn(Wire):
     label: str
-    field: Annotated[str, StringConstraints(pattern=rf"^(source|target)(\.{_IDENT}){{1,2}}$")]
-    """`source.字段`、`source.<明细实体>.字段`、`target.字段` 或 `target.<明细实体>.字段`（C06 7.6）。"""
+    field: Annotated[str, StringConstraints(pattern=rf"^{_IDENT}(\.{_IDENT})?$")]
+    """字段名；影响对象找的是明细时，也可以写 `主表实体.字段`，取这一行所属单据的字段（C06 7.6）。"""
 
 
-class DisplayMaster(Wire):
-    columns: list[DisplayColumn] = []
+class UpdateFields(Wire):
+    """把值写到这一行的字段（C06 7.6）：`from` 为来源字段或 `params.名称`，`to` 为这一行的字段。"""
+
+    action: Literal["updateFields"]
+    field_mapping: list[FieldMap]
 
 
-class DisplayDetail(Wire):
+BlockAction = Annotated[UpdateFields | EscapeHatch, Field(discriminator="action")]
+"""审批流展示与动作中的动作（C06 7.6）。"""
+
+
+class SourceDetailDisplay(Wire):
     title: str
-    rows: Annotated[str, StringConstraints(pattern=rf"^(source\.{_IDENT}|target(\.{_IDENT})?)$")]
-    """`source.<明细实体>`、`target` 或 `target.<明细实体>`（C06 7.6）。"""
-    rows_filter: Literal["changed", "all"] = "changed"
-    columns: list[DisplayColumn] = []
+    entity: Code
+    rows: Literal["changed", "all"] = "changed"
+    columns: list[DisplayColumn]
+
+
+class SourceDisplay(Wire):
+    """来源单据显示的列，以及应用修改之后另外执行的动作（C06 7.6）。"""
+
+    master: list[DisplayColumn] = []
+    details: list[SourceDetailDisplay] = []
+    actions: list[BlockAction] = []
+
+
+class AffectedBlock(Wire):
+    """影响对象的一块（C06 7.6）：找哪些行、显示哪些列、怎么勾选、通过后对勾选的行做什么。"""
+
+    key: Code
+    title: str
+    find: TargetFinder
+    columns: list[DisplayColumn]
+    selection: Literal["checked", "all", "hidden"]
+    actions: list[BlockAction] = []
 
 
 class ApprovalDisplay(Wire):
-    """审批详情"修改内容"的主表和从表（C06 7.6）。"""
+    """审批流的展示与动作（C06 7.6）。"""
 
-    master: DisplayMaster
-    details: list[DisplayDetail] = []
+    source: SourceDisplay | None = None
+    affected: list[AffectedBlock] = []
 
 
 class FlowParam(Wire):
@@ -1004,11 +1020,9 @@ class ApprovalFlowConfig(Wire):
     source_operation: Code
     trigger: Trigger
     levels: list[FlowLevel]
-    targets: FlowTargets | None = None
-    display: ApprovalDisplay | None = None
     freeze: list[FreezeSpec] = []
-    after_approval: list[ActionStep] = []
-    """全部审批节点都通过后才执行（approval AP-20）；中途某一级通过不执行任何动作。"""
+    display: ApprovalDisplay | None = None
+    """动作在全部审批节点都通过后才执行（approval AP-20）；中途某一级通过不执行任何动作。"""
     params: list[FlowParam] = []
     propagation: Literal["end"] = "end"
     notify: list[NotifyRule] = []
@@ -1685,27 +1699,37 @@ class ViewCell(Wire):
 
 
 class MissingRecord(Wire):
-    """记录已不存在的候选对象（approval AP-21）：能取到的单据主键和 `labelColumn` 的值，取不到的为 null。"""
+    """影响对象中记录已不存在的行（approval AP-21）：能取到的单据主键和 `labelColumn` 的值，取不到的为 null。"""
 
     record_key: Key | None
     label: str | None
 
 
+class AffectedRowRef(Wire):
+    """影响对象的一行：实体、所属单据的主键和明细主键（C08 第 9 节的 `TargetObject`）。"""
+
+    entity: Code
+    record_key: Key
+    row_keys: list[Key]
+
+
 class ViewRow(Wire):
-    """"修改内容"的一行：来源单据的行带 `flows`，候选单据的行带 `target`；记录已不存在的候选对象只带 `missing`。"""
+    """"修改内容"的一行：来源单据的明细行带 `flows`；影响对象的行带 `ref` 和 `checked`；记录已不存在的行只带 `missing`。"""
 
     op: Literal["modify", "add", "delete", "none"]
     cells: list[ViewCell]
-    target: RecordRef | None = None
     flows: list[Code] | None = None
+    ref: AffectedRowRef | None = None
+    checked: Bool | None = None
     missing: MissingRecord | None = None
 
     @model_validator(mode="after")
     def _missing_row_has_no_values(self) -> ViewRow:
-        """C09 第 6 节：带 `missing` 的行 `op` 为 none，没有 `target`，每格的修改前后都为 null。"""
-        if self.missing is not None and (self.op != "none" or self.target is not None or self.flows is not None
+        """C09 第 6 节：带 `missing` 的行 `op` 为 none，没有 `ref`、`checked`、`flows`，每格的修改前后都为 null。"""
+        if self.missing is not None and (self.op != "none" or self.ref is not None or self.checked is not None
+                                         or self.flows is not None
                                          or any(c.before is not None or c.after is not None for c in self.cells)):
-            raise ValueError("记录已不存在的行 op 为 none，没有 target 和 flows，每格的 before、after 都为 null")
+            raise ValueError("记录已不存在的行 op 为 none，没有 ref、checked 和 flows，每格的 before、after 都为 null")
         return self
 
 
@@ -1714,28 +1738,29 @@ class ViewMasterTable(Wire):
     rows: list[ViewRow]
 
 
-class TargetChoice(Wire):
-    entity: Code
-    record_key: Key
-    selectable: Bool
-    selected: Bool
-
-
 class ViewDetailTable(Wire):
     title: str
-    flow: Code | None = None
-    selection: Literal["all", "approverSelects"] | None = None
     columns: list[str]
-    merged_columns: list[Int] | None = None
-    """候选单据的从表才有；没有要合并的列时为空数组。"""
-    targets: list[TargetChoice] | None = None
-    """候选单据的从表才有；没有候选单据时为空数组。"""
+    rows: list[ViewRow]
+
+
+class ViewAffectedTable(Wire):
+    """影响对象的一块（C06 7.6）；`selection` 为 hidden 的块不返回。"""
+
+    flow: Code
+    key: Code
+    title: str
+    selection: Literal["checked", "all"]
+    editable: Bool
+    """当前用户这次通过能不能取消勾选。"""
+    columns: list[str]
     rows: list[ViewRow]
 
 
 class ApprovalView(Wire):
     master: ViewMasterTable
     details: list[ViewDetailTable]
+    affected: list[ViewAffectedTable]
 
 
 class ApprovalActions(Wire):
@@ -1763,16 +1788,20 @@ class ApprovalDetail(Wire):
     actions: ApprovalActions
 
 
-class SelectedObject(Wire):
+class UncheckedRow(Wire):
+    """审批人这次取消勾选的一行：哪个审批流的哪一块，以及这一行（C06 7.6）。"""
+
     flow: Code
+    block: Code
     entity: Code
     record_key: Key
+    row_keys: list[Key]
 
 
 class PassRequest(Wire):
     request_key: RequestKey
     fingerprint: str
-    selected_objects: list[SelectedObject] = []
+    unchecked_rows: list[UncheckedRow] = []
     comment: str | None = None
     params: dict[str, JsonValue] = {}
 
