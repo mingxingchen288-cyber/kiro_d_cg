@@ -27,7 +27,7 @@
 - MG-03：旧审批配置中的存储过程动作 `PKG_APPROVAL_PRICE_ACTIONS.COST_TO_GOODS`、`GOODS_TO_COST`，改写为 C06 7.4、7.5 的通用动作。旧审批流的 `trigger.operations`（`modified`、`added`、`deleted`）分别转为 `modify`、`add`、`delete`。
 - MG-04：账号（含 BCrypt 哈希）、角色分配和部门经 identity 的 `AccountImporter` 导入；个人列配置经 queries-export 的 `PersonalConfigImporter` 导入；配置经 config 的 `ConfigImporter` 导入。
 - MG-05：对账：按迁移后的配置，用 rules-core 重算真实单据，与业务表中计算字段的现有值比较；差异归入旧项目 `D:\chonggou\my-project\公式差异.md` 中的某一条，或列为未解释的差异。
-- MG-06：切换手册写明每一步的操作和完成后的检查，包括停止旧系统写入、迁移配置和账号、核对，以及回退步骤。业务表复制到 d_cg（DB-03）之后的数据同步由用户的 CDC 负责，手册只要求切换前确认同步已完成；d_cg 中由 cmx 虚拟列转来的普通列，停止旧系统写入后再与 cmx 的计算结果核对一次，不一致（例如 CDC 没有同步虚拟列的值）时用 `--refresh` 重新复制这张表。
+- MG-06：切换手册写明每一步的操作和完成后的检查，包括停止旧系统写入、迁移配置和账号、核对，以及回退步骤。业务表是一次性复制到 d_cg 的（DB-03），切换时怎样让 d_cg 的数据跟上 cmx，见待确认。
 - MG-07：旧导出配置迁移为 C06 第 9 节的 `export`：MASTER_SQL、DETAIL_SQL 原样保留；`PAGE_FK_COLUMN` 是页面主表主键时，`MASTER_LINK_COLUMN` 对应 `keyColumn`，`DETAIL_LINK_COLUMN` 对应 `linkColumn`，否则列入人工改写清单。
 - MG-08：旧角色权限迁移为 C06 第 8 节的格式：BUTTON_POLICY 的分组从区域标题换成区域编码（`系统默认按钮` 为 `system`，`自定义导出` 为 `export`），`approval.*` 不迁移（审批改为保存时自动触发，处理权限由审批流决定，进度所有人可看），列入报告；COLUMN_POLICY、ROW_POLICY 原样迁移。
 - MG-09：旧系统的以下配置原样转为新格式：`APPROVAL_REQUIRED` 规则转为实体的 `approvalRequired`；字段的默认值转为 `default`；`rulesConfig.compare` 转为 `compare`；Lookup 的 `multiple`、`filterColumn`、`filterValueFrom`、`noFillback` 转为 C06 第 3 节的写法；审批的 SQL 审批人和动作参数转为 C06 7.1 的写法。旧审批流在 `NODE_COMPLETED`、`FLOW_REJECTED`、`FLOW_CANCELED` 上的动作不迁移，列入审批确认清单：新平台中途某一级通过、驳回和撤回都不执行动作，全部审批节点通过后才生效（approval AP-20）。
@@ -70,4 +70,5 @@
 
 ## 待确认
 
+- 切换时 d_cg 的业务数据怎样跟上 cmx：d_cg 里的数据是复制那一刻的（DB-03），之后大家还在旧系统里改单据。建议切换当天停止旧系统写入后，用 `platform db copy-business-tables --refresh <表名>` 把每张业务表重新复制一次，再迁移配置和账号。
 - 成本核算明细表 T_COST_PINGGU_DTL 复制时（T-DB-3）：GOODSNAME、DTL_USEFLAG、STANDARDTYPE、FACTORYNAME、GOODSTYPE、BASE_PRICE、SUQTY、GOODSNAME_EN 在页面上有同名的列，但显示的是视图从物料表 T_COST_GOODS 取的值，明细表里自存的那份页面上看不到。按 MG-13 这些自存的列是否复制，复制明细表前确认。明细的 APEX_PL 等 5 个副本列、BATCH_QTY_OLD、COST_BATCH_OLD、FACTORYID、MODIFYDATE、DELETED、CREATE_*/UPDATE_* 按 MG-12、MG-13 不复制。
