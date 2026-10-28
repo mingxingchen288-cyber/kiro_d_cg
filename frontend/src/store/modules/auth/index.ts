@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { defineStore } from 'pinia';
 import { useLoading } from '@sa/hooks';
-import { fetchGetUserInfo, fetchLogin } from '@/service/api';
+import { type CurrentUser, login as platformLogin, me as platformMe } from '@/service/platform';
 import { useRouterPush } from '@/hooks/common/router';
 import { localStg } from '@/utils/storage';
 import { SetupStoreId } from '@/enum';
@@ -106,62 +106,54 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
   async function login(userName: string, password: string, redirect = true) {
     startLoading();
 
-    const { data: loginToken, error } = await fetchLogin(userName, password);
+    try {
+      // C09 第 2 节：会话放在 HttpOnly Cookie 中，csrfToken 存进会话存储，旧外壳用它判断是否已登录
+      const result = await platformLogin(userName, password);
+      setSession(result.csrfToken, result.user, result.selectedRole ? [result.selectedRole.code] : []);
 
-    if (!error) {
-      const pass = await loginByToken(loginToken);
+      // Check if the tab needs to be cleared
+      const isClear = checkTabClear();
+      let needRedirect = redirect;
 
-      if (pass) {
-        // Check if the tab needs to be cleared
-        const isClear = checkTabClear();
-        let needRedirect = redirect;
-
-        if (isClear) {
-          // If the tab needs to be cleared,it means we don't need to redirect.
-          needRedirect = false;
-        }
-        await redirectFromLogin(needRedirect);
-
-        window.$notification?.success({
-          title: $t('page.login.common.loginSuccess'),
-          content: $t('page.login.common.welcomeBack', { userName: userInfo.userName }),
-          duration: 4500
-        });
+      if (isClear) {
+        // If the tab needs to be cleared,it means we don't need to redirect.
+        needRedirect = false;
       }
-    } else {
+      await redirectFromLogin(needRedirect);
+
+      window.$notification?.success({
+        title: $t('page.login.common.loginSuccess'),
+        content: $t('page.login.common.welcomeBack', { userName: userInfo.realName || userInfo.userName }),
+        duration: 4500
+      });
+    } catch (error) {
+      window.$message?.error(error instanceof Error ? error.message : String(error));
       resetStore();
     }
 
     endLoading();
   }
 
-  async function loginByToken(loginToken: Api.Auth.LoginToken) {
-    // 1. store tokens in session storage, later requests read them from headers
-    setAuthTokens(loginToken.token, loginToken.refreshToken);
-
-    // 2. get user info
-    const pass = await getUserInfo();
-
-    if (pass) {
-      token.value = loginToken.token;
-
-      return true;
-    }
-
-    return false;
+  function setSession(csrfToken: string, user: CurrentUser, roles: string[]) {
+    setAuthTokens(csrfToken, '');
+    token.value = csrfToken;
+    Object.assign(userInfo, {
+      userId: user.userId,
+      userName: user.username,
+      realName: user.displayName,
+      departmentId: user.departmentId || '',
+      roles
+    });
   }
 
   async function getUserInfo() {
-    const { data: info, error } = await fetchGetUserInfo();
-
-    if (!error) {
-      // update store
-      Object.assign(userInfo, info);
-
+    try {
+      const info = await platformMe();
+      setSession(info.csrfToken, info.user, info.role ? [info.role.code] : []);
       return true;
+    } catch {
+      return false;
     }
-
-    return false;
   }
 
   async function initUserInfo() {

@@ -50,7 +50,7 @@
 
 | 契约 | 提供方 | 用途 |
 |---|---|---|
-| `CommandExecutor` | write-pipeline | 执行通过、驳回、撤回 |
+| `CommandExecutor` | orchestration | 执行通过、驳回、撤回 |
 | `UnitOfWork` | db-core | 审批数据的读写 |
 | `RelatedQuery`、`DocumentReader` | queries-export | 查找目标和要冻结的单据；审批详情读取单据 |
 | `DirectoryReader` | identity | 审批人和通知接收人 |
@@ -64,7 +64,7 @@
 
 ## 6. 接入方式
 
-- write-pipeline 按顺序调用本模块的阶段，由 assembly 注册；frontend-approval 调用 C09 第 6 节的接口。
+- orchestration 按顺序调用本模块的阶段，由 assembly 注册；frontend-approval 调用 C09 第 6 节的接口。
 - 真实联调：批次 C。
 
 ## 7. 验收边界

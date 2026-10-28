@@ -16,6 +16,7 @@ dependencies = [
     "oracledb==26.0.1",
     "alembic==1.20.0",
     "redis==7.1.0",
+    "argon2-cffi==25.1.0",
 ]
 
 [dependency-groups]

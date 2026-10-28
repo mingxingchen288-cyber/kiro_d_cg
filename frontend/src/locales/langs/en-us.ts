@@ -220,7 +220,8 @@ const local: App.I18n.Schema = {
     403: 'No Permission',
     404: 'Page Not Found',
     500: 'Server Error',
-    home: 'Home'
+    home: 'Home',
+    'cost-pinggu': 'Cost Accounting'
   },
   page: {
     login: {

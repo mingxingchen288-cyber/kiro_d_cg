@@ -40,6 +40,17 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'cost-pinggu',
+    path: '/cost-pinggu',
+    component: 'layout.base$view.cost-pinggu',
+    meta: {
+      title: 'cost-pinggu',
+      i18nKey: 'route.cost-pinggu',
+      icon: 'mdi:calculator-variant-outline',
+      order: 2
+    }
+  },
+  {
     name: 'home',
     path: '/home',
     component: 'layout.base$view.home',

@@ -1,0 +1,16 @@
+{
+  "type": "role",
+  "key": "ADMIN",
+  "name": "系统管理员",
+  "content": {
+    "name": "系统管理员",
+    "admin": true,
+    "pages": {
+      "COST_PINGGU": {
+        "buttons": [
+          "system:save"
+        ]
+      }
+    }
+  }
+}

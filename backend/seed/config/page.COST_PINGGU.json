@@ -1,0 +1,25 @@
+{
+  "type": "page",
+  "key": "COST_PINGGU",
+  "name": "成本核算",
+  "content": {
+    "title": "成本核算",
+    "layout": "single",
+    "detailMode": "tabs",
+    "audit": true,
+    "saveOperation": "COST_PINGGU.save",
+    "master": {
+      "entity": "COST_PINGGU",
+      "fields": {
+        "DOCID": {
+          "pinned": "left"
+        }
+      },
+      "grid": {
+        "sideBar": true,
+        "cellSelection": true,
+        "groupBy": []
+      }
+    }
+  }
+}

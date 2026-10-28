@@ -1,6 +1,6 @@
 """后端端口（C08）：模块之间只通过这些协议调用。
 
-谁提供、谁使用见架构第 8 节。每个端口在 contracts/fakes/ 中有内存替代实现，并有一套契约测试
+谁提供、谁使用见架构第 8 节。除第 5a 节外，每个端口在 contracts/fakes/ 中有内存替代实现，并有一套契约测试
 （backend/tests/contracts/test_<端口名>.py）；真实实现必须通过同一套测试。
 """
 
@@ -20,6 +20,7 @@ from .types import (
     CommandState,
     ConfigDraft,
     DocumentData,
+    DocumentPatch,
     DocumentRef,
     EntityConfig,
     ExecutionContext,
@@ -33,6 +34,8 @@ from .types import (
     PersonalConfigBatch,
     RealtimeEvent,
     RoleConfig,
+    Row,
+    RowChange,
     SqlCondition,
     TargetFinderConfig,
     TargetObject,
@@ -144,11 +147,47 @@ class ConfigImporter(Protocol):
         ...
 
 
-# ============================================================ 5. write-pipeline 提供
+# ============================================================ 5. orchestration 提供（消费各模块的能力）
 
 class CommandExecutor(Protocol):
     def execute(self, command: Command, ctx: ExecutionContext) -> CommandResult:
         """失败时抛 PlatformError，事务已回滚。"""
+        ...
+
+
+# ============================================================ 5a. write-pipeline 提供的写入能力
+#
+# 由 orchestration 按命令的流程调用（2026-10-28 用户："模块是用来提供能力的，最终消费这些能力的是另外一个东西"）。
+# 这三个端口直接用真实实现在 d_cg 上验证，没有替代实现。
+
+class CommandRecorder(Protocol):
+    def begin(self, uow: UnitOfWork, user_id: str, command: Command, now: datetime) -> CommandResult | None:
+        """事务的第一条语句插入命令记录（WP-01）。同一用户的同一请求键已完成且内容摘要相同时返回原结果，
+        这时调用方不再执行业务流程；摘要不同时抛 IDEMPOTENCY_KEY_REUSED。"""
+        ...
+
+    def finish(self, uow: UnitOfWork, user_id: str, command: Command, result: CommandResult,
+               audit: list[RowChange] | None, now: datetime) -> None:
+        """用一条语句把命令记录标为完成，写入命令结果和审计差异（WP-11；audit 为 None 时不记）。"""
+        ...
+
+
+class DocumentStore(Protocol):
+    def lock_load(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, row_keys: list[str]) -> dict[str, Row]:
+        """按主键排序，用一条 `SELECT … FOR UPDATE WAIT n` 加锁读取（WP-03）；有 readView 时经视图读取。
+        读出实体的全部字段；不存在的主键不在结果中。"""
+        ...
+
+    def write(self, uow: UnitOfWork, entity: EntityConfig, changes: list[RowChange]) -> None:
+        """按变更计划写入，只写有变化的列（WP-09）。"""
+        ...
+
+
+class ChangeMerger(Protocol):
+    def merge(self, entity: EntityConfig, current: dict[str, Row], patch: DocumentPatch,
+              writable: frozenset[str]) -> list[RowChange]:
+        """把 Patch 合并到当前数据（WP-04）：只改出现的字段，与当前值相同不算变化；返回有变化的行，
+        并把新值写进 `current` 中对应的行，作为候选数据。字段不在 writable 中时抛 FIELD_NOT_WRITABLE。"""
         ...
 
 

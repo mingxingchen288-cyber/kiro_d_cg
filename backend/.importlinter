@@ -18,6 +18,7 @@ modules =
     cost_platform.queries
     cost_platform.db_core
     cost_platform.migration
+    cost_platform.orchestration
 
 [importlinter:contract:layers]
 name = Only assembly imports business modules; business modules depend only on contracts
@@ -29,7 +30,7 @@ containers =
 exhaustive = true
 layers =
     assembly
-    config | identity | authz | pipeline | approval | operations | delivery | realtime | queries | db_core | migration
+    config | identity | authz | pipeline | approval | operations | delivery | realtime | queries | db_core | migration | orchestration
     contracts
 
 [importlinter:contract:root-package]

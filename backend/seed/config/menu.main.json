@@ -1,0 +1,22 @@
+{
+  "type": "menu",
+  "key": "main",
+  "name": "菜单",
+  "content": {
+    "items": [
+      {
+        "key": "cost",
+        "title": "成本",
+        "kind": "group",
+        "children": [
+          {
+            "key": "COST_PINGGU",
+            "title": "成本核算",
+            "kind": "page",
+            "pageCode": "COST_PINGGU"
+          }
+        ]
+      }
+    ]
+  }
+}

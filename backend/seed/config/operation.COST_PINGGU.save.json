@@ -1,0 +1,33 @@
+{
+  "type": "operation",
+  "key": "COST_PINGGU.save",
+  "name": "成本核算保存",
+  "content": {
+    "label": "保存",
+    "kind": "save",
+    "writableFields": {
+      "COST_PINGGU": [
+        "ANNUAL_QTY",
+        "APEX_PL",
+        "P_PERPACK",
+        "S_PERBACK",
+        "PACKTYPE",
+        "X_PERBACK",
+        "M_PERPACK",
+        "USESTATUS",
+        "DOSAGE",
+        "YIELD",
+        "OUT_PRICE_F",
+        "COST_PERQP",
+        "MEMO",
+        "FMRATE",
+        "PINGGU_CLASS",
+        "BUSINESS_USER"
+      ]
+    },
+    "impact": [
+      "COST_PINGGU"
+    ],
+    "propagation": "continue"
+  }
+}

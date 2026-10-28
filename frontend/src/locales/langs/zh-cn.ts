@@ -216,7 +216,8 @@ const local: App.I18n.Schema = {
     403: '无权限',
     404: '页面不存在',
     500: '服务器错误',
-    home: '首页'
+    home: '首页',
+    'cost-pinggu': '成本核算'
   },
   page: {
     login: {

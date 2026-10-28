@@ -90,7 +90,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 
 `PersonalConfig` 的 `columns` 按数组顺序排列。
 
-## 5. write-pipeline（由 assembly 挂载）
+## 5. 命令（orchestration，由 assembly 挂载）
 
 | 方法 | 路径 | 请求 | 响应 |
 |---|---|---|---|

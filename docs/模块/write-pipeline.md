@@ -4,7 +4,7 @@
 
 ## 1. 职责
 
-- 负责：实现 `CommandExecutor`；按[架构第 7 节](../架构与组装.md)的顺序执行阶段；判重；加锁读取；合并修改；生成只含变化列的变更计划；写入业务表（含物理删除和级联删除）；必填检查；审计差异；写入命令记录并提交；提交后调用投递。
+- 负责：提供写入能力（[C08](../契约/C08-后端端口.md) 第 5a 节），由 orchestration 的 `CommandExecutor` 按[架构第 7 节](../架构与组装.md)的顺序调用；判重；加锁读取；合并修改；生成只含变化列的变更计划；写入业务表（含物理删除和级联删除）；必填检查；审计差异；写入命令记录并提交；提交后调用投递。
 - 不负责：冻结和审批（approval）、按钮和审批流动作的展开（operations）、计算和规则（rules-core）、权限判断（authz）、发送通知（delivery）。
 
 ## 2. 所有权
@@ -17,7 +17,7 @@
 
 ## 3. 对外契约
 
-提供 `CommandExecutor`，输入输出和错误见 [C02](../契约/C02-命令与结果.md)、[C03](../契约/C03-错误.md)。
+提供 `CommandRecorder`、`DocumentStore`、`ChangeMerger`（C08 第 5a 节），由 orchestration 的 `CommandExecutor` 调用；命令的输入输出和错误见 [C02](../契约/C02-命令与结果.md)、[C03](../契约/C03-错误.md)。
 
 - WP-01：事务的第一条语句插入命令记录，唯一键为（用户、请求键）。已完成且内容摘要相同时返回原结果，不执行业务流程；摘要不同时返回 422 IDEMPOTENCY_KEY_REUSED；同一请求键仍在处理时最多等待 5 秒（`.env` 的 `PLATFORM_REQUEST_WAIT_SECONDS`），超时返回 409 REQUEST_IN_PROGRESS。
 - WP-02：任一步失败，整个事务回滚，命令记录一起撤销，同一请求键可以重新提交。
@@ -54,7 +54,7 @@
 
 ## 6. 接入方式
 
-- assembly 挂载 `POST /api/commands`，并注册各模块的阶段；approval 调用 `CommandExecutor`。
+- assembly 挂载 `POST /api/commands`，把本模块的能力和各模块的阶段注入 orchestration；approval 调用 orchestration 的 `CommandExecutor`。
 - 真实联调：批次 B。
 
 ## 7. 验收边界

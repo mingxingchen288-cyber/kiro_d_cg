@@ -13,8 +13,13 @@ from cost_platform.contracts import fakes, ports
 from cost_platform.contracts.fakes import PORT_FAKES, Call, FakeClock, FakeDocumentReader, Scripted
 from cost_platform.contracts.types import DocumentRef, ErrorCode, PlatformError
 
+REAL_ONLY = {"CommandRecorder", "DocumentStore", "ChangeMerger"}
+"""2026-10-28 起新增的写入能力端口（ports.py 第 5a 节）：不写替代实现和契约测试，直接用真实实现在 d_cg 上验证
+（用户："按这个做"，按纵向切片先跑通最小真实链路）。"""
+
 PORTS = {name: obj for name, obj in vars(ports).items()
-         if inspect.isclass(obj) and getattr(obj, "_is_protocol", False) and obj.__module__ == ports.__name__}
+         if inspect.isclass(obj) and getattr(obj, "_is_protocol", False) and obj.__module__ == ports.__name__
+         and name not in REAL_ONLY}
 
 # 每个端口的契约测试类；UnitOfWork 与工厂、ConfigSnapshot 与读取方在同一套测试中
 PORT_CONTRACTS = {
