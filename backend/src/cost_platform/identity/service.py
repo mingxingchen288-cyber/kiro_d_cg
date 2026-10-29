@@ -1,22 +1,18 @@
-"""登录、会话和认证（ID-01、ID-03、ID-04、ID-06、ID-10）。
+"""登录、选角色、注销和会话认证（ID-01–ID-05 的会话部分、ID-10），即 C08 第 3 节的 `Authenticator`。
 
-账号在 PF_USER、PF_USER_ROLE；密码用 Argon2。会话目前放在进程内存中（链路 0 本机没有 Redis），
-换成 Redis 只替换 MemorySessions。
+账号在 PF_USER、PF_USER_ROLE（`accounts.py`）；会话和账号状态在 Redis 或内存（`sessions.py`）。
+assembly 从这里导入 `IdentityService`、`MemorySessions`、`OracleAccounts`，名字和原有构造参数保持不变。
 """
 
 from __future__ import annotations
 
+import hmac
 import secrets
-import threading
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from dataclasses import replace
+from datetime import timedelta
 
-from argon2 import PasswordHasher
-from argon2.exceptions import VerificationError
-from sqlalchemy import text
-
-from cost_platform.contracts.ports import Clock, UnitOfWorkFactory
+from cost_platform.contracts.ports import Clock, ConfigSnapshotReader, IdGenerator, RealtimePublisher
 from cost_platform.contracts.types import (
     CurrentUser,
     ErrorCode,
@@ -24,130 +20,192 @@ from cost_platform.contracts.types import (
     LoginResponse,
     PlatformError,
     RoleRef,
+    SelectRoleResponse,
+    SessionRevokedEvent,
+    SessionRevokedPayload,
+    SessionsAudience,
+    UsersAudience,
 )
 
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "admin123.."
-ADMIN_ROLE = "ADMIN"
+from .accounts import ADMIN_PASSWORD, ADMIN_ROLE, ADMIN_USERNAME, AccountRecord, OracleAccounts
+from .passwords import Passwords
+from .rules import check_password_format
+from .sessions import AccountState, MemorySessions, RedisSessions, SessionData, SessionStore
 
-_hasher = PasswordHasher()
+__all__ = [
+    "ADMIN_PASSWORD",
+    "ADMIN_ROLE",
+    "ADMIN_USERNAME",
+    "IdentityService",
+    "MemorySessions",
+    "OracleAccounts",
+    "RedisSessions",
+    "RoleDescriber",
+    "describe_role_from",
+    "publish_revoked",
+]
 
-
-@dataclass
-class _Account:
-    user_id: str
-    username: str
-    display_name: str
-    department_id: str | None
-    enabled: bool
-    password_hash: str | None
-    role_codes: list[str]
-
-
-@dataclass
-class _Session:
-    user: CurrentUser
-    role_code: str | None
-    csrf_token: str
-    expires_at: datetime
+RoleDescriber = Callable[[str], RoleRef]
+"""由角色编码得到 `RoleRef`；角色不存在时抛 PlatformError（NOT_FOUND 或 SESSION_ROLE_REVOKED）。"""
 
 
-class OracleAccounts:
-    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
-        self._uow = uow_factory
+def describe_role_from(reader: ConfigSnapshotReader) -> RoleDescriber:
+    """用 config 的 `ConfigSnapshotReader`（C08 第 4 节）取角色名称和是否管理员。角色已删除时 `read` 抛 SESSION_ROLE_REVOKED。"""
 
-    def find(self, username: str) -> _Account | None:
-        with self._uow.begin() as uow:
-            row = uow.connection.execute(text(
-                "SELECT user_id, username, display_name, department_id, enabled, password_hash FROM pf_user "
-                "WHERE username = :u"), {"u": username}).one_or_none()
-            if row is None:
-                return None
-            roles = uow.connection.execute(text(
-                "SELECT role_code FROM pf_user_role WHERE user_id = :id ORDER BY role_code"), {"id": row.user_id}).scalars().all()
-        return _Account(str(row.user_id), row.username, row.display_name, row.department_id, bool(row.enabled),
-                        row.password_hash, list(roles))
+    def describe(code: str) -> RoleRef:
+        role = reader.read(code).role()
+        return RoleRef(code=code, name=role.name, admin=role.admin)
 
-    def ensure_admin(self) -> bool:
-        """ID-06：没有 admin 时创建 admin / admin123..，启用，分配 ADMIN 角色；已存在时不改。返回是否新建。"""
-        with self._uow.begin() as uow:
-            exists = uow.connection.execute(text("SELECT COUNT(*) FROM pf_user WHERE username = :u"),
-                                            {"u": ADMIN_USERNAME}).scalar()
-            if exists:
-                return False
-            user_id = uow.connection.execute(text("SELECT pf_user_seq.NEXTVAL FROM dual")).scalar()
-            uow.connection.execute(text(
-                "INSERT INTO pf_user (user_id, username, display_name, department_id, enabled, password_hash, version) "
-                "VALUES (:id, :u, :name, NULL, 1, :hash, 1)"),
-                {"id": user_id, "u": ADMIN_USERNAME, "name": "系统管理员", "hash": _hasher.hash(ADMIN_PASSWORD)})
-            uow.connection.execute(text("INSERT INTO pf_user_role (user_id, role_code) VALUES (:id, :r)"),
-                                   {"id": user_id, "r": ADMIN_ROLE})
-            uow.commit()
-            return True
+    return describe
 
 
-class MemorySessions:
-    def __init__(self) -> None:
-        self._items: dict[str, _Session] = {}
-        self._lock = threading.Lock()
+def publish_revoked(publisher: RealtimePublisher | None, ids: IdGenerator | None,
+                    audience: UsersAudience | SessionsAudience, reason: str) -> None:
+    """发布 `session.revoked`（C10）。没有接入 realtime（publisher 为 None）时不发布。"""
+    if publisher is None or ids is None:
+        return
+    publisher.publish(SessionRevokedEvent(event_id=ids.uuid(), topic="session.revoked", audience=audience,
+                                          payload=SessionRevokedPayload(reason=reason)))  # type: ignore[arg-type]
 
-    def put(self, session_id: str, session: _Session) -> None:
-        with self._lock:
-            self._items[session_id] = session
 
-    def get(self, session_id: str) -> _Session | None:
-        with self._lock:
-            return self._items.get(session_id)
+def _user_of(session_id: str | None) -> str | None:
+    """会话编号为 `<userId>.<随机串>`（sessions.py）；格式不对的编号对应不到会话。"""
+    if not session_id:
+        return None
+    user_id, dot, token = session_id.partition(".")
+    return user_id if dot and token and user_id.isdigit() else None
+
+
+def _same(expected: str, given: str | None) -> bool:
+    return given is not None and hmac.compare_digest(expected.encode(), given.encode())
+
+
+def _current_user(data: SessionData) -> CurrentUser:
+    return CurrentUser(user_id=data.user_id, username=data.username, display_name=data.display_name,
+                       department_id=data.department_id)
 
 
 class IdentityService:
-    """`Authenticator`，以及登录和 `/api/me` 用到的会话数据。"""
+    """`Authenticator`，以及登录、选角色、注销、`/api/me` 和改自己的密码用到的会话操作。
 
-    def __init__(self, accounts: OracleAccounts, sessions: MemorySessions, clock: Clock, idle_minutes: int,
-                 describe_role: Callable[[str], RoleRef]) -> None:
+    - `describe_role`：登录时列出账号的角色、选角色时返回 `RoleRef`；可用 `describe_role_from(config 的读取方)` 生成。
+    - `publisher`、`ids`：注销时发布 `session.revoked`（C10）；不给时不发布。
+    - `passwords`：密码哈希，默认 Argon2 推荐参数。
+    - `new_token`：生成会话编号的随机部分和 CSRF 令牌，默认 `secrets.token_urlsafe(32)`；契约测试用它预知令牌。
+    """
+
+    def __init__(self, accounts: OracleAccounts, sessions: SessionStore, clock: Clock, idle_minutes: int,
+                 describe_role: RoleDescriber, *, publisher: RealtimePublisher | None = None,
+                 ids: IdGenerator | None = None, passwords: Passwords | None = None,
+                 new_token: Callable[[], str] | None = None) -> None:
         self._accounts = accounts
         self._sessions = sessions
         self._clock = clock
         self._idle = timedelta(minutes=idle_minutes)
         self._describe_role = describe_role
+        self._publisher = publisher
+        self._ids = ids
+        self._passwords = passwords or Passwords()
+        self._token = new_token or (lambda: secrets.token_urlsafe(32))
+
+    # ------------------------------------------------------------ 登录、选角色、注销
 
     def login(self, username: str, password: str) -> tuple[str, LoginResponse]:
-        """ID-01：成功时返回新会话的标识和登录响应；只有一个角色时自动选定。"""
+        """ID-01：成功时新建会话，返回会话编号和登录响应；账号只有一个角色时自动选定。
+        账号不存在、停用、没有密码哈希、密码错误，都是 401 LOGIN_FAILED。ID-04：BCrypt 哈希登录成功后改写为 Argon2。"""
         account = self._accounts.find(username)
         if account is None or not account.enabled or not account.password_hash:
             raise PlatformError(ErrorCode.LOGIN_FAILED, "账号或密码错误")
-        try:
-            _hasher.verify(account.password_hash, password)
-        except VerificationError:
-            raise PlatformError(ErrorCode.LOGIN_FAILED, "账号或密码错误") from None
-        user = CurrentUser(user_id=account.user_id, username=account.username, display_name=account.display_name,
-                           department_id=account.department_id)
+        verified = self._passwords.verify(account.password_hash, password)
+        if not verified.ok:
+            raise PlatformError(ErrorCode.LOGIN_FAILED, "账号或密码错误")
+        if verified.needs_upgrade:
+            self._accounts.set_password_hash(account.user_id, self._passwords.hash(password))
+        self._sessions.put_state(account.state())
         roles = [self._describe_role(code) for code in account.role_codes]
         selected = roles[0] if len(roles) == 1 else None
-        session_id, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-        self._sessions.put(session_id, _Session(user, selected.code if selected else None, csrf,
-                                                self._clock.now() + self._idle))
-        return session_id, LoginResponse(user=user, roles=roles, selected_role=selected, csrf_token=csrf)
+        session_id = f"{account.user_id}.{self._token()}"
+        data = SessionData(user_id=account.user_id, username=account.username, display_name=account.display_name,
+                           department_id=account.department_id, role_code=selected.code if selected else None,
+                           csrf_token=self._token(), version=account.version)
+        self._sessions.put(session_id, data, self._clock.now(), self._idle)
+        return session_id, LoginResponse(user=_current_user(data), roles=roles, selected_role=selected,
+                                         csrf_token=data.csrf_token)
 
-    def session(self, session_id: str | None) -> tuple[CurrentUser, str | None, str]:
-        """会话中的用户、选定的角色和 CSRF 令牌（`/api/me`）。"""
-        found = self._live(session_id)
-        return found.user, found.role_code, found.csrf_token
+    def select_role(self, session_id: str | None, csrf_token: str | None, role_code: str) -> SelectRoleResponse:
+        """ID-02：选定会话的角色；角色不属于该账号时 403 PERMISSION_DENIED。原角色已被撤销的会话也可以重新选择。"""
+        data, state = self._check(session_id, csrf_token, is_write=True, touch=False, require_role=False,
+                                  allow_revoked_role=True)
+        if role_code not in state.role_codes:
+            raise PlatformError(ErrorCode.PERMISSION_DENIED, f"账号没有角色 {role_code}")
+        role = self._describe_role(role_code)
+        chosen = replace(data.refreshed(state), role_code=role_code)
+        self._sessions.put(session_id or "", chosen, self._clock.now(), self._idle)
+        return SelectRoleResponse(selected_role=role)
+
+    def logout(self, session_id: str | None, csrf_token: str | None) -> None:
+        """注销：删除会话，向这个会话发布 `session.revoked`（reason 为 loggedOut）。会话已不存在时什么也不做。"""
+        user_id = _user_of(session_id)
+        if user_id is None or session_id is None:
+            return
+        data, _ = self._sessions.read(session_id, user_id, self._clock.now())
+        if data is None:
+            return
+        if not _same(data.csrf_token, csrf_token):
+            raise PlatformError(ErrorCode.CSRF_FAILED, "请求校验失败，请刷新页面")
+        self._sessions.delete(session_id)
+        publish_revoked(self._publisher, self._ids, SessionsAudience(sessions=[session_id]), "loggedOut")
+
+    def change_own_password(self, session_id: str | None, csrf_token: str | None, password: str) -> None:
+        """当前用户改自己的密码（旧系统 AuthService.changePassword）。C09 没有这个接口，见 contract-gaps.md。"""
+        data, _ = self._check(session_id, csrf_token, is_write=True, touch=True, require_role=False)
+        check_password_format(password)
+        self._accounts.set_password_hash(data.user_id, self._passwords.hash(password))
+
+    # ------------------------------------------------------------ 会话
+
+    def session(self, session_id: str | None, touch: bool = False) -> tuple[CurrentUser, str | None, str]:
+        """`/api/me` 用：会话中的用户、选定的角色（没有选定时为 None）和 CSRF 令牌。"""
+        data, _ = self._check(session_id, None, is_write=False, touch=touch, require_role=False)
+        return _current_user(data), data.role_code, data.csrf_token
 
     def authenticate(self, session_id: str | None, csrf_token: str | None, is_write: bool, touch: bool = True) -> Identity:
-        found = self._live(session_id)
-        if is_write and csrf_token != found.csrf_token:
-            raise PlatformError(ErrorCode.CSRF_FAILED, "请求校验失败，请刷新页面")
-        if found.role_code is None:
-            raise PlatformError(ErrorCode.ROLE_SELECTION_REQUIRED, "请先选择角色")
-        if touch:
-            found.expires_at = self._clock.now() + self._idle
-        user = found.user
-        return Identity(user_id=user.user_id, username=user.username, display_name=user.display_name,
-                        department_id=user.department_id, role_code=found.role_code, session_id=session_id or "")
+        """C08 第 3 节。失败时抛 SESSION_REQUIRED、SESSION_ROLE_REVOKED、ROLE_SELECTION_REQUIRED、CSRF_FAILED。"""
+        data, _ = self._check(session_id, csrf_token, is_write=is_write, touch=touch, require_role=True)
+        return Identity(user_id=data.user_id, username=data.username, display_name=data.display_name,
+                        department_id=data.department_id, role_code=data.role_code or "", session_id=session_id or "")
 
-    def _live(self, session_id: str | None) -> _Session:
-        found = self._sessions.get(session_id) if session_id else None
-        if found is None or found.expires_at <= self._clock.now():
+    def _check(self, session_id: str | None, csrf_token: str | None, *, is_write: bool, touch: bool,
+               require_role: bool, allow_revoked_role: bool = False) -> tuple[SessionData, AccountState]:
+        """模块说明第 5 节：读会话和账号版本 → 版本不一致时按账号状态判断 → 写请求核对 CSRF → touch 时顺延。"""
+        user_id = _user_of(session_id)
+        if user_id is None or session_id is None:
             raise PlatformError(ErrorCode.SESSION_REQUIRED, "请先登录")
-        return found
+        now = self._clock.now()
+        data, state = self._sessions.read(session_id, user_id, now)
+        if data is None or data.user_id != user_id:
+            raise PlatformError(ErrorCode.SESSION_REQUIRED, "请先登录")
+        if state is None:  # 账号状态键不在了（例如 Redis 被清理）：按 Oracle 中的账号重新写入
+            account: AccountRecord | None = self._accounts.get(user_id)
+            if account is None:
+                self._sessions.delete(session_id)
+                raise PlatformError(ErrorCode.SESSION_REQUIRED, "请先登录")
+            state = account.state()
+            self._sessions.put_state(state)
+        if state.version != data.version:
+            if not state.enabled:  # ID-05：停用账号后旧会话失效
+                self._sessions.delete(session_id)
+                raise PlatformError(ErrorCode.SESSION_REQUIRED, "账号已停用，请重新登录")
+            revoked = data.role_code is not None and data.role_code not in state.role_codes
+            if revoked and not allow_revoked_role:  # ID-05：撤销会话选定的角色
+                raise PlatformError(ErrorCode.SESSION_ROLE_REVOKED, "当前角色已被撤销，请重新选择角色")
+            if not revoked:
+                data = data.refreshed(state)
+                self._sessions.replace(session_id, data)
+        if require_role and data.role_code is None:
+            raise PlatformError(ErrorCode.ROLE_SELECTION_REQUIRED, "请先选择角色")
+        if is_write and not _same(data.csrf_token, csrf_token):  # ID-03
+            raise PlatformError(ErrorCode.CSRF_FAILED, "请求校验失败，请刷新页面")
+        if touch:  # ID-10：只有用户自己的写入和查询请求顺延
+            self._sessions.touch(session_id, now, self._idle)
+        return data, state
