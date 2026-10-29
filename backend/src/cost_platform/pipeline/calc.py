@@ -121,13 +121,17 @@ class Recalculator:
                 continue
             result = self._evaluate(state, ctx, ref, state.candidate[ref])
             self._apply(state, ctx, ref, result, states)
-            state.effects.extend(result.effects)
             for effect in result.effects:
+                # 按钮的每个动作一轮，每轮都对有变化的单据重新求值（C08 第 6 节）：同一效果、同一提示只记一次
+                if effect not in state.effects:
+                    state.effects.append(effect)
                 if isinstance(effect, RejectEffect):
                     rejects.append(effect)
                 elif isinstance(effect, PromptEffect):
-                    state.prompts.append(Prompt(rule=effect.rule, message=effect.message, entity=effect.entity,
-                                                row_key=effect.row_key, client_row_id=effect.client_row_id, field=effect.field))
+                    prompt = Prompt(rule=effect.rule, message=effect.message, entity=effect.entity,
+                                    row_key=effect.row_key, client_row_id=effect.client_row_id, field=effect.field)
+                    if prompt not in state.prompts:
+                        state.prompts.append(prompt)
         if rejects:
             raise PlatformError(ErrorCode.RULE_REJECTED, rejects[0].message, [
                 ErrorDetail(message=e.message, entity=e.entity, row_key=e.row_key, client_row_id=e.client_row_id, field=e.field)

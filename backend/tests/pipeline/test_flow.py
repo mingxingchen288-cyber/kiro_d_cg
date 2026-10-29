@@ -362,6 +362,61 @@ def test_intent_cannot_write_erp_column_of_erp_row() -> None:
     assert caught.value.code is t.ErrorCode.FIELD_NOT_WRITABLE
 
 
+# ---------------------------------------------------------------- 审批处理命令（approval.pass）经本模块的阶段
+
+def test_approval_final_pass_writes_intents_and_records_approval_processed() -> None:
+    """审批 203 最终批准（E20 的形状）：approval 的"确定涉及的单据"给出来源单据 1001，"审批处理"把待审修改展开为
+    intents（5001 的 PRICE 改为 3.80，AP-10）。审批命令不是配置中的操作（C02 第 1 节），本模块照常加锁读取、合并意图、
+    计算、写入，结果为 approvalProcessed，命令记录写入并提交。"""
+    source = t.DocumentRef(MASTER, "1001")
+    approval = t.ApprovalRef(approval_id="203", document=t.RecordRef(entity=MASTER, record_key="1001"), status="approved",
+                             level=1, flows=["COST_TO_GOODS"])
+
+    def resolve(uow, state: t.CommandState, ctx: t.ExecutionContext) -> None:  # type: ignore[no-untyped-def]
+        state.involved.append(source)
+
+    def process(uow, state: t.CommandState, ctx: t.ExecutionContext) -> None:  # type: ignore[no-untyped-def]
+        state.approvals.append(approval)
+        state.intents.append(t.RowIntent(document=source, entity=MATERIAL, op="modify", row_key="5001", client_row_id=None,
+                                         values={"PRICE": D("3.80")}))
+
+    pipeline = Pipeline(extra=[FakeStage("确定涉及的单据", effect=resolve), FakeStage("审批处理", effect=process)])
+    cmd = command([], page=None, operation="approval.pass", params={"approvalId": "203"})
+    result = pipeline.execute(cmd, pipeline.setup.context(origin=t.Origin(kind="approval", approval_id="203")))
+    assert result.outcome == "approvalProcessed" and result.approvals == [approval]
+    assert writes(pipeline) == [("update", MATERIAL, [{"rowKey": "5001", "PRICE": D("3.80")}])]
+    assert pipeline.store.locked == [(MASTER, ["1001"])]
+    [row] = command_rows(pipeline.factory)
+    assert row["status"] == "done" and json.loads(row["result"])["outcome"] == "approvalProcessed"
+
+
+def test_e24_approved_detail_add_uses_reserved_key_and_delete_applies() -> None:
+    """E24 的形状：成本单 1001 新增一条原辅料（物料 116、单价 12）并删除 5002，整张提交审批，新增明细在提交时取得
+    DTLID 300001。最终批准时 approval 按待审修改展开 intents（新增明细的值带着关联字段 DOCID，approval `patch_intents`）：
+    新增明细用 300001 写入、5002 被删除，1001 重算，`idMap` 给出 300001。"""
+    source = t.DocumentRef(MASTER, "1001")
+
+    def resolve(uow, state: t.CommandState, ctx: t.ExecutionContext) -> None:  # type: ignore[no-untyped-def]
+        state.involved.append(source)
+
+    def process(uow, state: t.CommandState, ctx: t.ExecutionContext) -> None:  # type: ignore[no-untyped-def]
+        state.approvals.append(t.ApprovalRef(approval_id="204", document=t.RecordRef(entity=MASTER, record_key="1001"),
+                                             status="approved", level=1, flows=["TECH_CUSTOMER_MATERIAL"]))
+        state.intents += [
+            t.RowIntent(document=source, entity=MATERIAL, op="add", row_key="300001", client_row_id=TMP_1,
+                        values={"GOODSID": D(116), "PRICE": D("12"), "DOCID": D(1001)}),
+            t.RowIntent(document=source, entity=MATERIAL, op="delete", row_key="5002", client_row_id=None, values={})]
+
+    pipeline = Pipeline(extra=[FakeStage("确定涉及的单据", effect=resolve), FakeStage("审批处理", effect=process)])
+    cmd = command([], page=None, operation="approval.pass", params={"approvalId": "204"})
+    result = pipeline.execute(cmd, pipeline.setup.context(origin=t.Origin(kind="approval", approval_id="204")))
+    assert result.outcome == "approvalProcessed" and result.id_map == {TMP_1: "300001"}
+    added = pipeline.store.rows[MATERIAL]["300001"]
+    assert (added["DOCID"], added["GOODSID"], added["PRICE"]) == (D(1001), D(116), D("12"))
+    assert "5002" not in pipeline.store.rows[MATERIAL]
+    assert [r.document.entity for r in pipeline.setup.engine.requests] == [MASTER]  # 1001 已重算
+
+
 def test_second_request_key_independent() -> None:
     pipeline = Pipeline()
     ctx = pipeline.setup.context()

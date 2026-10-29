@@ -33,24 +33,40 @@ def document_ref(entity: str, master: object) -> DocumentRef:
     return DocumentRef(entity=entity, record_key=key)
 
 
-def _sort_key(ref: DocumentRef) -> tuple[str, int, object]:
+def sort_key(ref: DocumentRef) -> tuple[str, int, object]:
     """按（实体、主键）排序；数字主键按数值。"""
     key = ref.record_key
     return (ref.entity, 0, int(key)) if key.lstrip("-").isdigit() else (ref.entity, 1, key)
+
+
+APPROVAL_OPERATIONS = frozenset({"approval.pass", "approval.reject", "approval.withdraw"})
+"""审批处理命令的操作编码（C02 第 1 节）：不是配置中的操作，配置快照取不到它们的 `rowNotFound`。"""
+
+
+def rejects_missing(state: CommandState, ctx: ExecutionContext) -> bool:
+    """要处理的行已不存在时是否整个命令返回 409（操作的 `rowNotFound` 为 reject，WP-05）。审批处理命令按 skip：
+    最终批准时已不存在的行由 approval 记为跳过（AP-10）。"""
+    code = state.command.operation
+    return code not in APPROVAL_OPERATIONS and ctx.config.operation(code).row_not_found == "reject"
+
+
+def known_missing(state: CommandState, ref: DocumentRef) -> bool:
+    """这张单据在本命令中加锁读取时已不存在、按 `rowNotFound: skip` 记入了 `skipped`（WP-05）：不再加锁读取一次。"""
+    return any(s.entity == ref.entity and s.row_key == ref.record_key and s.reason == "ROW_NOT_FOUND" for s in state.skipped)
 
 
 class PageSaveInvolved:
     """管道阶段"确定涉及的单据"的页面保存部分（C08 第 6 节）：命令中每张单据一项，按（实体、主键）排序。
     只写 `involved`。按钮操作由 operations、审批处理由 approval 给出。"""
 
-    name = "pipeline.involved"
+    name = "确定涉及的单据"
 
     def applies(self, state: CommandState, ctx: ExecutionContext) -> bool:
         return bool(state.command.documents)
 
     def run(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> None:
         refs = {document_ref(p.entity, p.master) for p in state.command.documents}
-        for ref in sorted(refs - set(state.involved), key=_sort_key):
+        for ref in sorted(refs - set(state.involved), key=sort_key):
             state.involved.append(ref)
 
 
@@ -73,12 +89,12 @@ class DocumentLoader:
         （WP-05）。用户发起的命令带出行权限判断列，超出时 403（WP-03）；来源为审批时不查行权限（C08 第 7 节）。
         返回读到的单据。"""
         wanted = refs if refs is not None else state.involved
-        pending = sorted({r for r in wanted if not is_new_key(r.record_key) and r not in state.current}, key=_sort_key)
+        pending = sorted({r for r in wanted if not is_new_key(r.record_key) and r not in state.current}, key=sort_key)
         by_entity: dict[str, list[DocumentRef]] = defaultdict(list)
         for ref in pending:
             by_entity[ref.entity].append(ref)
         command = state.command
-        reject = ctx.config.operation(command.operation).row_not_found == "reject"
+        reject = rejects_missing(state, ctx)
         loaded: list[DocumentRef] = []
         for code in sorted(by_entity):
             entity = ctx.config.entity(code)

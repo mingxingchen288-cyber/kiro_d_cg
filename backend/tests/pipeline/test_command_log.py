@@ -11,11 +11,12 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import text
 
 from cost_platform.contracts import types as t
 from cost_platform.pipeline.command_log import OracleCommandRecorder, audit_rows
 
-from .support import KEY_1, KEY_2, MASTER, MATERIAL, NOW, TMP_1, command, command_factory, command_rows, master_modify
+from .support import KEY_1, KEY_2, MASTER, MATERIAL, NOW, TMP_1, Setup, command, command_factory, command_rows, master_modify
 
 
 def saved(cmd: t.Command) -> t.CommandResult:
@@ -88,6 +89,50 @@ def test_finish_writes_result_and_audit_in_one_statement() -> None:
     assert json.loads(row["result"])["outcome"] == "saved"
     assert json.loads(row["audit_diff"]) == [
         {"entity": MASTER, "rowKey": "1001", "op": "modify", "fields": {"MEMO": {"old": None, "new": "测试"}}}]
+
+
+class _TableChanges:
+    """`TableWriter.changes` 的替代：本事务中写没注册的表的改动。"""
+
+    def __init__(self, changes: list[t.RowChange]) -> None:
+        self._changes = changes
+
+    def changes(self, uow: object) -> list[t.RowChange]:
+        return list(self._changes)
+
+
+def test_complete_records_approval_processed_with_table_writer_audit() -> None:
+    """C06 7.5 物料清单改价审批的最终批准：业务表没有写入，只把 ZX_PRICE 写到没注册的表 T_COST_GOODS（WP-19）。
+    `complete` 给出 approvalProcessed，命令记录的审计差异记下这次改动（不看页面的 audit）。"""
+    goods = t.RowChange(document=t.DocumentRef("T_COST_GOODS", "25"), entity="T_COST_GOODS", op="modify", row_key="25",
+                        client_row_id=None, values={"ZX_PRICE": Decimal("90.1235")}, old={"ZX_PRICE": Decimal("75")})
+    factory = command_factory()
+    recorder = OracleCommandRecorder(tables=_TableChanges([goods]))
+    cmd = command([], page=None, operation="approval.pass", params={"approvalId": "203"})
+    approval = t.ApprovalRef(approval_id="203", document=t.RecordRef(entity="GOODS_PRICE", record_key="25"), status="approved",
+                             level=1, flows=["GOODS_PRICE_CHANGE"])
+    state = t.CommandState(command=cmd)
+    state.approvals.append(approval)
+    with factory.begin() as uow:
+        recorder.begin(uow, "112", cmd, NOW)
+        result = recorder.complete(uow, state, Setup().context())
+        uow.commit()
+    assert result.outcome == "approvalProcessed" and result.approvals == [approval]
+    [row] = command_rows(factory)
+    assert row["status"] == "done" and json.loads(row["result"])["outcome"] == "approvalProcessed"
+    assert json.loads(row["audit_diff"]) == [{"entity": "T_COST_GOODS", "rowKey": "25", "op": "modify",
+                                              "fields": {"ZX_PRICE": {"old": "75", "new": "90.1235"}}}]
+
+
+def test_complete_unchanged_writes_no_record() -> None:
+    """WP-10：提交的值与当前值相同，结果为 unchanged，命令记录不写完成状态（调用方不提交）。"""
+    factory, recorder = command_factory(), OracleCommandRecorder()
+    cmd = command([master_modify("1002", {"MEMO": "旧备注"})])
+    with factory.begin() as uow:
+        recorder.begin(uow, "112", cmd, NOW)
+        result = recorder.complete(uow, t.CommandState(command=cmd), Setup().context())
+        assert result.outcome == "unchanged"
+        assert [r["status"] for r in uow.connection.execute(text("SELECT status FROM pf_command")).mappings()] == ["running"]
 
 
 def test_audit_rows_for_add_and_delete() -> None:

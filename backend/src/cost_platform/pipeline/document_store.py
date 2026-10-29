@@ -188,7 +188,7 @@ class OracleDocumentStore:
     # ---------------------------------------------------------------- 写入
 
     def write(self, uow: UnitOfWork, entity: EntityConfig, changes: list[RowChange]) -> None:
-        """端口 `DocumentStore.write`：按变更计划写这个实体，依次删除、修改、新增（WP-09）。
+        """原端口 `DocumentStore.write`（2026-10-29 起不是端口）：按变更计划写这个实体，依次删除、修改、新增（WP-09）。
         新增行取得的主键写回 `RowChange.row_key`。删除主表行连同明细的顺序由 `ChangeWriter` 安排。"""
         by_op: dict[str, list[RowChange]] = defaultdict(list)
         for change in changes:

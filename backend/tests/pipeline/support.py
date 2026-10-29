@@ -6,12 +6,14 @@ C06 第 2 节的 ISERP 写法）。数据取业务例子中的单据：成本单
 
 - `MemoryStore`：`RowStore`（pipeline.document_store）的内存替代实现，按实体保存行，记录每次写入，供合并、计算、
   写入顺序和命令结果的测试使用。真实的 SQL 由 `test_document_store_sql.py` 核对文本，由 oracle 测试在 d_cg 上验证。
-- `Pipeline`：按架构第 7 节的顺序调用本模块的各项能力（orchestration 将来做的事），其他模块的阶段用替代实现。
+- `Pipeline`：按 orchestration 的执行方式（`STAGE_ORDER`，plugin-spec 第 3 节）执行本模块的管道阶段，其他模块的阶段
+  用替代实现。
 """
 
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -31,6 +33,7 @@ from cost_platform.contracts.fakes import (
 )
 from cost_platform.contracts.ports import PipelineStage, UnitOfWork
 from cost_platform.contracts.values import to_wire
+from cost_platform.orchestration.runner import STAGE_ORDER
 
 PAGE = "COST_PINGGU"
 SAVE = "COST_PINGGU.save"
@@ -345,15 +348,67 @@ def scales_inspector(scales: dict[tuple[str, str], int | None] | None = None) ->
     return inspector
 
 
-# ---------------------------------------------------------------- 按架构第 7 节的顺序组合本模块的能力
+# ---------------------------------------------------------------- 按 orchestration 的执行方式组合本模块的阶段
+
+def run_stages(stages: Sequence[PipelineStage], uow: UnitOfWork, state: t.CommandState, ctx: t.ExecutionContext) -> None:
+    """按 plugin-spec 第 3 节"编排的执行方式"执行各位置上 `applies` 为真的阶段：到"展开动作"时，只要有展开动作的阶段
+    applies，就一轮轮执行"展开动作 → 加锁读取 → 只对这一轮新读入的单据执行冻结检查 → 合并意图 → 计算与规则"；
+    没有动作时这几步（不含展开动作）执行一次；然后是其余位置。"""
+    by_name = {name: [s for s in stages if s.name == name] for name in STAGE_ORDER}
+
+    def position(name: str, target: t.CommandState = state) -> None:
+        for stage in by_name[name]:
+            if stage.applies(target, ctx):
+                stage.run(uow, target, ctx)
+
+    def one_round() -> None:
+        before = set(state.current)
+        position("加锁读取")
+        loaded = [ref for ref in state.current if ref not in before]
+        if loaded:
+            position("冻结检查", dataclasses.replace(state, involved=loaded))
+        position("合并意图")
+        position("计算与规则")
+
+    expand_at = STAGE_ORDER.index("展开动作")
+    for name in STAGE_ORDER[:expand_at]:
+        position(name)
+    expanders = by_name["展开动作"]
+    if any(s.applies(state, ctx) for s in expanders):
+        while any(s.applies(state, ctx) for s in expanders):
+            position("展开动作")
+            one_round()
+    else:
+        one_round()
+    for name in STAGE_ORDER[STAGE_ORDER.index("计算与规则") + 1:]:
+        position(name)
+
 
 Expand = Callable[[t.CommandState, t.ExecutionContext], None]
 
 
 @dataclass
+class _ExpandActions:
+    """测试用的"展开动作"阶段（operations 的 ActionStage 的替代）：每次 run 调用 `actions` 中的下一个替代展开。
+    每个命令新建一个。"""
+
+    actions: list[Expand]
+    cursor: int = 0
+    name: str = "展开动作"
+
+    def applies(self, state: t.CommandState, ctx: t.ExecutionContext) -> bool:
+        return self.cursor < len(self.actions)
+
+    def run(self, uow: UnitOfWork, state: t.CommandState, ctx: t.ExecutionContext) -> None:
+        self.actions[self.cursor](state, ctx)
+        self.cursor += 1
+
+
+@dataclass
 class Pipeline:
-    """测试用的命令流程：判重 → 确定涉及的单据 → 加锁读取 → 冻结检查 → 合并 Patch → 动作（展开、合并 intents）→
-    计算 → 必填 → 触发审批 → 写入 → 命令结果 → 审计 → 写命令记录并提交。其他模块的阶段用替代实现。"""
+    """测试用的命令流程（orchestration 将来做的事）：`CommandRecorder.begin` 判重 → 按 `STAGE_ORDER` 执行本模块的阶段
+    （与 plugin.py 注册的相同，`RowStore` 换成 `store`）和其他模块阶段的替代实现（`freeze`、`trigger`、`actions`）→
+    `CommandRecorder.complete` → 结果不是 unchanged 时提交。"""
 
     setup: Setup = field(default_factory=Setup)
     store: MemoryStore = field(default_factory=MemoryStore)
@@ -362,13 +417,22 @@ class Pipeline:
     freeze: PipelineStage | None = None
     trigger: PipelineStage | None = None
     actions: list[Expand] = field(default_factory=list)
+    extra: list[PipelineStage] = field(default_factory=list)
+    """其他位置上的替代阶段（例如审批命令的"确定涉及的单据""审批处理"）。"""
     executions: int = 0
 
     def __post_init__(self) -> None:
         from cost_platform.pipeline.calc import Recalculator
         from cost_platform.pipeline.command_log import OracleCommandRecorder
-        from cost_platform.pipeline.loader import DocumentLoader
+        from cost_platform.pipeline.loader import DocumentLoader, PageSaveInvolved
         from cost_platform.pipeline.merge import DocumentMerger, IntentMerger
+        from cost_platform.pipeline.stages import (
+            LockStage,
+            MergeIntentsStage,
+            MergePatchesStage,
+            RecalculateStage,
+            WriteChangesStage,
+        )
         from cost_platform.pipeline.values import ColumnScales
         from cost_platform.pipeline.writer import ChangeWriter
 
@@ -379,37 +443,20 @@ class Pipeline:
         self.intents = IntentMerger(self.loader, scales)
         self.calc = Recalculator(self.setup.engine, scales)
         self.writer = ChangeWriter(self.store)
+        self.stages: list[PipelineStage] = [
+            PageSaveInvolved(), LockStage(self.loader), MergePatchesStage(self.merger), MergeIntentsStage(self.intents),
+            RecalculateStage(self.calc), WriteChangesStage(self.writer)]
 
     def execute(self, cmd: t.Command, ctx: t.ExecutionContext) -> t.CommandResult:
-        from cost_platform.pipeline.calc import check_required, patch_needs_details
-        from cost_platform.pipeline.loader import PageSaveInvolved
-        from cost_platform.pipeline.result import audit_changes, build_result
-
+        others = [s for s in (self.freeze, self.trigger, *self.extra) if s is not None]
         with self.factory.begin() as uow:
             replay = self.recorder.begin(uow, ctx.identity.user_id, cmd, ctx.now)
             if replay is not None:
                 return replay
             self.executions += 1
             state = t.CommandState(command=cmd)
-            involved = PageSaveInvolved()
-            if involved.applies(state, ctx):
-                involved.run(uow, state, ctx)
-            self.loader.lock(uow, state, ctx, needs_details=patch_needs_details(state, ctx))
-            if self.freeze is not None and self.freeze.applies(state, ctx):
-                self.freeze.run(uow, state, ctx)
-            patched = self.merger.merge_patches(state, ctx)
-            field_states = {}
-            for expand in self.actions:
-                expand(state, ctx)
-                self.intents.absorb(uow, state, ctx, self.freeze)
-            field_states = self.calc.run(state, ctx)
-            check_required(state, ctx, patched, field_states)
-            if self.trigger is not None and self.trigger.applies(state, ctx):
-                self.trigger.run(uow, state, ctx)
-            self.writer.apply(uow, state, ctx)
-            result = build_result(state, ctx)
-            if result.outcome == "unchanged":
-                return result  # 没有提交，事务回滚，命令记录一起撤销（WP-10 的第二种情况）
-            self.recorder.finish(uow, ctx.identity.user_id, cmd, result, audit_changes(state, ctx), ctx.now)
-            uow.commit()
+            run_stages([*self.stages, *others, _ExpandActions(list(self.actions))], uow, state, ctx)
+            result = self.recorder.complete(uow, state, ctx)
+            if result.outcome != "unchanged":
+                uow.commit()  # unchanged 时不提交，事务回滚，命令记录一起撤销（WP-10 的第二种情况）
             return result

@@ -1,8 +1,9 @@
 """把修改合并到加锁读到的当前数据，生成只含有变化的列的变更计划（WP-04–WP-06、WP-14–WP-16、WP-18）。
 
-- `DocumentMerger`：页面保存的 Patch（主表和明细的新增、修改、删除），动作执行中由编排层调用。
-- `IntentMerger`：动作展开出的 `intents`；所属单据不在 `involved` 中的先加锁读取、做冻结检查，再合并（WP-18）。
-- `PatchMerger`：端口 `ChangeMerger`（C08 第 5a 节），按实体合并修改，供 orchestration 的 `SaveFlow` 使用。
+- `DocumentMerger`：页面保存的 Patch（主表和明细的新增、修改、删除），由管道阶段"合并修改"调用（`stages.py`）。
+- `IntentMerger`：动作展开出的 `intents`，由管道阶段"合并意图"调用；所属单据不在 `involved` 中的先加锁读取、做冻结检查，
+  再合并（WP-18）。经管道阶段执行时，加锁读取和冻结检查已由编排在这一轮做过（"加锁读取"阶段），这里不再重复。
+- `PatchMerger`：原端口 `ChangeMerger`（C08 第 5a 节，2026-10-29 起不是端口）的按实体合并修改，保留原有行为。
 
 候选数据（`CommandState.candidate`）由当前值复制而来，合并后的新值写在其中；当前值（`current`）保持命令开始时读到的值，
 作为修改的旧值和判断 ERP 行的依据。
@@ -40,7 +41,7 @@ from cost_platform.contracts.types import (
 from cost_platform.contracts.values import from_wire, same_value
 
 from .entity_rules import EntityRules
-from .loader import DocumentLoader, candidate_of, document_ref, is_new_key
+from .loader import DocumentLoader, candidate_of, document_ref, is_new_key, known_missing, rejects_missing
 from .plan import find_change, note_modify, row_id
 from .values import NoScales, stored_value
 
@@ -131,7 +132,7 @@ class DocumentMerger:
         加锁读取时已不存在的单据已按 `rowNotFound` 处理，这里跳过；单据中要修改或删除的明细行已不存在时，
         同样按 `rowNotFound` 跳过并写入 `skipped`，或返回 409 ROW_NOT_FOUND（WP-05）。"""
         page = state.command.page
-        reject = ctx.config.operation(state.command.operation).row_not_found == "reject"
+        reject = rejects_missing(state, ctx)
         patched: set[RowRef] = set()
         for patch in state.command.documents:
             self._merge(state, ctx, page, reject, patch, patched)
@@ -216,7 +217,8 @@ class IntentMerger:
         intents = list(state.intents)
         if not intents:
             return
-        outside = sorted({i.document for i in intents if i.document not in state.involved and not is_new_key(i.document.record_key)},
+        outside = sorted({i.document for i in intents if i.document not in state.involved and not is_new_key(i.document.record_key)
+                          and not known_missing(state, i.document)},
                          key=lambda r: (r.entity, r.record_key))
         if outside:
             state.involved.extend(outside)
@@ -225,7 +227,7 @@ class IntentMerger:
                 scoped = dataclasses.replace(state, involved=list(loaded))
                 if freeze.applies(scoped, ctx):
                     freeze.run(uow, scoped, ctx)
-        reject = ctx.config.operation(state.command.operation).row_not_found == "reject"
+        reject = rejects_missing(state, ctx)
         for intent in intents:
             self._apply(state, ctx, intent, reject)
         state.intents.clear()
@@ -269,8 +271,10 @@ class IntentMerger:
     @staticmethod
     def _add(state: CommandState, ctx: ExecutionContext, intent: RowIntent, rules: EntityRules, rows: _Rows,
              master_entity: EntityConfig) -> None:
-        """新增行：审批通过时写入的新增行带着提交审批时取得的主键（`row_key`，AP-02）。"""
-        values = rows.new_values(intent.values, None, ctx, intent.client_row_id, intent.row_key, wire=False)
+        """新增行：审批通过时写入的新增行带着提交审批时取得的主键（`row_key`，AP-02）。明细的关联字段取所属单据的主键
+        （`add_detail`）：approval 展开的待审新增明细在值中也带着它（AP-10、E24），这里不用意图中的这个值。"""
+        given = {name: value for name, value in intent.values.items() if name != rules.parent_key}
+        values = rows.new_values(given, None, ctx, intent.client_row_id, intent.row_key, wire=False)
         ref = intent.document
         if intent.entity == ref.entity:
             row = Row(entity=ref.entity, row_key=intent.row_key, client_row_id=intent.client_row_id,
@@ -332,7 +336,7 @@ def _row_not_found(state: CommandState, reject: bool, entity: str, key: str) -> 
 
 
 class PatchMerger:
-    """端口 `ChangeMerger`（C08 第 5a 节）：按实体合并修改，供 orchestration 的 `SaveFlow` 使用。
+    """原端口 `ChangeMerger`（C08 第 5a 节，2026-10-29 起不是端口，管道阶段不用它）：按实体合并修改。
 
     调用方按实体分别合并：`current` 是 `entity` 这个实体的行，`patch` 中只含要合并到这些行的修改（合并主表时 `details`
     为空，合并明细时主表为 `none`）。只合并修改：新增和删除要用到执行上下文（默认值）、所属单据的明细（级联删除）

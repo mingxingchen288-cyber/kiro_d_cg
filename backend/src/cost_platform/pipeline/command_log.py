@@ -4,7 +4,8 @@
   提交或回滚；等待最多 `wait_seconds` 秒（`.env` 的 `PLATFORM_REQUEST_WAIT_SECONDS`），用连接的调用超时实现，超时返回
   409 REQUEST_IN_PROGRESS。对方提交后这条 INSERT 违反唯一键，读出原记录判重；对方回滚后这条 INSERT 成功，照常执行。
 - 命令失败时整个事务回滚，命令记录一起撤销（WP-02），同一请求键可以重新提交；写入管道不自动重试（WP-13）。
-- 完成时用一条 UPDATE 写入状态、命令结果和审计差异（WP-11）。
+- 完成时用一条 UPDATE 写入状态、命令结果和审计差异（WP-11）。`complete` 由编排在各阶段之后调用：按 `CommandState`
+  生成命令结果（WP-12），不是 unchanged 时调用 `finish`。
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Protocol
 
 from sqlalchemy import Text, bindparam, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -23,13 +25,17 @@ from cost_platform.contracts.ports import UnitOfWork
 from cost_platform.contracts.types import (
     Command,
     CommandResult,
+    CommandState,
     ErrorCode,
+    ExecutionContext,
     PlatformError,
     RowChange,
     Value,
     dump_wire,
     parse_wire,
 )
+
+from .result import audit_changes, build_result
 
 # 绑定变量名不能用 Oracle 保留字（例如 audit），统一加 b_ 前缀
 _INSERT = text(
@@ -89,9 +95,17 @@ def _call_timeout(uow: UnitOfWork, seconds: int) -> Iterator[None]:
         driver.call_timeout = previous
 
 
+class TableChanges(Protocol):
+    """本事务中写没注册的表的改动（`table_writer.OracleTableWriter.changes`），随命令记录写入审计差异（WP-19）。"""
+
+    def changes(self, uow: UnitOfWork) -> list[RowChange]: ...
+
+
 class OracleCommandRecorder:
-    def __init__(self, wait_seconds: int = 5) -> None:
+    def __init__(self, wait_seconds: int = 5, tables: TableChanges | None = None) -> None:
+        """`tables` 为同一进程中交给 approval 的 `TableWriter`（`complete` 取它的改动）；不给时没有这部分审计。"""
         self._wait = int(wait_seconds)
+        self._tables = tables
 
     def begin(self, uow: UnitOfWork, user_id: str, command: Command, now: datetime) -> CommandResult | None:
         key = {"b_user": user_id, "b_key": command.request_key}
@@ -118,3 +132,13 @@ class OracleCommandRecorder:
             "b_result": json.dumps(dump_wire(CommandResult, result), ensure_ascii=False),
             "b_audit": None if audit is None else json.dumps(audit_rows(audit), ensure_ascii=False),
         })
+
+    def complete(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> CommandResult:
+        """各阶段执行完后生成命令结果（WP-12）；不是 unchanged 时用 `finish` 的同一条语句写入结果和审计差异（WP-11，
+        含写没注册的表的改动，WP-19）。unchanged 时不写：调用方不提交，命令记录随事务回滚（WP-10）。
+        完成时间取执行上下文的请求时间。"""
+        result = build_result(state, ctx)
+        if result.outcome != "unchanged":
+            extra = self._tables.changes(uow) if self._tables is not None else []
+            self.finish(uow, ctx.identity.user_id, state.command, result, audit_changes(state, ctx, extra), ctx.now)
+        return result
