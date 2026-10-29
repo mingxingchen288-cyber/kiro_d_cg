@@ -12,7 +12,7 @@
 - 交付物：输入审批流定义、当前进度和一次处理，输出处理是否允许、新的进度和去向（留在本级、下一级、终点、结束）的函数；结果指纹的计算。
 - 接入责任：T-AP-2、T-AP-3 使用。
 - 验收标准：业务例子 E14、E15，以及 E37 中"管理员通过后进入第 2 级会签、采购和生产都通过才到终点；单价只改到 80 时管理员通过即结束"的流转。
-- 状态与证据：未开始。
+- 状态与证据：进行中（模拟验证通过，待独立复核）。代码 `approval/routing.py`。先写 `tests/approval/test_routing.py`，实现前运行为收集失败（`ModuleNotFoundError: cost_platform.approval.routing`），实现后 14 个通过：E14 撤回（有人通过后 403、没人处理时成功）、E15 两个审批流合成一个审批（李四一次通过计入两个入口、F1 第 2 级终点、F2 第 3 级终点、同一人两级要分别通过、任一级驳回即结束）、E37 第 2 级会签和单价 80 一级结束、指纹。模拟验证：2026-10-29 `uv run pytest -q -p no:cacheprovider -m "not oracle and not redis" tests/approval` 85 个通过、0 个失败（`.reports/modules/approval/pytest.txt`）。
 
 ### T-AP-2 触发审批与冻结
 
@@ -22,7 +22,7 @@
 - 交付物：上述阶段和 `FreezeReader`；审批数据的读写。
 - 接入责任：T-AS-6 注册阶段，并把 `FreezeReader` 接给 queries-export。
 - 验收标准：在 d_cg 上跑通业务例子 E37 的提交部分（只有聚维酮K30 触发，2550 和物料清单 25 被冻结，13165、115 不冻结）、E38、E40、E41，以及 E20、E22、E35。
-- 状态与证据：未开始。
+- 状态与证据：进行中（模拟验证通过；真实验证已写好、未运行）。代码 `approval/trigger.py`、`freeze.py`、`store.py`、`tables.py`、`sql.py`、`catalog.py`、`approvers.py`、`notify.py`、`patch.py`，迁移 `approval/migrations/ap_0001_pf_approval.py`（未执行）。模拟验证（contracts 的替代事务、`FakeSchemaInspector`、`FakeDirectory`，SQL 片段由 `tests/approval/support.py` 的 `WorldSql` 按同样的意思在内存数据上求值，命令执行由 `Pipeline` 替身代替 write-pipeline）：`test_freeze.py` 17 个（FreezeReader 契约 4 个、冻结检查阶段、E37 冻结 2550 和物料清单 25 而 13165、115 照常修改、E22 冻结单据不能新增删除明细、E35、E16 两种、E21、驳回后解冻），`test_submit.py` 14 个（E37 只有 K30 触发且三行都不写、E38、只改备注、E40 写成 80 和 82 时 422 及都改 80 时正常提交、E20、E22、E24 的预留主键、E41 三种、两个审批流合成一个审批、E39 列出的受影响行、E23 的通知标题）；冻结和"单据只属于一个审批"的测试写在实现代码之后、第一次运行之前，没有先看到失败。真实验证：`tests/approval/test_oracle.py` 12 个（标 `oracle`，没有运行），前提为合并后执行 ap_0001，以及 d_cg 补建 `T_COST_GOODS_PRICE_V`（`.reports/modules/approval/contract-gaps.md` 第 6 条）。上线后再补：两个命令同时冻结同一份数据的并发（唯一约束已在迁移中，只在 d_cg 上能验证）。
 
 ### T-AP-3 审批处理、详情与接口
 
@@ -32,7 +32,7 @@
 - 交付物：通过、驳回、撤回转成命令并经 `CommandExecutor` 执行；审批详情和预览；待办列表。
 - 接入责任：T-AS-6 挂载路由并接入真实的 write-pipeline；frontend-approval 使用接口（T-AS-7）。
 - 验收标准：在 d_cg 上跑通业务例子 E37（从保存到第 2 级会签通过）、E39（取消 2556 后详情重算，通过后其余明细写入）、E13（驳回后都不生效、冻结解除）。
-- 状态与证据：未开始。
+- 状态与证据：进行中（模拟验证通过；在 d_cg 上从保存到通过要接上 write-pipeline、orchestration，属于 T-AS-6 联调）。代码 `approval/process.py`、`view.py`、`calc.py`、`service.py`、`router.py`、`module.py`。模拟验证：`test_process.py` 14 个（E37 管理员通过后进入会签、采购通过仍不写、生产通过后三行和物料清单 25 都写对且冻结解除，没注册的 T_COST_GOODS 经 TableWriter、注册过时经写入意图；单价 80 一级结束；通过后通知发起人；非审批人 403；指纹不一致 409；E17 同一请求键只执行一次；E39 取消 2556 后通过只写其余明细；E12 全部取消只写来源；E13 驳回原因必填、驳回后都不生效并解冻；E14 撤回；E15 合成审批的待办、逐级通过和驳回），`test_view.py` 8 个（E37 详情的"触发审批"列、物料清单 75→90、推算第 2 级会签、各人的操作按钮；E39 预览取消 2556 后单价 75、金额 23.25、每盒成本恢复且不保存勾选；下一级不能勾回；AP-21 记录已不存在排在最后、批准时跳过记入执行结果；E31/E33 合成审批的列并集和触发审批流），`test_router.py` 2 个（C09 第 6 节接口经 TestClient），`test_stage_contract.py` 6 个（PipelineStage 契约）。审批详情的计算用 `ToyRules` 替身代替 rules-core（金额 = 单价 × 每批数量等三条），不是真实规则。
 
 ### T-AP-4 强制审批、SQL 审批人与人工参数
 
@@ -42,4 +42,4 @@
 - 交付物：上述阶段和逻辑；C09 第 6 节通过请求中的 `params`。
 - 接入责任：T-AS-6 注册阶段并联调。
 - 验收标准：业务例子 E25、E26、E27。
-- 状态与证据：未开始。
+- 状态与证据：进行中（模拟验证通过，待联调）。代码 `approval/required.py`（强制审批检查，阶段表中归在"触发审批"一行）、`approvers.py`（SQL 审批人）、`process.py`（各级人工参数、驳回和撤回）。模拟验证：`test_required.py` 5 个（E25：命中审批流进入审批、没有审批流命中时 409 APPROVAL_REQUIRED 且不写、本地物料行不命中、别的页面写这个字段 409、审批通过后写入不被拦），`test_params.py` 5 个（E26：查出的两个主管中只有启用的那个收到待办、一个都没有时 422；E27：第 1 级不填参数 422、填 2026-11-01 后业务表不变、第 2 级通过时修改和生效日期一起写入、第 2 级驳回都不写并解冻）。
