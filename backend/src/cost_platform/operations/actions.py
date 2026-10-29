@@ -1,4 +1,4 @@
-"""按钮通用动作的展开（C06 第 6 节，OP-01–OP-03、OP-07）：`recalculate`、`updateRecords`、`updateTargets`。
+"""按钮通用动作的展开（C06 第 6 节，OP-01、OP-02、OP-07）：`recalculate`、`updateRecords`、`updateTargets`。
 
 展开只生成 `RowIntent`，不加锁、不写候选数据；write-pipeline 取出 intents，所属单据不在 `involved` 中的先加锁读入、
 做冻结检查，再合并、检查写权限并计算（WP-18）。下一个动作看到的是上一个动作合并、计算后的候选数据。
@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 
 from cost_platform.contracts.ports import RelatedQuery, UnitOfWork
@@ -82,24 +81,13 @@ def _target_documents(memory: CommandMemory) -> list[DocumentRef]:
     return list(dict.fromkeys(t.document for t in memory.targets.values()))
 
 
-def _note_targets(rnd: Round, refs: Sequence[DocumentRef]) -> None:
-    """OP-03：`propagation` 为 `end` 时，写到的目标（不含来源单据）记为到此为止，不触发审批，也不再同步。"""
-    if rnd.operation.propagation != "end":
-        return
-    for ref in refs:
-        if ref not in rnd.sources and ref not in rnd.memory.propagation_ended:
-            rnd.memory.propagation_ended.append(ref)
-
-
 # ---------------------------------------------------------------- recalculate
 
 def expand_recalculate(rnd: Round, action: Recalculate) -> list[RowIntent]:
     """`source`：选中的单据；`targets`：前面 updateRecords 找到的目标所在的单据。"""
     if action.target == "source":
         return [_empty_intent(ref) for ref in rnd.sources]
-    refs = _target_documents(rnd.memory)
-    _note_targets(rnd, refs)
-    return [_empty_intent(ref) for ref in refs]
+    return [_empty_intent(ref) for ref in _target_documents(rnd.memory)]
 
 
 # ---------------------------------------------------------------- updateRecords
@@ -185,14 +173,11 @@ def expand_update_records(rnd: Round, action: UpdateRecords) -> list[RowIntent]:
     只生成空修改，让 write-pipeline 把找到的单据加锁读入，供后面的 `updateTargets` 使用。"""
     targets = find_targets(rnd, action.find)
     plan = WritePlan()
-    touched: list[DocumentRef] = []
     for target in targets:
         row = plan.row(target.document.entity, target.document.record_key, target.entity, target.row_key)
         for finding in target.found_by:
             for item in action.field_mapping:
                 plan.put(row, item.to, source_value(item.from_, finding))
-        touched.append(target.document)
-    _note_targets(rnd, touched)
     return _intents(rnd, plan)
 
 
@@ -210,7 +195,6 @@ def expand_update_targets(rnd: Round, action: UpdateTargets) -> list[RowIntent]:
     `match` 选出的明细行。`from` 和 `match` 引用来源明细字段时取找到这个目标的那一行，引用主表字段时取主表。
     冲突按实际要写的目标行判断：同一目标被几行找到、各自写不同的明细行时不冲突；同一行被写成不同的值时 422。"""
     plan = WritePlan()
-    touched: list[DocumentRef] = []
     for spec in action.targets:
         for target in [t for t in rnd.memory.targets.values() if t.entity == spec.entity]:
             doc = rnd.data(target.document)
@@ -231,7 +215,4 @@ def expand_update_targets(rnd: Round, action: UpdateTargets) -> list[RowIntent]:
                 planned = plan.row(target.document.entity, target.document.record_key, entity, row_key)
                 for item in spec.field_mapping:
                     plan.put(planned, item.to, source_value(item.from_, finding))
-            if rows:
-                touched.append(target.document)
-    _note_targets(rnd, touched)
     return _intents(rnd, plan)

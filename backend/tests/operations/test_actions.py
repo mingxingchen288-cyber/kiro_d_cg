@@ -1,4 +1,4 @@
-"""按钮通用动作的展开（OP-01–OP-03、OP-07，C06 第 6 节）。
+"""按钮通用动作的展开（OP-01、OP-02、OP-07，C06 第 6 节）。
 
 例子取自任务卡 T-OP-1 和 C06 第 6 节：按钮"同步单价"选中成本单 D（物料 115 单价 80、116 单价 12），把单价同步给
 其他含同一物料的成本单。
@@ -252,20 +252,6 @@ def test_recalculate_source_and_targets() -> None:
     bench.run(command(SYNC, [(MASTER, D)]))
     assert writes(bench.merged[:1]) == [(D, MASTER, D, {})]
     assert writes(bench.merged[-3:]) == [(A, MASTER, A, {}), (E, MASTER, E, {}), (B, MASTER, B, {})]
-    bench.close()
-
-
-# ---------------------------------------------------------------- 传播边界
-
-@pytest.mark.parametrize("propagation", ["end", "continue"])
-def test_propagation_end_marks_the_targets(propagation: str) -> None:
-    """OP-03：propagation 为 end 时，写到的目标单据（A、E、B，不含来源 D）到此为止，不触发审批；continue 时没有。"""
-    bench = Bench(snapshot({SYNC: operation([SYNC_DETAILS], propagation=propagation)}))
-    preset_detail_rows(bench)
-    state = bench.run(command(SYNC, [(MASTER, D)]))
-    assert bench.stage is not None
-    expected = [ref(A), ref(E), ref(B)] if propagation == "end" else []
-    assert bench.stage.propagation_ended(state) == expected
     bench.close()
 
 

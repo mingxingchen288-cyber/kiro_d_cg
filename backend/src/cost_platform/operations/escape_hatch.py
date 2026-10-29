@@ -14,7 +14,7 @@ C06 第 4 节的逃生舱操作只有 `procedure` 和 `writes`，没有参数怎
 
 执行时机：动作执行阶段中，排到这个动作时执行，这时涉及的单据已加锁、做过冻结检查；在命令的事务内执行，自身不提交
 也不回滚，之后的动作失败时它的写入随命令一起回滚。每次调用记一条 `EscapeHatchCall`（逃生舱、参数、执行人、时间和
-请求键），由 `ActionStage.escape_hatch_calls` 交给写命令记录的一方（contract-gaps.md 第 4 项）。
+请求键），`ActionStage` 把它写进 `CommandState.escape_hatch_calls`，由 write-pipeline 随命令记录写入。
 """
 
 from __future__ import annotations

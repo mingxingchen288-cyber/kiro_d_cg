@@ -3,8 +3,8 @@
 前提（任务卡 T-OP-2）：用户同意在 d_cg 中建一个测试用存储过程（名称以 `PF_TEST_` 开头）。本文件的 fixture 建表
 `PF_TEST_ESCAPE_LOG` 和存储过程 `PF_TEST_ESCAPE_HATCH`，结束时删除；它们只在这里的测试配置中登记启用。
 
-验收：逃生舱在命令事务内执行，之后的动作失败时它的写入一起回滚；调用审计的内容（随命令记录写入还要等
-write-pipeline 的命令记录能接收它，见 contract-gaps.md 第 4 项）。
+验收：逃生舱在命令事务内执行，之后的动作失败时它的写入一起回滚；调用记录写进 `state.escape_hatch_calls`（随命令记录
+写入 PF_COMMAND 的真实验证见 tests/pipeline/test_oracle_command_log.py）。
 """
 
 from __future__ import annotations
@@ -107,10 +107,10 @@ def test_procedure_runs_in_the_command_transaction_and_commits_with_it(engine: A
         assert _rows(engine) == []  # 还没有提交，别的连接看不到
         uow.commit()
     assert _rows(engine) == [(2550, "张三")]
-    call, = stage.escape_hatch_calls(state)
-    assert call.params == {"P_DOCID": Decimal(2550), "P_NOTE": "张三", "P_COUNT": Decimal(41)}
-    assert call.outputs == {"P_COUNT": Decimal(42), "P_MESSAGE": "已处理 2550"}
-    assert (call.user_id, call.request_key) == ("112", state.command.request_key)
+    call, = state.escape_hatch_calls  # 写命令记录的 JSON：值按 C01 写成文本
+    assert call["params"] == {"P_DOCID": "2550", "P_NOTE": "张三", "P_COUNT": "41"}
+    assert call["outputs"] == {"P_COUNT": "42", "P_MESSAGE": "已处理 2550"}
+    assert (call["userId"], call["requestKey"]) == ("112", state.command.request_key)
     assert [p.message for p in state.prompts] == ["已处理 2550"]
 
 

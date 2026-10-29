@@ -3,6 +3,10 @@
 orchestration 按 `STAGE_ORDER` 调用：确定涉及的单据 → 加锁读取 → 冻结检查 → … → 每个动作一轮
 （`ActionStage.applies` 为 True 时调用 `run` 展开下一个动作 → write-pipeline 的"加锁读取"→ 只对这一轮新读入的单据
 "冻结检查"→ write-pipeline 的"合并意图""计算与规则"）→ 触发审批 → 写入变更 → 命令记录。
+
+传播边界（OP-03）不另做处理：触发审批阶段只对页面保存执行（approval `trigger.py` 的 applies 要求 `command.documents`
+不为空，按钮命令的 documents 必须为空），按钮写到的目标本来就不触发审批；按钮写必须审批的字段时由强制审批检查拒绝，
+与旧系统（`ActionWriteGuard` → `ApprovalRequiredFieldPolicy.guardDirectMutation`）相同；旧系统也没有 propagation=continue 的级联。
 """
 
 from __future__ import annotations
@@ -26,7 +30,7 @@ from cost_platform.contracts.types import (
 
 from .actions import Round, expand_recalculate, expand_update_records, expand_update_targets
 from .escape_hatch import EscapeHatchExecutor, EscapeHatchRegistry, EscapeHatchRunner, SqlEscapeHatchRunner
-from .memory import EscapeHatchCall, MemoryBook
+from .memory import MemoryBook
 from .selection import SelectedRow, SelectionResolver, requires_selection, selected_rows, sort_key
 
 _APPROVAL_OPERATIONS = "approval."
@@ -80,15 +84,11 @@ class ButtonInvolvedStage:
 
 
 class ActionStage:
-    """"展开动作"（OP-01–OP-04、OP-07）：每次 `run` 展开 `actions` 中的下一个动作。
+    """"展开动作"（OP-01、OP-02、OP-04、OP-07）：每次 `run` 展开 `actions` 中的下一个动作。
 
-    `applies` 在还有没执行的动作时为 True。展开结果写入 `intents`；逃生舱在这一轮直接执行。第一轮先检查选中的行
-    是否还在：已被删除的按操作的 `rowNotFound` 处理，`skip` 写入 `skipped`，`reject` 返回 409 ROW_NOT_FOUND（WP-05）。
-
-    CommandState 中没有字段的两项，由下面两个方法交给编排层（contract-gaps.md 第 2、4 项）：
-    - `propagation_ended`：`propagation` 为 `end` 的操作写到的目标单据，不触发审批（OP-03）；
-    - `escape_hatch_calls`：逃生舱的调用记录，随命令记录写入（OP-04）。
-    2026-10-29 插件接线时这两项没有接（plugin-spec 第 4 节）：编排只经 `PipelineStage` 调用本阶段，不调用这两个方法。
+    `applies` 在还有没执行的动作时为 True。展开结果写入 `intents`；逃生舱在这一轮直接执行，每次调用的记录
+    （`EscapeHatchCall.to_record()`）写入 `escape_hatch_calls`，由 write-pipeline 随命令记录写入（OP-04）。第一轮先检查
+    选中的行是否还在：已被删除的按操作的 `rowNotFound` 处理，`skip` 写入 `skipped`，`reject` 返回 409 ROW_NOT_FOUND（WP-05）。
     """
 
     name = "展开动作"
@@ -102,14 +102,6 @@ class ActionStage:
     def applies(self, state: CommandState, ctx: ExecutionContext) -> bool:
         memory = self._book.peek(state)
         return (memory.cursor if memory is not None else 0) < len(state.actions)
-
-    def propagation_ended(self, state: CommandState) -> list[DocumentRef]:
-        memory = self._book.peek(state)
-        return list(memory.propagation_ended) if memory is not None else []
-
-    def escape_hatch_calls(self, state: CommandState) -> list[EscapeHatchCall]:
-        memory = self._book.peek(state)
-        return list(memory.escape_hatch_calls) if memory is not None else []
 
     def run(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> None:
         memory = self._book.of(state)
@@ -129,7 +121,8 @@ class ActionStage:
             [ref for ref in state.involved if ref in state.current]
         if isinstance(action, EscapeHatch):
             documents = [(ref, data.master) for ref in sources if (data := state.candidate.get(ref) or state.current.get(ref))]
-            memory.escape_hatch_calls += self._escape.run(uow, state, ctx, action.operation, located, documents)
+            calls = self._escape.run(uow, state, ctx, action.operation, located, documents)
+            state.escape_hatch_calls += [call.to_record() for call in calls]
             return
         if operation is None:
             raise PlatformError(ErrorCode.INTERNAL_ERROR, f"动作 {action.action} 只用于按钮操作")

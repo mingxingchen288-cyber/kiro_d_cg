@@ -73,7 +73,7 @@ def logged(bench: Bench) -> list[tuple[object, ...]]:
 
 def test_registered_procedure_runs_in_the_command_transaction_and_is_audited() -> None:
     """选中成本单 D 点"由BOM生成明细"：调用登记的 P_COST_BOM_INSERT(D)，用的是命令的事务，自身不提交；
-    记下逃生舱、参数、执行人、时间和请求键；OUT 参数的提示随命令结果返回。命令提交后写入保留。"""
+    `state.escape_hatch_calls` 记下逃生舱、参数、执行人、时间和请求键；OUT 参数的提示随命令结果返回。命令提交后写入保留。"""
     runner = RecordingRunner({"P_MESSAGE": "已按 BOM 生成 12 行明细"})
     bench = bench_with([EscapeHatchRegistration(BOM, BOM_CALL)], {BOM: BOM_OPERATION}, runner)
     state = bench.run(command(BOM, [(MASTER, D)]))
@@ -82,9 +82,8 @@ def test_registered_procedure_runs_in_the_command_transaction_and_is_audited() -
     assert [(a.name, a.mode, a.value) for a in args] == [("P_DOCID", "IN", Decimal(2550)), ("P_MESSAGE", "OUT", None)]
     assert bench.factory.calls_to("commit") == []
     assert state.prompts == [t.Prompt(rule=BOM, message="已按 BOM 生成 12 行明细")]
-    assert bench.stage is not None
-    call, = bench.stage.escape_hatch_calls(state)
-    assert call.to_record() == {
+    call, = state.escape_hatch_calls  # 写命令记录的 JSON，由 write-pipeline 随命令记录写入
+    assert call == {
         "operation": BOM, "kind": "procedure", "target": "P_COST_BOM_INSERT", "params": {"P_DOCID": "2550"},
         "outputs": {"P_MESSAGE": "已按 BOM 生成 12 行明细"}, "writes": {MASTER: ["TOTAL_COST"], MATERIAL: ["GOODSID", "PRICE"]},
         "userId": "112", "userName": "张三", "at": NOW.strftime("%Y-%m-%dT%H:%M:%S"), "requestKey": KEY, "approvalId": None}
@@ -132,8 +131,7 @@ def test_registered_statement_like_old_sql_action() -> None:
     state = bench.run(command(code, []))
     rates = bench.uow.connection.execute(text("SELECT ID, FMRATE FROM T_COST_FORMONEY ORDER BY ID")).all()  # 同一事务中读
     assert [(r[0], r[1]) for r in rates] == [(Decimal(1), None), (Decimal(2), Decimal("7.2"))]
-    assert bench.stage is not None
-    assert [(c.kind, c.target, c.params) for c in bench.stage.escape_hatch_calls(state)] == \
+    assert [(c["kind"], c["target"], c["params"]) for c in state.escape_hatch_calls] == \
         [("statement", "清空系统汇率", {"createBy": "system"})]
     bench.close()
 

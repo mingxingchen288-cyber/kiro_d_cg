@@ -1,9 +1,9 @@
 """一个命令中本模块在各轮动作之间要记住的内容（OP-01）。
 
 C08 第 6 节规定动作执行每个动作一轮，阶段之间只经 `CommandState` 传递数据；`CommandState` 中没有"执行到第几个动作"
-"前面 updateRecords 找到了哪些目标""哪些单据到传播边界为止""逃生舱的调用记录"这几项（见
-`.reports/modules/operations/contract-gaps.md`）。在契约补上之前，这些内容按 `CommandState` 对象记在本模块中，
-命令结束、`CommandState` 被回收时一起丢弃。
+"前面 updateRecords 找到了哪些目标"这两项（见 `.reports/modules/operations/contract-gaps.md` 第 1、5 项）。这些内容按
+`CommandState` 对象记在本模块中，命令结束、`CommandState` 被回收时一起丢弃。逃生舱的调用记录已写进
+`CommandState.escape_hatch_calls`（OP-04），不在这里。
 """
 
 from __future__ import annotations
@@ -43,7 +43,8 @@ class Target:
 
 @dataclass(frozen=True)
 class EscapeHatchCall:
-    """一次逃生舱调用的审计记录（OP-04）：逃生舱、参数、执行人、时间和请求键。
+    """一次逃生舱调用的审计记录（OP-04）：逃生舱、参数、执行人、时间和请求键。`ActionStage` 把 `to_record()` 写进
+    `CommandState.escape_hatch_calls`，write-pipeline 随命令记录写入。
 
     `target` 为调用的存储过程名、登记的语句或处理函数的名称；`writes` 为配置中登记的会修改的表和列（C06 第 4 节）。"""
 
@@ -90,8 +91,6 @@ class CommandMemory:
     selection_checked: bool = False
     targets: dict[tuple[str, str, str], Target] = field(default_factory=dict)
     """（实体、单据主键、行主键）→ 目标，按第一次找到的先后。"""
-    propagation_ended: list[DocumentRef] = field(default_factory=list)
-    escape_hatch_calls: list[EscapeHatchCall] = field(default_factory=list)
 
 
 class MemoryBook:
