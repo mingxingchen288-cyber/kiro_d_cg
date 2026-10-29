@@ -86,7 +86,9 @@ def test_page_view_has_two_detail_tabs(client: TestClient, csrf: str) -> None:
         ("COST_MATERIAL", "原料/辅料", "DTLID", "DOCID"), ("COST_PACKAGE", "包材", "DTLID", "DOCID")]
     for detail in view["details"]:
         fields = {f["name"]: f for f in detail["fields"]}
-        assert [n for n, f in fields.items() if f["editable"]] == ["CUSTOMER_SPECIFIED", "MEMO"]
+        # 2026-10-29 按旧系统开放物料ID（Lookup）、每片含量、额外投料量、单价（.reports/editable-20261029/）
+        assert [n for n, f in fields.items() if f["editable"]] == ["GOODSID", "CUSTOMER_SPECIFIED", "PER_HL", "EXADD_MATER",
+                                                                    "PRICE", "MEMO"]
         assert fields["CUSTOMER_SPECIFIED"]["type"] == "boolean"
         assert fields["BATCH_QTY"]["calculated"] and fields["COST_BATCH"]["calculated"]
     material = {f["name"]: f for f in view["details"][0]["fields"]}

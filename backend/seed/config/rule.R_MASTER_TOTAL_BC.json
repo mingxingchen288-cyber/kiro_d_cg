@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_TOTAL_BC",
+  "name": "主表每批包材成本",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "TOTAL_BC",
+    "order": 3,
+    "expression": "sum(map(filter(COST_PACKAGE, #.DTL_USEFLAG == '印字包材' or #.DTL_USEFLAG == '非印字包材'), #.COST_BATCH)) * (sum(map(filter(COST_MATERIAL, #.DTL_USEFLAG == '原料'), #.COST_BATCH)) > 0 ? 1 / 1.13 : 1)"
+  }
+}

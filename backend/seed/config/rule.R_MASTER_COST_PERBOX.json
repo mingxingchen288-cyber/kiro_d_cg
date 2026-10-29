@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_COST_PERBOX",
+  "name": "主表每盒成本",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "COST_PERBOX",
+    "order": 7,
+    "expression": "TOTAL_COST / APEX_PL * P_PERPACK"
+  }
+}

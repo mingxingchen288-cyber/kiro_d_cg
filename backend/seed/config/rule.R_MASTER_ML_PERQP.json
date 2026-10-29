@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_ML_PERQP",
+  "name": "主表千片毛利",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "ML_PERQP",
+    "order": 9,
+    "expression": "JGF_PERQP - COST_PERQP"
+  }
+}

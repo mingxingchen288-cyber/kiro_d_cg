@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_SALEMONEY",
+  "name": "主表每批销售额",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "SALEMONEY",
+    "order": 5,
+    "expression": "OUT_PRICE_RMB / P_PERPACK * APEX_PL * (YIELD / 100)"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_Y_ML",
+  "name": "主表年毛利",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "Y_ML",
+    "order": 11,
+    "expression": "ML_PERQP / 1000 * ANNUAL_QTY"
+  }
+}

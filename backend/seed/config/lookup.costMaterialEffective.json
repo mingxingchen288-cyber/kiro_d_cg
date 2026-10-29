@@ -1,0 +1,30 @@
+{
+  "type": "lookup",
+  "key": "costMaterialEffective",
+  "name": "物料选择",
+  "content": {
+    "table": "T_COST_GOODS_PRICE_V",
+    "columns": [
+      "GOODSID",
+      "GOODSNAME",
+      "ZX_PRICE",
+      "USEFLAG",
+      "GOODSTYPE",
+      "PACKTYPE",
+      "FACTORYNAME",
+      "STANDARDTYPE",
+      "GOODSNAME_EN"
+    ],
+    "keywordColumns": [
+      "GOODSID",
+      "GOODSNAME",
+      "ZX_PRICE",
+      "USEFLAG",
+      "GOODSTYPE",
+      "PACKTYPE",
+      "FACTORYNAME",
+      "STANDARDTYPE",
+      "GOODSNAME_EN"
+    ]
+  }
+}

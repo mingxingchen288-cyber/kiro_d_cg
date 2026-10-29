@@ -15,7 +15,7 @@ from cost_platform.config.catalog import Catalog
 from cost_platform.config.packs import build_pack, pack_bytes, pack_json
 from cost_platform.contracts.types import ErrorCode, PlatformError
 
-from .support import ROOT, Env, cost_rule_drafts, doc_json, draft, goods_price_items, seed_drafts
+from .support import ROOT, Env, doc_json, draft, goods_price_items, seed_drafts, seed_without_rules
 
 CASES = ROOT / "rules-core" / "fixtures" / "cases"
 
@@ -33,9 +33,9 @@ ENGINE = RulesEngine()
 
 
 def test_seed_cost_rules_compile_and_compute_case_09() -> None:
-    """backend/seed/config 的成本核算配置加上计算规则生成的规则包能 load_pack，对样例 09（cmx 单据 200726）算出相同结果。"""
+    """backend/seed/config 的成本核算配置（含 17 条计算规则）生成的规则包能 load_pack，对样例 09（cmx 单据 200726）算出相同结果。"""
     item = _case("09-")
-    pack = build_pack(Catalog({}).merged([*seed_drafts(), *cost_rule_drafts()]), "COST_PINGGU", 1, ENGINE.core_version())
+    pack = build_pack(Catalog({}).merged(seed_drafts()), "COST_PINGGU", 1, ENGINE.core_version())
     handle = ENGINE.load_pack(pack_bytes(pack))
     result = ENGINE.evaluate(handle, json.dumps(item["request"], ensure_ascii=False))
     assert cost_rules_core.compare_json(result, json.dumps(item["expected"], ensure_ascii=False)) == []
@@ -44,7 +44,7 @@ def test_seed_cost_rules_compile_and_compute_case_09() -> None:
 def test_saved_pack_is_served_by_snapshot() -> None:
     """经保存流程生成、存进 PF_CONFIG_ITEM 的规则包，配置快照的 rules_pack 返回编译好的句柄，计算结果同样例 09。"""
     env = Env(engine=ENGINE)
-    env.save([*seed_drafts(), *cost_rule_drafts()])
+    env.save(seed_drafts())
     stored = env.stored("rulesPack", "COST_PINGGU")
     assert stored is not None and stored["coreVersion"] == ENGINE.core_version()
     snapshot = env.reader.read("ADMIN")
@@ -66,7 +66,7 @@ def _e02_request() -> dict[str, Any]:
 
 def test_c06_calc_rule_sample_e02() -> None:
     """C06 第 5 节的计算规则（包材批量按物料名称分两种算法）：E02 的两行分别算出 1020 和 5.1。"""
-    catalog = Catalog({}).merged([*seed_drafts(), draft("rule", "R_PKG_BATCH_QTY", doc_json("C06", 4))])
+    catalog = Catalog({}).merged([*seed_without_rules(), draft("rule", "R_PKG_BATCH_QTY", doc_json("C06", 4))])
     handle = ENGINE.load_pack(pack_bytes(build_pack(catalog, "COST_PINGGU", 1, ENGINE.core_version())))
     result = json.loads(ENGINE.evaluate(handle, json.dumps(_e02_request(), ensure_ascii=False)))
     assert result["ok"] is True
@@ -91,7 +91,7 @@ def test_c06_ui_rule_sample_compiles() -> None:
 def test_dependency_cycle_rejects_save() -> None:
     """计算规则的依赖成环（跨实体）时保存被拒绝，错误中列出环上的规则（C06 第 5 节执行顺序 4、RC-09）。"""
     env = Env(engine=ENGINE)
-    env.save(seed_drafts())
+    env.save(seed_without_rules())
     rules = [draft("rule", "R_SUM", {"layer": "entity", "target": "COST_PINGGU", "category": "calc", "field": "TOTAL_COST",
                                      "order": 1, "expression": "sum(map(COST_MATERIAL, #.COST_BATCH))"}),
              draft("rule", "R_BATCH", {"layer": "entity", "target": "COST_MATERIAL", "category": "calc", "field": "COST_BATCH",

@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_Y_SALE",
+  "name": "主表年销售额",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "Y_SALE",
+    "order": 12,
+    "expression": "SALEMONEY / APEX_PL * ANNUAL_QTY"
+  }
+}

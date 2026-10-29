@@ -108,7 +108,7 @@ def test_list_and_get_items(env: Env) -> None:
     env.save(seed_drafts())
     pages = env.service.list_items("page")
     assert [(i.type, i.key, i.version, i.updated_by) for i in pages] == [("page", "COST_PINGGU", 1, "1")]
-    assert {i.type for i in env.service.list_items()} == {"entity", "menu", "operation", "page", "role"}
+    assert {i.type for i in env.service.list_items()} == {"entity", "lookup", "menu", "operation", "page", "role", "rule"}
     item = env.service.get_item("entity", "COST_PINGGU")
     assert item.content == next(d for d in seed_drafts() if d.key == "COST_PINGGU" and d.type == "entity").content
     with pytest.raises(PlatformError) as caught:

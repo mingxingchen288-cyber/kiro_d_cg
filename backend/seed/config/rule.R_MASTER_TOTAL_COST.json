@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_TOTAL_COST",
+  "name": "主表每批物料成本",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "TOTAL_COST",
+    "order": 4,
+    "expression": "TOTAL_YL + TOTAL_FL + TOTAL_BC"
+  }
+}

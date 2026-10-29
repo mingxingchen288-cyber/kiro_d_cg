@@ -9,11 +9,11 @@ from cost_platform.config.catalog import Catalog
 from cost_platform.config.packs import build_pack, pack_json
 from cost_platform.config.rule_fields import name_chains, rule_fields
 
-from .support import cost_rule_drafts, seed_drafts
+from .support import seed_drafts
 
 
 def test_cost_pinggu_rule_fields() -> None:
-    pack = pack_json(build_pack(Catalog({}).merged([*seed_drafts(), *cost_rule_drafts()]), "COST_PINGGU", 1, "0.1.0"))
+    pack = pack_json(build_pack(Catalog({}).merged(seed_drafts()), "COST_PINGGU", 1, "0.1.0"))
     used = rule_fields(pack)
     # 主表：备注不被规则读取；每批数量、包装规格、外销价、汇率、得率、年需求量被读取
     assert "MEMO" not in used["COST_PINGGU"]

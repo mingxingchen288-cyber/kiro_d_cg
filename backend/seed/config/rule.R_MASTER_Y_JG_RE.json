@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_Y_JG_RE",
+  "name": "主表年加工费",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "Y_JG_RE",
+    "order": 10,
+    "expression": "JGF_PERQP / 1000 * ANNUAL_QTY"
+  }
+}

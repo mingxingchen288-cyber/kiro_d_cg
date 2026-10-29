@@ -23,7 +23,7 @@ def test_e37_detail_trigger_column_and_goods_block() -> None:
     assert material.columns == ["物料", "物料名称", "单价", "金额"]
     assert [(r.op, r.flows) for r in material.rows] == [("modify", ["COST_TO_GOODS"]), ("modify", []), ("modify", [])]
     assert cells(material.rows[0]) == [("25", "25"), ("聚维酮K30", "聚维酮K30"), ("75", "90"), ("750", "900")]
-    assert cells(material.rows[1])[:3] == [("310", "13165"), ("玉米淀粉", "玉米淀粉"), ("22", "40")]
+    assert cells(material.rows[1])[:3] == [("310", "13165"), ("玉米淀粉", "微晶纤维素"), ("22", "40")]
     [goods_block] = detail.view.affected
     assert (goods_block.key, goods_block.title, goods_block.selection, goods_block.editable) == ("goods", "物料清单", "all", False)
     [row] = goods_block.rows
@@ -33,9 +33,9 @@ def test_e37_detail_trigger_column_and_goods_block() -> None:
 
 
 def test_e37_changed_material_shows_new_name_from_lookup() -> None:
-    """E37 中玉米淀粉换成微晶纤维素（13165）：物料列有 Lookup 时，物料名称按新的物料ID查出，显示"玉米淀粉 → 微晶纤维素"；
-    没换物料的行仍是视图带出的名称。"""
-    h = Harness(["COST_TO_GOODS"], goods_lookup=True)
+    """E37 中玉米淀粉换成微晶纤维素（13165）：物料列的 Lookup（seed 的 costMaterialEffective）回填物料名称，名称按新的
+    物料ID查出，显示"玉米淀粉 → 微晶纤维素"；没换物料的行仍是视图带出的名称。"""
+    h = Harness(["COST_TO_GOODS"])
     approval = e37_save(h, "90")
     [material] = [d for d in h.detail(ADMIN, approval.approval_id).view.details if d.key == "material"]
     assert cells(material.rows[0])[1] == ("聚维酮K30", "聚维酮K30")

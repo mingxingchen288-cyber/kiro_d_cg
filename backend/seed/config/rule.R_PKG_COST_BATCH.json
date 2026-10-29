@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_PKG_COST_BATCH",
+  "name": "包材包材成本",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PACKAGE",
+    "category": "calc",
+    "field": "COST_BATCH",
+    "order": 2,
+    "expression": "BATCH_QTY * PRICE"
+  }
+}

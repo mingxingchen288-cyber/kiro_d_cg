@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_JGF_BATCH",
+  "name": "主表每批加工费",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "JGF_BATCH",
+    "order": 6,
+    "expression": "SALEMONEY - TOTAL_COST"
+  }
+}

@@ -79,13 +79,16 @@ def test_row_condition_on_page_not_in_role_is_denied() -> None:
 # ---------------------------------------------------------------- AZ-04 可写字段
 
 def test_writable_fields_follow_page_view_and_role_columns() -> None:
-    """成本核算主表：保存操作允许写 6 个字段；技术中心的列权限把 USESTATUS、PINGGU_CLASS、BUSINESS_USER 设为不可编辑。"""
+    """成本核算主表：保存操作允许写旧系统 EDITABLE=1 的 16 个字段；技术中心的列权限把其中 11 个设为不可编辑。
+    原辅料的单价技术中心不可编辑，但它是物料 Lookup 的回填目标，换物料时照样写（E31，见下一个用例）。"""
     admin = context(snapshot("ADMIN"))
     assert checker.writable_fields(admin, COST_PINGGU, COST_PINGGU) == frozenset(
-        {"PACKTYPE", "USESTATUS", "DOSAGE", "MEMO", "PINGGU_CLASS", "BUSINESS_USER"})
+        {"ANNUAL_QTY", "APEX_PL", "P_PERPACK", "S_PERBACK", "PACKTYPE", "X_PERBACK", "M_PERPACK", "USESTATUS", "DOSAGE",
+         "YIELD", "OUT_PRICE_F", "COST_PERQP", "MEMO", "FMRATE", "PINGGU_CLASS", "BUSINESS_USER"})
     tech = context(snapshot("技术中心"))
-    assert checker.writable_fields(tech, COST_PINGGU, COST_PINGGU) == frozenset({"PACKTYPE", "DOSAGE", "MEMO"})
-    assert checker.writable_fields(tech, COST_PINGGU, COST_MATERIAL) == frozenset({"CUSTOMER_SPECIFIED", "MEMO"})
+    assert checker.writable_fields(tech, COST_PINGGU, COST_PINGGU) == frozenset({"APEX_PL", "PACKTYPE", "DOSAGE", "YIELD", "MEMO"})
+    assert checker.writable_fields(tech, COST_PINGGU, COST_MATERIAL) == frozenset(
+        {"GOODSID", "CUSTOMER_SPECIFIED", "PER_HL", "EXADD_MATER", "PRICE", "MEMO"})
 
 
 def test_lookup_fill_targets_are_writable() -> None:

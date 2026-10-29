@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_JGF_PERQP",
+  "name": "主表千片加工费",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "JGF_PERQP",
+    "order": 8,
+    "expression": "JGF_BATCH / APEX_PL * 1000"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "type": "rule",
+  "key": "R_MAT_BATCH_QTY",
+  "name": "原辅料每批数量",
+  "content": {
+    "layer": "entity",
+    "target": "COST_MATERIAL",
+    "category": "calc",
+    "field": "BATCH_QTY",
+    "order": 1,
+    "branches": [
+      {
+        "when": "(DTL_USEFLAG == '原料' or DTL_USEFLAG == '辅料') and matches(GOODSNAME, '胶囊')",
+        "expression": "master.APEX_PL / 10000 * (1 + EXADD_MATER / 100)"
+      },
+      {
+        "when": "(DTL_USEFLAG == '原料' or DTL_USEFLAG == '辅料')",
+        "expression": "PER_HL * master.APEX_PL * (1 + EXADD_MATER / 100) / 1000000"
+      },
+      {
+        "when": "(DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '桶|说明书|小盒|标签|瓶|盖|干燥剂|序列化')",
+        "expression": "master.APEX_PL / master.P_PERPACK * (1 + EXADD_MATER / 100)"
+      },
+      {
+        "when": "(DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '硬片|铝箔|复合膜')",
+        "expression": "PER_HL * master.APEX_PL * (1 + EXADD_MATER / 100) / 1000000"
+      },
+      {
+        "when": "(DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '大纸箱')",
+        "expression": "ceil(master.APEX_PL / (master.P_PERPACK * master.S_PERBACK) * (1 + EXADD_MATER / 100))"
+      },
+      {
+        "when": "(DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '托盘')",
+        "expression": "ceil(master.APEX_PL / (master.P_PERPACK * master.S_PERBACK * master.X_PERBACK) * (1 + EXADD_MATER / 100))"
+      },
+      {
+        "when": "(DTL_USEFLAG == '印字包材' or DTL_USEFLAG == '非印字包材') and matches(GOODSNAME, '中盒')",
+        "expression": "ceil(master.APEX_PL / (master.M_PERPACK * master.S_PERBACK) * (1 + EXADD_MATER / 100))"
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_TOTAL_FL",
+  "name": "主表每批辅料成本",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "TOTAL_FL",
+    "order": 2,
+    "expression": "sum(map(filter(COST_MATERIAL, #.DTL_USEFLAG == '辅料'), #.COST_BATCH)) * (sum(map(filter(COST_MATERIAL, #.DTL_USEFLAG == '原料'), #.COST_BATCH)) > 0 ? 1 / 1.13 : 1)"
+  }
+}

@@ -123,13 +123,11 @@ class Config:
 
     def __init__(self, flows: Iterable[str] = (), *, register_goods: bool = False,
                  entity_overrides: Mapping[str, dict[str, Any]] | None = None,
-                 extra_flows: Iterable[t.ConfigDraft] = (), goods_lookup: bool = False) -> None:
-        """`goods_lookup`：成本核算页原辅料、包材的物料ID配上物料 Lookup（`GOODS`，从 T_COST_GOODS 回填物料名称），
-        对应旧系统成本核算页物料列的 Lookup；d_cg 现有的种子配置里还没有。"""
-        self.lookups: dict[str, t.LookupConfig] = {}
-        if goods_lookup:
-            self.lookups["GOODS"] = t.LookupConfig(table="T_COST_GOODS", columns=["GOODSID", "GOODSNAME"],
-                                                   keyword_columns=["GOODSID", "GOODSNAME"], order_by="GOODSID")
+                 extra_flows: Iterable[t.ConfigDraft] = ()) -> None:
+        """成本核算页原辅料、包材的物料ID用 seed 的物料 Lookup（`costMaterialEffective`，从 T_COST_GOODS_PRICE_V 回填物料
+        名称、分类等），对应旧系统成本核算页物料列的 Lookup。"""
+        lookup = _seed("lookup.costMaterialEffective.json")
+        self.lookups: dict[str, t.LookupConfig] = {lookup.key: t.parse_config_content("lookup", lookup.content)}  # type: ignore[dict-item]
         items = [_seed("entity.COST_PINGGU.json"), _seed("entity.COST_MATERIAL.json"), _seed("entity.COST_PACKAGE.json"),
                  _seed("page.COST_PINGGU.json"), _seed("operation.COST_PINGGU.save.json"), GOODS_ENTITY, GOODS_PAGE, GOODS_SAVE]
         items += [role_item(code, name, admin) for code, (name, admin) in ROLES.items()]
@@ -144,10 +142,6 @@ class Config:
             content = dict(item.content)
             if item.type == "entity" and entity_overrides and item.key in entity_overrides:
                 content = {**content, **entity_overrides[item.key]}
-            if item.type == "page" and item.key == "COST_PINGGU" and goods_lookup:
-                lookup = {"code": "GOODS", "fill": {"GOODSID": "GOODSID", "GOODSNAME": "GOODSNAME"}}
-                content["details"] = [{**d, "fields": {**d.get("fields", {}), "GOODSID": {"lookup": lookup}}}
-                                      for d in content["details"]]
             parsed = t.parse_config_content(item.type, content)
             if item.type == "entity":
                 self.entities[item.key] = parsed  # type: ignore[assignment]

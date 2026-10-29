@@ -74,12 +74,16 @@ def test_references_pass(env: Env) -> None:
     assert problems(env, page, GOODS_LOOKUP, STATUS_DICT) == []
 
 
+APPENDED = len(WORLD[("operation", "COST_PINGGU.save")].content["writableFields"]["COST_PINGGU"])
+"""保存操作主表 writableFields 末尾追加一项时它的下标。"""
+
+
 def test_references_rejected(env: Env) -> None:
     found = problems(env, edited("page", "COST_PINGGU", _lookup_field("NO_LOOKUP", "NO_DICT")))
     assert_rejected(found, "master.fields.GOODSID.lookup.code", "Lookup NO_LOOKUP 不存在")
     assert_rejected(found, "master.fields.USESTATUS.dictType", "字典 NO_DICT 不存在")
     found = problems(env, edited("operation", "COST_PINGGU.save", lambda c: c["writableFields"]["COST_PINGGU"].append("NO_FIELD")))
-    assert_rejected(found, "writableFields.COST_PINGGU[6]", "NO_FIELD")
+    assert_rejected(found, f"writableFields.COST_PINGGU[{APPENDED}]", "NO_FIELD")
     found = problems(env, edited("approvalFlow", "COST_TO_GOODS", lambda c: c.update(page="NO_PAGE")))
     assert_rejected(found, "page", "页面 NO_PAGE 不存在")
 
@@ -116,7 +120,7 @@ def test_erp_columns_rejected(env: Env) -> None:
     page = edited("page", "COST_PINGGU", lambda c: c["master"].update(fields={"GOODSNAME": {"editable": True}}))
     assert_rejected(problems(env, entity, page), "master.fields.GOODSNAME.editable", "ERP 列 GOODSNAME")
     operation = edited("operation", "COST_PINGGU.save", lambda c: c["writableFields"]["COST_PINGGU"].append("GOODSNAME"))
-    assert_rejected(problems(env, entity, operation), "writableFields.COST_PINGGU[6]", "ERP 列 GOODSNAME")
+    assert_rejected(problems(env, entity, operation), f"writableFields.COST_PINGGU[{APPENDED}]", "ERP 列 GOODSNAME")
     sync = draft("operation", "COST_PINGGU.sync", {
         "label": "同步", "kind": "action", "writableFields": {"COST_PINGGU": ["MEMO", "GOODSNAME"]}, "propagation": "continue",
         "actions": [{"action": "updateTargets", "targets": [{"entity": "COST_PINGGU", "fieldMapping": [
@@ -176,9 +180,11 @@ MEMO_RULE = draft("rule", "R_MEMO", {"layer": "entity", "target": "COST_PINGGU",
 
 
 def test_pack_compiles_pass(env: Env) -> None:
+    """新规则和 seed 的 17 条计算规则一起编进成本核算的规则包（按规则编码排列）。"""
     assert problems(env, MEMO_RULE) == []
     assert env.engine.packs[-1].pack.pack_id == "COST_PINGGU"
-    assert [r.id for r in env.engine.packs[-1].pack.rules] == ["R_MEMO"]
+    seed_rules = [key for config_type, key in WORLD if config_type == "rule"]
+    assert [r.id for r in env.engine.packs[-1].pack.rules] == sorted([*seed_rules, "R_MEMO"])
 
 
 def test_pack_compile_failure_rejected(env: Env) -> None:

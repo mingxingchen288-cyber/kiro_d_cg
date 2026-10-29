@@ -15,6 +15,24 @@
           "pinned": "left"
         }
       },
+      "buttons": [
+        {
+          "action": "addRow",
+          "label": "新增"
+        },
+        {
+          "action": "copyRow",
+          "label": "复制"
+        },
+        {
+          "action": "deleteRow",
+          "label": "删除"
+        },
+        {
+          "action": "saveGridConfig",
+          "label": "保存列配置"
+        }
+      ],
       "grid": {
         "sideBar": true,
         "cellSelection": true,
@@ -25,6 +43,47 @@
       {
         "entity": "COST_MATERIAL",
         "title": "原料/辅料",
+        "fields": {
+          "GOODSID": {
+            "lookup": {
+              "code": "costMaterialEffective",
+              "fill": {
+                "GOODSID": "GOODSID",
+                "GOODSNAME": "GOODSNAME",
+                "PRICE": "ZX_PRICE",
+                "FACTORYNAME": "FACTORYNAME",
+                "STANDARDTYPE": "STANDARDTYPE",
+                "GOODSTYPE": "GOODSTYPE",
+                "GOODSNAME_EN": "GOODSNAME_EN",
+                "DTL_USEFLAG": "USEFLAG"
+              }
+            }
+          },
+          "PER_HL": {
+            "required": true
+          },
+          "PRICE": {
+            "required": true
+          }
+        },
+        "buttons": [
+          {
+            "action": "addRow",
+            "label": "明细新增"
+          },
+          {
+            "action": "copyRow",
+            "label": "明细复制"
+          },
+          {
+            "action": "deleteRow",
+            "label": "明细删除"
+          },
+          {
+            "action": "saveGridConfig",
+            "label": "保存列配置"
+          }
+        ],
         "grid": {
           "sideBar": true,
           "cellSelection": true,
@@ -34,6 +93,41 @@
       {
         "entity": "COST_PACKAGE",
         "title": "包材",
+        "fields": {
+          "GOODSID": {
+            "lookup": {
+              "code": "costMaterialEffective",
+              "fill": {
+                "GOODSID": "GOODSID",
+                "GOODSNAME": "GOODSNAME",
+                "PRICE": "ZX_PRICE",
+                "FACTORYNAME": "FACTORYNAME",
+                "STANDARDTYPE": "STANDARDTYPE",
+                "GOODSTYPE": "GOODSTYPE",
+                "GOODSNAME_EN": "GOODSNAME_EN",
+                "DTL_USEFLAG": "USEFLAG"
+              }
+            }
+          }
+        },
+        "buttons": [
+          {
+            "action": "addRow",
+            "label": "明细新增"
+          },
+          {
+            "action": "copyRow",
+            "label": "明细复制"
+          },
+          {
+            "action": "deleteRow",
+            "label": "明细删除"
+          },
+          {
+            "action": "saveGridConfig",
+            "label": "保存列配置"
+          }
+        ],
         "grid": {
           "sideBar": true,
           "cellSelection": true,

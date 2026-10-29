@@ -34,7 +34,7 @@ def check_goods_block(detail: t.ApprovalDetail) -> None:
 
 def test_new_cost_document_shown_as_added_and_inserted_when_approved() -> None:
     """杨娜新建一张成本单，只有聚维酮K30 一行：主表、明细都预留主键，详情中都是"新增"；批准后整张插入，结果没有"已跳过"。"""
-    h = Harness(["COST_TO_GOODS"], goods_lookup=True)
+    h = Harness(["COST_TO_GOODS"])
     master = {"op": "add", "clientRowId": MASTER_TMP, "values": {"GOODSNAME": "250mg乙酰唑胺片", "MEMO": "新建"}}
     run = h.save(YANGNA, "COST_PINGGU", [{"entity": "COST_PINGGU", "master": master, "details": [k30_row()]}])
     assert run.state.outcome == "approvalSubmitted"
@@ -66,7 +66,7 @@ def test_new_cost_document_shown_as_added_and_inserted_when_approved() -> None:
 def test_new_detail_row_of_existing_document() -> None:
     """成本单 2550 已有，只新增一行聚维酮K30：只给这一行预留主键，2550 整张冻结；详情中主表为"修改"（每盒成本变化），
     这一行为"新增"；批准后用预留的主键插入 2550 的明细。"""
-    h = Harness(["COST_TO_GOODS"], goods_lookup=True)
+    h = Harness(["COST_TO_GOODS"])
     run = h.save(YANGNA, "COST_PINGGU", [cost(2550, k30_row())])
     [approval] = run.state.approvals
     record = h.record(approval.approval_id)

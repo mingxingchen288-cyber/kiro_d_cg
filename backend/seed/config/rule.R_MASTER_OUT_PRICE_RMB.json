@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_MASTER_OUT_PRICE_RMB",
+  "name": "主表出厂价(RMB)",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU",
+    "category": "calc",
+    "field": "OUT_PRICE_RMB",
+    "order": 12,
+    "expression": "OUT_PRICE_F * FMRATE"
+  }
+}

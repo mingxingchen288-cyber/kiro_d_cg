@@ -164,22 +164,10 @@
       "DTL_USEFLAG": {
         "editable": false
       },
-      "GOODSID": {
-        "editable": false
-      },
       "GOODSNAME": {
         "editable": false
       },
-      "PER_HL": {
-        "editable": false
-      },
-      "EXADD_MATER": {
-        "editable": false
-      },
       "SUQTY": {
-        "editable": false
-      },
-      "PRICE": {
         "editable": false
       },
       "BASE_PRICE": {

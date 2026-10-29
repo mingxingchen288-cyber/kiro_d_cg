@@ -203,8 +203,15 @@ def draft(config_type: str, key: str, content: dict[str, Any], name: str | None 
 
 
 def seed_drafts() -> list[ConfigDraft]:
-    """`backend/seed/config/` 的配置项（链路 0 手写的成本核算配置）。"""
+    """`backend/seed/config/` 的配置项（成本核算配置：链路 0 手写，2026-10-29 按旧系统补上计算规则、按钮和物料 Lookup）。"""
     return [parse_wire(ConfigDraft, json.loads(p.read_text(encoding="utf-8"))) for p in sorted(SEED.glob("*.json"))]
+
+
+def seed_without_rules() -> list[ConfigDraft]:
+    """seed 中除计算规则以外的配置项。seed 的规则配置项（`rule.R_*.json`）是成本核算的 17 条计算规则，由
+    `rules-core/fixtures/gen_packs.py` 的 COST_RULES（公式与 cmx 虚拟列一致）按 C06 第 5 节写成，order 按旧系统页面规则；
+    只测某一条规则的用例用这里的配置项，不带 seed 的规则。"""
+    return [d for d in seed_drafts() if d.type != "rule"]
 
 
 def doc_json(prefix: str, index: int) -> Any:
@@ -224,23 +231,6 @@ def gen_packs() -> Any:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def cost_rule_drafts() -> list[ConfigDraft]:
-    """成本核算的计算规则：`rules-core/fixtures/gen_packs.py` 的 COST_RULES（公式与 cmx 虚拟列一致）按 C06 第 5 节写成规则配置项。
-    seed 中没有规则配置项，这里是规则的唯一来源。"""
-    items = []
-    for rule in gen_packs().COST_RULES:
-        if rule.get("category", "calc") != "calc":
-            continue
-        content: dict[str, Any] = {"layer": "entity", "target": rule["entity"], "category": "calc", "field": rule["field"],
-                                   "order": rule["order"]}
-        if "branches" in rule:
-            content["branches"] = rule["branches"]
-        else:
-            content["expression"] = rule["expression"]
-        items.append(draft("rule", rule["id"], content))
-    return items
 
 
 GRID = {"sideBar": True, "cellSelection": True, "groupBy": []}
