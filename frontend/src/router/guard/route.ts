@@ -1,3 +1,10 @@
+/**
+ * 路由守卫：按外壳的会话状态（modules/shell/session.ts）决定去向。
+ * - 没有登录：只能打开登录、403/404/500，其他页面转到登录页并带回跳地址；
+ * - 已登录、还没选角色：登录页显示选角色一步，其他页面转到登录页；
+ * - 已选定角色：登录页转到首页；第一次进入时加上需要登录的路由和菜单（首页、各模块的路由、`/api/me` 的菜单）。
+ * 刷新页面后第一次导航时，用 `/api/me` 恢复会话。
+ */
 import type {
   LocationQueryRaw,
   NavigationGuardNext,
@@ -6,10 +13,11 @@ import type {
   Router
 } from 'vue-router';
 import type { RouteKey, RoutePath } from '@elegant-router/types';
-import { useAuthStore } from '@/store/modules/auth';
 import { useRouteStore } from '@/store/modules/route';
-import { getToken } from '@/store/modules/auth/shared';
+import { shellRuntime } from '@/modules/shell/app';
 import { getRouteName } from '@/router/elegant/transform';
+
+let restored = false;
 
 /**
  * create route guard
@@ -25,40 +33,25 @@ export function createRouteGuard(router: Router) {
       return;
     }
 
-    const authStore = useAuthStore();
-
     const rootRoute: RouteKey = 'root';
     const loginRoute: RouteKey = 'login';
-    const noAuthorizationRoute: RouteKey = '403';
+    const status = shellRuntime().session.status.value;
 
-    const isLogin = Boolean(getToken());
-    const needLogin = !to.meta.constant;
-    const routeRoles = to.meta.roles || [];
-
-    const hasRole = authStore.userInfo.roles.some(role => routeRoles.includes(role));
-    const hasAuth = authStore.isStaticSuper || !routeRoles.length || hasRole;
-
-    // if it is login route when logged in, then switch to the root page
-    if (to.name === loginRoute && isLogin) {
-      next({ name: rootRoute });
+    // 登录页：已选定角色时转到首页；没有登录时显示密码登录，还没选角色时显示选角色
+    if (to.name === loginRoute) {
+      if (status === 'ready') next({ name: rootRoute });
+      else next();
       return;
     }
 
     // if the route does not need login, then it is allowed to access directly
-    if (!needLogin) {
+    if (to.meta.constant) {
       handleRouteSwitch(to, from, next);
       return;
     }
 
-    // the route need login but the user is not logged in, then switch to the login page
-    if (!isLogin) {
+    if (status !== 'ready') {
       next({ name: loginRoute, query: { redirect: to.fullPath } });
-      return;
-    }
-
-    // if the user is logged in but does not have authorization, then switch to the 403 page
-    if (!hasAuth) {
-      next({ name: noAuthorizationRoute });
       return;
     }
 
@@ -95,17 +88,18 @@ async function initRoute(to: RouteLocationNormalized): Promise<RouteLocationRaw 
     return location;
   }
 
-  const isLogin = Boolean(getToken());
+  const { session } = shellRuntime();
+  if (!restored) {
+    restored = true;
+    await session.restore();
+  }
 
-  if (!isLogin) {
-    // if the user is not logged in and the route is a constant route but not the "not-found" route, then it is allowed to access.
+  if (session.status.value !== 'ready') {
+    // 没有登录或还没选角色：登录页、403/404/500 可以打开，其他转到登录页
     if (to.meta.constant && !isNotFoundRoute) {
-      routeStore.onRouteSwitchWhenNotLoggedIn();
-
       return null;
     }
 
-    // if the user is not logged in, then switch to the login page
     const loginRoute: RouteKey = 'login';
     const query = getRouteQueryOfLoginRoute(to, routeStore.routeHome);
 
@@ -137,8 +131,6 @@ async function initRoute(to: RouteLocationNormalized): Promise<RouteLocationRaw 
       return location;
     }
   }
-
-  routeStore.onRouteSwitchWhenLoggedIn();
 
   // the auth route is initialized
   // it is not the "not-found" route, then it is allowed to access

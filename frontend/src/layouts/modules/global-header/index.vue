@@ -5,6 +5,7 @@ import { GLOBAL_HEADER_MENU_ID } from '@/constants/app';
 import { useAppStore } from '@/store/modules/app';
 import { useThemeStore } from '@/store/modules/theme';
 import GlobalLogo from '../global-logo/index.vue';
+import InboxBell from './components/inbox-bell.vue';
 import ThemeButton from './components/theme-button.vue';
 import UserAvatar from './components/user-avatar.vue';
 
@@ -87,6 +88,7 @@ useEventListener(document, 'fullscreenchange', () => {
     </div>
     <div class="h-full flex-y-center justify-end">
       <FullScreen :full="isFullscreen || appStore.fullContent" @click="toggleUltimateFullscreen" />
+      <InboxBell />
       <ThemeButton />
       <UserAvatar />
     </div>

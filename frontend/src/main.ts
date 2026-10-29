@@ -5,8 +5,7 @@ import { setupAgGrid } from './plugins/ag-grid';
 import { setupStore } from './store';
 import { setupRouter } from './router';
 import { setupI18n } from './locales';
-import { useAuthStore } from './store/modules/auth';
-import { AUTH_IDLE_TIMEOUT_EVENT, setupAuthActivityTracking } from './store/modules/auth/shared';
+import { installModules } from './modules/shell/app';
 import App from './App.vue';
 
 async function setupApp() {
@@ -24,11 +23,9 @@ async function setupApp() {
   const app = createApp(App);
 
   setupStore(app);
-  setupAuthActivityTracking();
-  window.addEventListener(AUTH_IDLE_TIMEOUT_EVENT, () => {
-    const authStore = useAuthStore();
-    authStore.resetStore();
-  });
+
+  // 外壳创建 ShellApi，把 src/modules/ 下的前端模块注册进来（C11），路由在登录后挂到主布局下
+  installModules();
 
   await setupRouter(app);
 

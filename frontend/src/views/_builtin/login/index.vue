@@ -2,12 +2,18 @@
 import { computed } from 'vue';
 import { getPaletteColorByNumber, mixColor } from '@sa/color';
 import { useAppStore } from '@/store/modules/app';
+import { useAuthStore } from '@/store/modules/auth';
 import { useThemeStore } from '@/store/modules/theme';
 import { $t } from '@/locales';
 import PwdLogin from './modules/pwd-login.vue';
+import RoleSelect from './modules/role-select.vue';
 
 const appStore = useAppStore();
+const authStore = useAuthStore();
 const themeStore = useThemeStore();
+
+/** 已登录、还没选角色时显示选角色（FS-02） */
+const choosingRole = computed(() => authStore.status === 'roleRequired');
 
 const bgThemeColor = computed(() =>
   themeStore.darkMode ? getPaletteColorByNumber(themeStore.themeColor, 600) : themeStore.themeColor
@@ -47,10 +53,13 @@ const bgColor = computed(() => {
           </div>
         </header>
         <main class="pt-24px">
-          <h3 class="text-18px text-primary font-medium">{{ $t('page.login.pwdLogin.title') }}</h3>
+          <h3 class="text-18px text-primary font-medium">
+            {{ choosingRole ? '选择角色' : $t('page.login.pwdLogin.title') }}
+          </h3>
           <div class="pt-24px">
             <Transition :name="themeStore.page.animateMode" mode="out-in" appear>
-              <PwdLogin />
+              <RoleSelect v-if="choosingRole" />
+              <PwdLogin v-else />
             </Transition>
           </div>
         </main>

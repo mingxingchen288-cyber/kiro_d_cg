@@ -8,7 +8,6 @@ import { GLOBAL_HEADER_MENU_ID, GLOBAL_SIDER_MENU_ID } from '@/constants/app';
 import { useAppStore } from '@/store/modules/app';
 import { useThemeStore } from '@/store/modules/theme';
 import { useRouteStore } from '@/store/modules/route';
-import { useRouterPush } from '@/hooks/common/router';
 import { useMenu, useMixMenuContext } from '../context';
 import FirstLevelMenu from '../components/first-level-menu.vue';
 import GlobalLogo from '../../global-logo/index.vue';
@@ -21,7 +20,6 @@ const route = useRoute();
 const appStore = useAppStore();
 const themeStore = useThemeStore();
 const routeStore = useRouteStore();
-const { routerPushByKeyWithMetaQuery } = useRouterPush();
 const { bool: drawerVisible, setBool: setDrawerVisible } = useBoolean();
 const {
   firstLevelMenus,
@@ -100,7 +98,7 @@ function updateExpandedKeys() {
 }
 
 watch(
-  () => route.name,
+  () => [route.path, routeStore.menus],
   () => {
     updateExpandedKeys();
   },
@@ -160,7 +158,7 @@ watch(
               :options="childLevelMenus"
               :inverted="inverted"
               :indent="18"
-              @update:value="routerPushByKeyWithMetaQuery"
+              @update:value="routeStore.openMenu"
             />
           </SimpleScrollbar>
         </DarkModeContainer>

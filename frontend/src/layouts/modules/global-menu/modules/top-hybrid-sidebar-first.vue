@@ -3,7 +3,7 @@ import type { RouteKey } from '@elegant-router/types';
 import { GLOBAL_HEADER_MENU_ID, GLOBAL_SIDER_MENU_ID } from '@/constants/app';
 import { useAppStore } from '@/store/modules/app';
 import { useThemeStore } from '@/store/modules/theme';
-import { useRouterPush } from '@/hooks/common/router';
+import { useRouteStore } from '@/store/modules/route';
 import FirstLevelMenu from '../components/first-level-menu.vue';
 import { useMenu, useMixMenuContext } from '../context';
 
@@ -13,7 +13,7 @@ defineOptions({
 
 const appStore = useAppStore();
 const themeStore = useThemeStore();
-const { routerPushByKeyWithMetaQuery } = useRouterPush();
+const routeStore = useRouteStore();
 const {
   firstLevelMenus,
   secondLevelMenus,
@@ -43,7 +43,7 @@ function handleSelectMenu(key: RouteKey) {
       :options="secondLevelMenus"
       :indent="18"
       responsive
-      @update:value="routerPushByKeyWithMetaQuery"
+      @update:value="routeStore.openMenu"
     />
   </Teleport>
   <Teleport :to="`#${GLOBAL_SIDER_MENU_ID}`">

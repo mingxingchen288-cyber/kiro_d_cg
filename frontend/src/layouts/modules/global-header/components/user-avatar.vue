@@ -1,11 +1,14 @@
 <script setup lang="ts">
+/**
+ * 顶栏头像菜单（沿用旧系统）：修改密码、退出登录。
+ * 修改密码调 `POST /api/auth/password`（不要求旧密码，与旧系统相同）；退出登录调 `POST /api/auth/logout` 后回登录页。
+ */
 import { computed, reactive, ref } from 'vue';
 import type { VNode } from 'vue';
-import { useFormRules, useNaiveForm } from '@/hooks/common/form';
 import { useAuthStore } from '@/store/modules/auth';
+import { useFormRules, useNaiveForm } from '@/hooks/common/form';
 import { useRouterPush } from '@/hooks/common/router';
 import { useSvgIcon } from '@/hooks/common/icon';
-import { fetchChangePassword } from '@/service/api';
 import { $t } from '@/locales';
 
 defineOptions({
@@ -13,7 +16,7 @@ defineOptions({
 });
 
 const authStore = useAuthStore();
-const { routerPushByKey, toLogin } = useRouterPush();
+const { toLogin } = useRouterPush();
 const { SvgIconVNode } = useSvgIcon();
 const { formRef, validate, restoreValidation } = useNaiveForm();
 
@@ -84,7 +87,7 @@ function logout() {
     positiveText: $t('common.confirm'),
     negativeText: $t('common.cancel'),
     onPositiveClick: () => {
-      authStore.resetStore({ preserveRedirect: false });
+      authStore.logout();
     }
   });
 }
@@ -108,14 +111,14 @@ function closeChangePasswordModal() {
 async function submitChangePassword() {
   await validate();
   submitLoading.value = true;
-
-  const { error } = await fetchChangePassword(changePasswordModel.password);
-
-  submitLoading.value = false;
-
-  if (!error) {
+  try {
+    await authStore.changePassword(changePasswordModel.password);
     window.$message?.success($t('common.modifySuccess'));
     closeChangePasswordModal();
+  } catch (error) {
+    window.$message?.error(error instanceof Error ? error.message : String(error));
+  } finally {
+    submitLoading.value = false;
   }
 }
 
@@ -124,9 +127,6 @@ function handleDropdown(key: DropdownKey) {
     openChangePasswordModal();
   } else if (key === 'logout') {
     logout();
-  } else {
-    // If your other options are jumps from other routes, they will be directly supported here
-    routerPushByKey(key);
   }
 }
 </script>

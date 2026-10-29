@@ -1,187 +1,130 @@
-import { computed, reactive, ref } from 'vue';
-import { useRoute } from 'vue-router';
+/**
+ * 登录状态（外壳的会话 `ShellSession` 的界面一侧）：登录、选角色、注销、改密码，以及会话变化时的页签、路由和跳转。
+ * 会话的规则见 src/modules/shell/session.ts（FS-02）。
+ */
+import { computed } from 'vue';
 import { defineStore } from 'pinia';
 import { useLoading } from '@sa/hooks';
-import { type CurrentUser, login as platformLogin, me as platformMe } from '@/service/platform';
+import { router } from '@/router';
 import { useRouterPush } from '@/hooks/common/router';
 import { localStg } from '@/utils/storage';
+import { shellRuntime } from '@/modules/shell/app';
 import { SetupStoreId } from '@/enum';
 import { $t } from '@/locales';
 import { useRouteStore } from '../route';
 import { useTabStore } from '../tab';
-import { beginAuthShutdown, clearAuthStorage, getToken, markAuthActivity, setAuthTokens } from './shared';
 
 export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
-  const route = useRoute();
-  const authStore = useAuthStore();
   const routeStore = useRouteStore();
   const tabStore = useTabStore();
-  const { toLogin, redirectFromLogin } = useRouterPush(false);
+  const { redirectFromLogin } = useRouterPush(false);
   const { loading: loginLoading, startLoading, endLoading } = useLoading();
+  const { session, dirtyTabs } = shellRuntime();
 
-  const token = ref(getToken());
+  /** 顶栏显示的用户信息 */
+  const userInfo = computed(() => ({
+    userId: session.user.value?.userId ?? '',
+    userName: session.user.value?.username ?? '',
+    realName: session.user.value?.displayName ?? ''
+  }));
+  const status = computed(() => session.status.value);
+  const isLogin = computed(() => session.status.value === 'ready');
+  const roles = computed(() => session.roles.value);
 
-  const userInfo: Api.Auth.UserInfo = reactive({
-    userId: '',
-    userName: '',
-    realName: '',
-    departmentId: '',
-    departmentName: '',
-    roles: []
-  });
+  function showError(error: unknown) {
+    window.$message?.error(error instanceof Error ? error.message : String(error));
+  }
 
-  /** is super role in static route */
-  const isStaticSuper = computed(() => {
-    const { VITE_AUTH_ROUTE_MODE, VITE_STATIC_SUPER_ROLE } = import.meta.env;
+  async function login(userName: string, password: string) {
+    startLoading();
+    try {
+      await session.login(userName, password);
+    } catch (error) {
+      showError(error);
+    } finally {
+      endLoading();
+    }
+  }
 
-    return VITE_AUTH_ROUTE_MODE === 'static' && userInfo.roles.includes(VITE_STATIC_SUPER_ROLE);
-  });
+  async function selectRole(roleCode: string) {
+    startLoading();
+    try {
+      await session.selectRole(roleCode);
+    } catch (error) {
+      showError(error);
+    } finally {
+      endLoading();
+    }
+  }
 
-  /** Is login */
-  const isLogin = computed(() => Boolean(token.value));
+  async function logout() {
+    try {
+      await session.logout();
+    } catch (error) {
+      showError(error);
+    }
+  }
 
-  /** Reset auth store */
-  async function resetStore(options?: { preserveRedirect?: boolean }) {
-    const { preserveRedirect = true } = options || {};
-    const shouldRedirectToLogin = !route.meta.constant;
+  function changePassword(password: string) {
+    return session.changePassword(password);
+  }
 
-    beginAuthShutdown();
-    recordUserId();
-
-    clearAuthStorage();
-
-    authStore.$reset();
-
+  /** 去登录页之前清掉路由和页签（页签按旧系统缓存到本地，同一账号再登录时恢复） */
+  async function resetToLogin(keepRedirect: boolean) {
+    const current = router.currentRoute.value;
     tabStore.cacheTabs();
     tabStore.$reset();
+    dirtyTabs.clear();
     await routeStore.resetStore();
-
-    if (shouldRedirectToLogin) {
-      await toLogin(undefined, preserveRedirect ? undefined : null);
+    if (current.name !== 'login') {
+      const query = keepRedirect && !current.meta.constant ? { redirect: current.fullPath } : {};
+      await router.push({ name: 'login', query });
     }
   }
 
-  /** Record the user ID of the previous login session Used to compare with the current user ID on next login */
-  function recordUserId() {
-    if (!userInfo.userId) {
-      return;
+  /** 去选角色之前清掉上一个角色的路由和页签 */
+  async function resetToRoleSelect() {
+    const current = router.currentRoute.value;
+    tabStore.$reset();
+    dirtyTabs.clear();
+    await routeStore.resetStore();
+    if (current.name !== 'login') {
+      await router.push({ name: 'login', query: current.meta.constant ? {} : { redirect: current.fullPath } });
     }
-
-    // Store current user ID locally for next login comparison
-    localStg.set('lastLoginUserId', userInfo.userId);
   }
 
   /**
-   * Check if current login user is different from previous login user If different, clear all tabs
-   *
-   * @returns {boolean} Whether to clear all tabs
+   * 登录、选角色完成：换了账号时清掉缓存的页签、回首页（旧系统 `checkTabClear`），否则回到登录前要去的页面。
    */
-  function checkTabClear(): boolean {
-    if (!userInfo.userId) {
-      return false;
-    }
-
+  async function afterEnter() {
+    const userId = userInfo.value.userId;
     const lastLoginUserId = localStg.get('lastLoginUserId');
-
-    // Clear all tabs if current user is different from previous user
-    if (!lastLoginUserId || lastLoginUserId !== userInfo.userId) {
+    const changedUser = lastLoginUserId !== userId;
+    if (changedUser) {
       localStg.remove('globalTabs');
-      tabStore.clearTabs();
-
-      localStg.remove('lastLoginUserId');
-      return true;
+      await tabStore.clearTabs();
     }
-
-    localStg.remove('lastLoginUserId');
-    return false;
-  }
-
-  /**
-   * Login
-   *
-   * @param userName User name
-   * @param password Password
-   * @param [redirect=true] Whether to redirect after login. Default is `true`
-   */
-  async function login(userName: string, password: string, redirect = true) {
-    startLoading();
-
-    try {
-      // C09 第 2 节：会话放在 HttpOnly Cookie 中，csrfToken 存进会话存储，旧外壳用它判断是否已登录
-      const result = await platformLogin(userName, password);
-      setSession(result.csrfToken, result.user, result.selectedRole ? [result.selectedRole.code] : []);
-
-      // Check if the tab needs to be cleared
-      const isClear = checkTabClear();
-      let needRedirect = redirect;
-
-      if (isClear) {
-        // If the tab needs to be cleared,it means we don't need to redirect.
-        needRedirect = false;
-      }
-      await redirectFromLogin(needRedirect);
-
-      window.$notification?.success({
-        title: $t('page.login.common.loginSuccess'),
-        content: $t('page.login.common.welcomeBack', { userName: userInfo.realName || userInfo.userName }),
-        duration: 4500
-      });
-    } catch (error) {
-      window.$message?.error(error instanceof Error ? error.message : String(error));
-      resetStore();
-    }
-
-    endLoading();
-  }
-
-  function setSession(csrfToken: string, user: CurrentUser, roles: string[]) {
-    setAuthTokens(csrfToken, '');
-    token.value = csrfToken;
-    Object.assign(userInfo, {
-      userId: user.userId,
-      userName: user.username,
-      realName: user.displayName,
-      departmentId: user.departmentId || '',
-      roles
+    localStg.set('lastLoginUserId', userId);
+    await redirectFromLogin(!changedUser);
+    window.$notification?.success({
+      title: $t('page.login.common.loginSuccess'),
+      content: $t('page.login.common.welcomeBack', { userName: userInfo.value.realName || userInfo.value.userName }),
+      duration: 4500
     });
   }
 
-  async function getUserInfo() {
-    try {
-      const info = await platformMe();
-      setSession(info.csrfToken, info.user, info.role ? [info.role.code] : []);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async function initUserInfo() {
-    const hasToken = getToken();
-
-    if (hasToken) {
-      markAuthActivity(true);
-      const pass = await getUserInfo();
-
-      if (!pass) {
-        resetStore();
-        return false;
-      }
-
-      return true;
-    }
-
-    return false;
-  }
-
   return {
-    token,
     userInfo,
-    isStaticSuper,
+    status,
     isLogin,
+    roles,
     loginLoading,
-    resetStore,
     login,
-    initUserInfo
+    selectRole,
+    logout,
+    changePassword,
+    resetToLogin,
+    resetToRoleSelect,
+    afterEnter
   };
 });

@@ -7,7 +7,6 @@ import { GLOBAL_HEADER_MENU_ID, GLOBAL_SIDER_MENU_ID } from '@/constants/app';
 import { useAppStore } from '@/store/modules/app';
 import { useThemeStore } from '@/store/modules/theme';
 import { useRouteStore } from '@/store/modules/route';
-import { useRouterPush } from '@/hooks/common/router';
 import { useMenu, useMixMenuContext } from '../context';
 
 defineOptions({
@@ -18,7 +17,6 @@ const route = useRoute();
 const appStore = useAppStore();
 const themeStore = useThemeStore();
 const routeStore = useRouteStore();
-const { routerPushByKeyWithMetaQuery } = useRouterPush();
 const {
   firstLevelMenus,
   secondLevelMenus,
@@ -50,7 +48,7 @@ function updateExpandedKeys() {
 }
 
 watch(
-  () => route.name,
+  () => [route.path, routeStore.menus],
   () => {
     updateExpandedKeys();
   },
@@ -80,7 +78,7 @@ watch(
         :collapsed-icon-size="22"
         :options="secondLevelMenus"
         :indent="18"
-        @update:value="routerPushByKeyWithMetaQuery"
+        @update:value="routeStore.openMenu"
       />
     </SimpleScrollbar>
   </Teleport>

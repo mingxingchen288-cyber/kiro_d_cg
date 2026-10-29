@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { type Component, computed, defineAsyncComponent, h, markRaw, shallowRef, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import type { RouteLocationNormalized, RouteRecordNormalized } from 'vue-router';
 import { router } from '@/router';
 import { useAppStore } from '@/store/modules/app';
 import { useTabStore } from '@/store/modules/tab';
@@ -26,6 +26,21 @@ const tabStore = useTabStore();
  */
 const mountedTabs = shallowRef<Map<string, Component>>(new Map());
 
+/**
+ * 路由写了 `props` 时，按页签的地址算出传给组件的参数。页签直接挂载组件、不经 RouterView，
+ * 所以由这里代替 RouterView 传参（例如通用页面 `/page/:pageCode` 的 pageCode、审批详情的审批编号）。
+ */
+function tabProps(tab: App.Global.Tab, record: RouteRecordNormalized): Record<string, unknown> {
+  const option = record.props?.default;
+  if (!option) return {};
+  const resolved = router.resolve(tab.fullPath);
+  if (option === true) return { ...resolved.params };
+  if (typeof option === 'function') {
+    return (option(resolved as unknown as RouteLocationNormalized) as Record<string, unknown> | undefined) ?? {};
+  }
+  return { ...option };
+}
+
 /** 根据 tab 的 routeKey 从 router 中解析出对应的视图组件 */
 function resolveTabComponent(tab: App.Global.Tab): Component | null {
   const routes = router.getRoutes();
@@ -35,23 +50,17 @@ function resolveTabComponent(tab: App.Global.Tab): Component | null {
   const comp = matched.components?.default;
   if (!comp) return null;
 
-  // 动态页面（有 pageCode）：包装组件，固定传入 pageCode prop
-  if (tab.pageCode) {
-    const pageCode = tab.pageCode;
-    const asyncComp = typeof comp === 'function' ? defineAsyncComponent(comp as () => Promise<any>) : comp;
-    return markRaw({
-      name: `tab-${tab.id}`,
-      setup() {
-        return () => h(asyncComp as Component, { pageCode });
-      }
-    });
-  }
+  const view = typeof comp === 'function' ? defineAsyncComponent(comp as () => Promise<any>) : (comp as Component);
+  const viewProps = tabProps(tab, matched);
 
-  // 非动态页面，直接使用
-  if (typeof comp === 'function') {
-    return markRaw(defineAsyncComponent(comp as () => Promise<any>));
-  }
-  return markRaw(comp as Component);
+  if (!Object.keys(viewProps).length) return markRaw(view);
+
+  return markRaw({
+    name: `tab-${tab.id}`,
+    setup() {
+      return () => h(view, viewProps);
+    }
+  });
 }
 
 /** 确保 tab 对应的组件已挂载 */

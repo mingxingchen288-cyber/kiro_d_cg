@@ -1,10 +1,14 @@
+/**
+ * 菜单的选中和跳转。菜单来自 `/api/me`（modules/shell/menus.ts），菜单 key 不再是路由名称：
+ * 选中项按当前路径找菜单（`routeStore.menuKeyOfPath`），一级、二级菜单按菜单的 key 路径找，点击按菜单的路径跳转（`routeStore.openMenu`）。
+ * 所有通用页面共用 `/page/:pageCode` 一个路由，所以跟随路径变化，不跟随路由名称变化。
+ */
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useContext } from '@sa/hooks';
 import type { RouteKey } from '@elegant-router/types';
 import { useRouteStore } from '@/store/modules/route';
 import { useThemeStore } from '@/store/modules/theme';
-import { useRouterPush } from '@/hooks/common/router';
 
 export const [provideMixMenuContext, useMixMenuContext] = useContext('MixMenu', useMixMenu);
 
@@ -13,7 +17,6 @@ function useMixMenu() {
   const routeStore = useRouteStore();
   const themeStore = useThemeStore();
   const { selectedKey } = useMenu();
-  const { routerPushByKeyWithMetaQuery } = useRouterPush();
 
   const allMenus = computed<App.Global.Menu[]>(() => routeStore.menus);
 
@@ -25,6 +28,8 @@ function useMixMenu() {
     })
   );
 
+  const selectedKeyPath = computed(() => routeStore.getSelectedMenuKeyPath(selectedKey.value));
+
   const activeFirstLevelMenuKey = ref('');
 
   function setActiveFirstLevelMenuKey(key: string) {
@@ -32,9 +37,7 @@ function useMixMenu() {
   }
 
   function getActiveFirstLevelMenuKey() {
-    const [firstLevelRouteName] = selectedKey.value.split('_');
-
-    setActiveFirstLevelMenuKey(firstLevelRouteName);
+    setActiveFirstLevelMenuKey(selectedKeyPath.value[0] ?? selectedKey.value);
   }
 
   const isActiveFirstLevelMenuHasChildren = computed(() => {
@@ -51,7 +54,7 @@ function useMixMenu() {
     setActiveFirstLevelMenuKey(key);
 
     if (!isActiveFirstLevelMenuHasChildren.value) {
-      routerPushByKeyWithMetaQuery(key);
+      routeStore.openMenu(key);
     }
   }
 
@@ -66,18 +69,7 @@ function useMixMenu() {
   }
 
   function getActiveSecondLevelMenuKey() {
-    const keys = selectedKey.value.split('_');
-
-    if (keys.length < 2) {
-      setActiveSecondLevelMenuKey('');
-      return;
-    }
-
-    const [firstLevelRouteName, level2SuffixName] = keys;
-
-    const secondLevelRouteName = `${firstLevelRouteName}_${level2SuffixName}`;
-
-    setActiveSecondLevelMenuKey(secondLevelRouteName);
+    setActiveSecondLevelMenuKey(selectedKeyPath.value[1] ?? '');
   }
 
   const isActiveSecondLevelMenuHasChildren = computed(() => {
@@ -94,7 +86,7 @@ function useMixMenu() {
     setActiveSecondLevelMenuKey(key);
 
     if (!isActiveSecondLevelMenuHasChildren.value) {
-      routerPushByKeyWithMetaQuery(key);
+      routeStore.openMenu(key);
     }
   }
 
@@ -135,7 +127,7 @@ function useMixMenu() {
   }
 
   watch(
-    () => route.name,
+    () => route.path,
     () => {
       getActiveFirstLevelMenuKey();
       // if there are child level menus, get the active second level menu key
@@ -168,14 +160,16 @@ function useMixMenu() {
 
 export function useMenu() {
   const route = useRoute();
+  const routeStore = useRouteStore();
 
   const selectedKey = computed(() => {
+    const menuKey = routeStore.menuKeyOfPath(route.path);
+    if (menuKey) return menuKey;
+
     const { hideInMenu, activeMenu } = route.meta;
     const name = route.name as string;
 
-    const routeName = (hideInMenu ? activeMenu : name) || name;
-
-    return routeName;
+    return (hideInMenu ? activeMenu : name) || name;
   });
 
   return {

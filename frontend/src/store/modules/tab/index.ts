@@ -7,6 +7,8 @@ import { useRouteStore } from '@/store/modules/route';
 import { useRouterPush } from '@/hooks/common/router';
 import { localStg } from '@/utils/storage';
 import { SetupStoreId } from '@/enum';
+import { shellRuntime } from '@/modules/shell/app';
+import { type ClosingTab, closeConfirmText } from '@/modules/shell/tabs';
 import { useThemeStore } from '../theme';
 import {
   extractTabsByAllRoutes,
@@ -31,8 +33,50 @@ export const useTabStore = defineStore(SetupStoreId.Tab, () => {
   /** Tabs */
   const tabs = ref<App.Global.Tab[]>([]);
 
+  /** 模块经 `ShellApi.tabs.open` 指定的页签标题，按路径 */
+  const titles = ref<Record<string, string>>({});
+
   /** Get active tab */
   const homeTab = ref<App.Global.Tab>();
+
+  /** 弹出关闭确认框（FS-03） */
+  function confirmDialog(labels: string[]) {
+    return new Promise<boolean>(resolve => {
+      window.$dialog?.warning({
+        title: '提示',
+        content: closeConfirmText(labels),
+        positiveText: '确定关闭',
+        negativeText: '取消',
+        onPositiveClick: () => resolve(true),
+        onNegativeClick: () => resolve(false),
+        onClose: () => resolve(false),
+        onMaskClick: () => resolve(false)
+      });
+    });
+  }
+
+  /** 要关闭的页签中有未保存修改的，先确认（C11 `ShellApi.tabs.setDirty`） */
+  function confirmClose(closing: App.Global.Tab[]) {
+    const list: ClosingTab[] = closing.map(tab => ({ id: tab.id, label: tab.newLabel || tab.label }));
+    return shellRuntime().dirtyTabs.confirmClose(list, confirmDialog);
+  }
+
+  /** 页签标题：模块指定的 → 菜单标题 → 路由标题 → 路径 */
+  function labelOf(tab: App.Global.Tab) {
+    return titles.value[tab.id] || routeStore.menuTitleOfPath(tab.routePath) || tab.label || tab.id;
+  }
+
+  /**
+   * 设置页签标题（`ShellApi.tabs.open`）；页签还没打开时，打开后用这个标题
+   *
+   * @param path 页签路径
+   * @param title 标题
+   */
+  function setTabTitle(path: string, title: string) {
+    titles.value = { ...titles.value, [path]: title };
+    const tab = tabs.value.find(item => item.id === path);
+    if (tab) tab.label = title;
+  }
 
   /** Init home tab */
   function initHomeTab() {
@@ -78,6 +122,7 @@ export const useTabStore = defineStore(SetupStoreId.Tab, () => {
    */
   function addTab(route: App.Global.TabRoute, active = true) {
     const tab = getTabByRoute(route);
+    tab.label = labelOf(tab);
 
     const isHomeTab = tab.id === homeTab.value?.id;
 
@@ -96,6 +141,9 @@ export const useTabStore = defineStore(SetupStoreId.Tab, () => {
    * @param tabId Tab id
    */
   async function removeTab(tabId: string) {
+    const closing = tabs.value.find(tab => tab.id === tabId);
+    if (!closing || !(await confirmClose([closing]))) return;
+
     const removeTabIndex = tabs.value.findIndex(tab => tab.id === tabId);
     if (removeTabIndex === -1) return;
 
@@ -144,6 +192,7 @@ export const useTabStore = defineStore(SetupStoreId.Tab, () => {
 
     // Identify tabs to be removed and collect their routeKeys if strategy is 'close'
     const tabsToRemove = tabs.value.filter(tab => !remainTabIds.includes(tab.id));
+    if (!(await confirmClose(tabsToRemove))) return;
     const routeKeysToReset: RouteKey[] = [];
 
     for (const tab of tabsToRemove) {
@@ -360,6 +409,8 @@ export const useTabStore = defineStore(SetupStoreId.Tab, () => {
   return {
     /** All tabs */
     tabs: allTabs,
+    titles,
+    setTabTitle,
     activeTabId,
     homeTab,
     initHomeTab,
