@@ -63,6 +63,22 @@ describe('人员管理', () => {
     expect(model.departmentName(created.departmentId)).toBe('技术中心');
   });
 
+  it('切回人员管理：部门管理刚新建的"成本部"能选，正在新增的行不丢', async () => {
+    const { model, backend } = await openAccounts();
+    const id = model.addRow();
+    model.edit(id, 'username', 'chengben01');
+    backend.departments.push({ departmentId: '14', name: '成本部', parentId: null });
+    backend.roles.push({ code: 'COST_ACCOUNTANT', name: '成本会计' });
+    expect(model.state.departments.map(d => d.name)).not.toContain('成本部');
+
+    await model.refreshChoices();
+    expect(model.state.departments.map(d => d.name)).toEqual(['采购部', '市场部', '技术中心', '成本部']);
+    expect(model.roleNames(['COST_ACCOUNTANT'])).toBe('成本会计');
+    model.edit(id, 'departmentId', '14');
+    expect(model.row(id)).toMatchObject({ username: 'chengben01', departmentId: '14', isNew: true });
+    expect(model.departmentName('14')).toBe('成本部');
+  });
+
   it('修改姓名和部门：保存时角色、状态原样提交', async () => {
     const { model, http } = await openAccounts();
     model.edit('383', 'displayName', '韩群（技术）');

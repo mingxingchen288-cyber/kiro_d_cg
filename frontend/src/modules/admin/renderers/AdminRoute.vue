@@ -57,6 +57,14 @@ const PANELS = {
   flex-direction: column;
 }
 
+/* 页签内容区占满剩余高度，各功能的表格（h-full、flex-1）才有高度；不写时表格只有 2px 高（同 ConfigHome.vue 的写法） */
+.admin-tabs :deep(.n-tabs-pane-wrapper) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 :deep(.admin-tabs__pane) {
   flex: 1;
   min-height: 0;

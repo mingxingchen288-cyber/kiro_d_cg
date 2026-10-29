@@ -58,4 +58,21 @@ describe('角色人员', () => {
     ]);
     expect(model.state.members).toEqual([]);
   });
+
+  it('切回角色人员：配置里刚新建的"成本会计"出现在左边，原来选中的角色不变，再给它分配人员', async () => {
+    const { model, backend } = await openRoleMembers();
+    await model.select('008');
+    backend.roles.push({ code: 'COST_ACCOUNTANT', name: '成本会计' });
+
+    await model.refreshRoles();
+    expect(model.state.roles.map(r => r.name)).toEqual(['系统管理员', '技术中心', '采购', '成本会计']);
+    expect(model.state.selected).toBe('008');
+
+    await model.select('COST_ACCOUNTANT');
+    expect(model.state.members).toEqual([]);
+    await model.loadAccounts();
+    expect(await model.assign('383')).toBe(true);
+    expect(model.state.members.map(m => m.displayName)).toEqual(['韩群']);
+    expect(backend.accounts.find(a => a.userId === '383')!.roleCodes).toEqual(['技术中心', 'COST_ACCOUNTANT']);
+  });
 });

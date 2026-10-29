@@ -102,6 +102,20 @@ export class AccountsModel {
     }
   }
 
+  /**
+   * 重新读取部门和角色，表格中的行和未保存的修改不变。切回人员管理时调用：刚在部门管理新建的部门、
+   * 在配置的角色权限里新建的角色，不刷新页面就能选到、显示出名称。
+   */
+  async refreshChoices() {
+    try {
+      const [departments, roles] = await Promise.all([this.deps.api.departments(), loadRoles(this.deps.api)]);
+      this.state.departments = departments.items;
+      this.state.roles = roles;
+    } catch (error) {
+      this.state.error = messageOf(error);
+    }
+  }
+
   /** 按账号名或姓名查询（C09 的 `keyword`）；未保存的修改不保留 */
   async search(keyword: string) {
     this.state.keyword = keyword.trim();

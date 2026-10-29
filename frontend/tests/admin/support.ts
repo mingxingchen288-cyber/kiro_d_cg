@@ -50,6 +50,9 @@ export class FakeAdminBackend {
 
   passwords = new Map<string, string>();
 
+  /** 角色配置项；测试中可以加一个，模拟在配置的角色权限里新建了角色 */
+  roles = ROLES.map(r => ({ ...r }));
+
   deliveries: Delivery[] = [
     {
       deliveryId: '3f2b6c1e-8a4d-4c2e-9b1a-0d6e5f7a8b9c',
@@ -136,7 +139,7 @@ export class FakeAdminBackend {
     });
     http.on('GET', '/api/config/items', (call: FakeCall) => {
       const type = query(call).type;
-      const items = ROLES.map(r => ({
+      const items = this.roles.map(r => ({
         type: 'role',
         key: r.code,
         name: r.name,

@@ -18,6 +18,7 @@ import type {
 } from 'ag-grid-community';
 import { type AccountField, type AccountRow, AccountsModel, INITIAL_PASSWORD } from '../accounts';
 import type { AdminDeps } from '../shared';
+import { onShownAgain } from './shown-again';
 
 defineOptions({ name: 'AccountsPanel' });
 
@@ -30,6 +31,10 @@ const selectedId = ref<string | null>(null);
 const keyword = ref('');
 const passwordFor = ref<AccountRow | null>(null);
 const password = ref(INITIAL_PASSWORD);
+const root = ref<HTMLElement | null>(null);
+
+// 切回人员管理时重新读取部门和角色：刚在部门管理新建的部门马上能在"部门"下拉中选到
+onShownAgain(root, () => void model.refreshChoices());
 
 const selected = computed(() => (selectedId.value ? (model.row(selectedId.value) ?? null) : null));
 const dirtyCount = computed(() => model.dirtyCount);
@@ -162,7 +167,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="admin-panel h-full flex-col">
+  <div ref="root" class="admin-panel h-full flex-col">
     <div class="admin-panel__toolbar flex-y-center gap-8px">
       <NSpace size="small">
         <NButton size="small" type="primary" :disabled="state.saving" @click="addRow">新增</NButton>

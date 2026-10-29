@@ -61,6 +61,24 @@ export class RoleMembersModel {
     if (first) await this.select(first);
   }
 
+  /**
+   * 重新读取角色列表。切回角色人员时调用：刚在配置的角色权限里新建的角色，不刷新页面就出现在左边。
+   * 选中的角色还在时保持选中、人员列表不重读；不在了选中第一个。
+   */
+  async refreshRoles() {
+    try {
+      this.state.roles = await loadRoles(this.deps.api);
+      this.state.error = null;
+    } catch (error) {
+      this.state.error = messageOf(error);
+      return;
+    }
+    if (this.state.roles.some(r => r.code === this.state.selected)) return;
+    const first = this.state.roles[0]?.code ?? null;
+    if (first) await this.select(first);
+    else this.state.selected = null;
+  }
+
   async select(roleCode: string) {
     this.state.selected = roleCode;
     await this.loadMembers();

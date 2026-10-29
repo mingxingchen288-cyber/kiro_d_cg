@@ -8,6 +8,7 @@ import { NButton, NDataTable, NEmpty, NModal, NScrollbar, NSelect, NSpace, NSpin
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { RoleMembersModel } from '../role-members';
 import type { Account, AdminDeps } from '../shared';
+import { onShownAgain } from './shown-again';
 
 defineOptions({ name: 'RoleMembersPanel' });
 
@@ -17,6 +18,10 @@ const model = new RoleMembersModel(props.deps);
 const state = model.state;
 const showAssign = ref(false);
 const assignId = ref<string | null>(null);
+const root = ref<HTMLElement | null>(null);
+
+// 切回角色人员时重新读取角色：刚在配置的角色权限里新建的角色马上出现在左边
+onShownAgain(root, () => void model.refreshRoles());
 
 /** 角色图标颜色，与旧页面相同 */
 const roleColors = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
@@ -63,7 +68,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="role-members h-full">
+  <div ref="root" class="role-members h-full">
     <div class="role-panel">
       <div class="panel-header">
         <span class="panel-title">角色</span>
