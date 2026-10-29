@@ -7,8 +7,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import cost_platform.approval.migrations as approval_migrations
+import cost_platform.config.migrations as config_migrations
+import cost_platform.delivery.migrations as delivery_migrations
 import cost_platform.identity.migrations as identity_migrations
 import cost_platform.pipeline.migrations as pipeline_migrations
+import cost_platform.queries.migrations as queries_migrations
 from cost_platform.authz.checker import RolePermissionChecker
 from cost_platform.config.files import FileConfigSnapshotReader
 from cost_platform.contracts.types import RoleRef
@@ -23,7 +27,8 @@ from sqlalchemy import Engine
 
 from .settings import Settings
 
-MIGRATION_DIRS = [Path(m.__file__).parent for m in (pipeline_migrations, identity_migrations)]
+MIGRATION_DIRS = [Path(m.__file__).parent for m in (pipeline_migrations, identity_migrations, config_migrations,
+                                                    queries_migrations, approval_migrations, delivery_migrations)]
 
 
 class SystemClock:
