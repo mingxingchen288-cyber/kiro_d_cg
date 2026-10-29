@@ -18,9 +18,10 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from cost_platform.assembly.app import create_app
 from cost_platform.assembly.settings import Settings
 from cost_platform.db_core.engine import create_oracle_engine
+
+from .support import ready_client
 
 pytestmark = pytest.mark.oracle
 
@@ -32,7 +33,7 @@ DTLID = "206323"
 
 @pytest.fixture(scope="module")
 def client() -> Iterator[TestClient]:
-    with TestClient(create_app(), base_url="http://localhost:8080") as c:
+    with ready_client() as c:
         yield c
 
 

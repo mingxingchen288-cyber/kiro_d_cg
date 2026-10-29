@@ -19,10 +19,10 @@
 
 按[架构第 6 节](../架构与组装.md)组装，挂载 `POST /api/commands`、`GET /health`。
 
-- AS-01：组装用插件清单（[架构 6.1](../架构与组装.md)）：Oracle + Redis 一份（`oracle_plugins`），内存替代实现一份。两份清单代替原来的 `PLATFORM_BACKEND`。内存清单还没有做。
+- AS-01：组装用插件清单（[架构 6.1](../架构与组装.md)）：运行时只有 Oracle + Redis 一份插件清单（`oracle_plugins`），不再用 `PLATFORM_BACKEND`。内存组合用于 assembly 的模拟验证（`backend/tests/assembly`，用 contracts 的替代实现，经 `build_app(插件清单)` 组装），不是运行模式。
 - AS-02：请求中间件：调用 `Authenticator`（请求带 `X-Background-Request: 1` 时传 `touch=False`）→ 调用 `ConfigSnapshotReader` → 生成执行上下文（[C04](../契约/C04-执行上下文.md)）→ 交给路由。写请求的 Origin 不在 `PLATFORM_ALLOWED_ORIGINS` 中时返回 403 ORIGIN_REJECTED；错误按 [C03](../契约/C03-错误.md) 输出；每个响应带 `X-Config-Version`。
 - AS-03：管道阶段由各模块的插件注册，执行先后由 orchestration 的 `STAGE_ORDER` 决定（架构第 7 节），assembly 不排阶段。
-- AS-04：启动时按注册表 setup 的先后调用各插件的 start，关闭时按相反顺序调用 stop。现在的先后：config（导入基础配置 → CF-10 → CF-13 预热 → 配置恢复任务）→ identity 的 ID-06 → realtime 的 Redis 订阅 → delivery 的投递重试。预热完成前，`/health` 返回 503 `{"status": "starting"}`，业务请求返回 503 CONFIG_UNAVAILABLE；完成后 `/health` 返回 200。
+- AS-04：启动时在后台任务中按注册表 setup 的先后依次执行各插件的 start，HTTP 服务不等它们完成就开始应答；全部 start 完成后进入就绪。现在的先后：config（导入基础配置 → CF-10 → CF-13 预热 → 配置恢复任务）→ identity 的 ID-06 → realtime 的 Redis 订阅 → delivery 的投递重试。就绪前，`/health` 返回 503 `{"status": "starting"}`，其他 HTTP 请求不进入路由，返回 503 CONFIG_UNAVAILABLE（C03 的错误响应体），响应不带 `X-Config-Version`；就绪后 `/health` 返回 200。某个插件的 start 失败时记 ERROR 日志（含插件名），平台保持未就绪（CF-13），`/health` 返回 503 `{"status": "failed"}`。关闭时先取消还没结束的启动任务，再按相反顺序调用 stop：只 stop 已经 start 成功的插件，以及没有 start、只有 stop 的插件（例如 db-core 释放连接池）。`/ws` 不经过 HTTP 中间件；就绪前 realtime 的订阅还没有启动。
 - AS-05：命令行 `platform` 只有 `db` 和 `migrate` 两类子命令。
 - AS-06：前端 `main.ts` 创建 HTTP 客户端、实时客户端（断线自动重连），并用 rules-core 交付的 `createCalcWorkerClient` 创建计算客户端，加载外壳，再注册各前端模块。前端服务的响应带 COOP 和 COEP 头，供 rules-core 的 WASM 使用。
 - AS-07：import-linter 和 dependency-cruiser 检查[架构第 3 节](../架构与组装.md)的依赖规则，违反时构建失败。

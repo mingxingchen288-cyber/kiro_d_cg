@@ -7,11 +7,12 @@
 | `system` | Clock、IdGenerator（AS-08） | — |
 | `rules-core` | RulesEngine（rules-core 的 Python 包，只有 assembly 可以导入它） | — |
 | `http` | ContextProvider（AS-02：会话、来源、CSRF、配置快照） | Authenticator、ConfigSnapshotReader、Clock、IdGenerator |
-| `app` | — | CommandExecutor、ContextProvider、ConfigSnapshotReader、APIRouter |
+| `app` | — | CommandExecutor、ContextProvider、ConfigSnapshotReader、RulesEngine、APIRouter |
 
-`app` 在 setup 中取到命令执行、执行上下文、配置代号和全部路由，由 app.py 挂到 FastAPI 上。
+`app` 在 setup 中取到命令执行、执行上下文、配置代号、规则引擎和全部路由，由 app.py 挂到 FastAPI 上。
 
-现在只有一套组合：Oracle + Redis（`oracle_plugins`）。没有内存组合，所以不再有 `PLATFORM_BACKEND` 设置。
+运行时只有一份插件清单：Oracle + Redis（`oracle_plugins`），不再有 `PLATFORM_BACKEND` 设置。内存组合（contracts 的替代实现）
+只用于 assembly 的模拟验证（backend/tests/assembly，AS-01）。
 """
 
 from __future__ import annotations
@@ -143,21 +144,23 @@ class HttpPlugin:
 
 class AppPlugin:
     """取用 app.py 要挂载的东西：全部路由（含 realtime 的 /ws）、`POST /api/commands` 用的命令执行和执行上下文、
-    响应头 `X-Config-Version` 和 `/health` 用的配置代号。"""
+    响应头 `X-Config-Version` 和 `/health` 用的配置代号，以及 `/health` 的 `coreVersion`（C09）用的规则引擎。"""
 
     name = "app"
     provides = ()
-    requires = (CommandExecutor, ContextProvider, ConfigSnapshotReader, APIRouter)
+    requires = (CommandExecutor, ContextProvider, ConfigSnapshotReader, RulesEngine, APIRouter)
 
     executor: CommandExecutor
     contexts: ContextProvider
     config: ConfigSnapshotReader
+    rules: RulesEngine
     routers: list[APIRouter]
 
     def setup(self, reg: PluginView) -> None:
         self.executor = reg.get(CommandExecutor)
         self.contexts = reg.get(ContextProvider)
         self.config = reg.get(ConfigSnapshotReader)
+        self.rules = reg.get(RulesEngine)
         self.routers = reg.all(APIRouter)
 
 
@@ -180,7 +183,7 @@ def oracle_plugins(settings: Settings) -> list[Plugin]:
         AuthzPlugin(),
         QueryReadersPlugin(),
         QueriesPlugin(),
-        PipelinePlugin(settings.lock_wait_seconds, settings.request_wait_seconds),
+        PipelinePlugin(settings.lock_wait_seconds, settings.request_wait_seconds, redis_url, ns),
         OperationsPlugin(),
         ApprovalPlugin(),
         ApprovalServicePlugin(),
