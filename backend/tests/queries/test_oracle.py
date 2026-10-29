@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 from sqlalchemy import Engine, text
 
-from cost_platform.contracts.fakes import FakeConfigSnapshot, FakePermissionChecker
+from cost_platform.contracts.fakes import FakeConfigSnapshot, FakeEntityDirectory, FakePermissionChecker
 from cost_platform.contracts.types import (
     DocumentData,
     DocumentRef,
@@ -42,7 +42,7 @@ from cost_platform.contracts.types import (
     parse_wire,
 )
 from cost_platform.db_core.engine import OracleUnitOfWorkFactory, create_oracle_engine
-from cost_platform.queries.catalog import ItemsCatalog, MappingEntityDirectory
+from cost_platform.queries.catalog import ItemsCatalog
 from cost_platform.queries.documents import OracleDocumentReader
 from cost_platform.queries.exports import Exports
 from cost_platform.queries.lists import PageQueries
@@ -185,7 +185,7 @@ def test_c06_relation_sql_finds_cost_details(engine: Engine, uow: OracleUnitOfWo
                        binds={"goodsId": "COST_GOODS_PRICE.GOODSID"}, record_key_column="DOC_ID", row_key_columns=["DTL_ID"])
     source = parse_document("COST_GOODS_PRICE", "25", {"GOODSID": Decimal(25)})
     with uow.begin() as unit:
-        found = OracleRelatedQuery(MappingEntityDirectory(entities())).find(unit, finder, source)
+        found = OracleRelatedQuery(FakeEntityDirectory(entities())).find(unit, finder, source)
     with engine.connect() as conn:
         expected = [(str(d), (str(t),)) for d, t in conn.execute(text(
             "SELECT DOCID, DTLID FROM T_COST_PINGGU_DTL WHERE GOODSID = 25 ORDER BY DOCID, DTLID"))]
@@ -194,7 +194,7 @@ def test_c06_relation_sql_finds_cost_details(engine: Engine, uow: OracleUnitOfWo
 
 def test_detail_bind_runs_per_row_and_each_document_once(engine: Engine, uow: OracleUnitOfWorkFactory) -> None:
     """成本单 2550 的原辅料中物料 25、115 两行：按两行各执行一次，含两种物料的成本单只返回一次。"""
-    document = OracleDocumentReader(uow, MappingEntityDirectory(entities())).load(DocumentRef("COST_PINGGU", "2550"))
+    document = OracleDocumentReader(uow, FakeEntityDirectory(entities())).load(DocumentRef("COST_PINGGU", "2550"))
     assert document is not None
     document.details["COST_MATERIAL"] = [r for r in document.details["COST_MATERIAL"] if r.values["GOODSID"] in (25, 115)]
     assert [r.values["GOODSID"] for r in document.details["COST_MATERIAL"]] == [Decimal(25), Decimal(115)]
@@ -203,7 +203,7 @@ def test_detail_bind_runs_per_row_and_each_document_once(engine: Engine, uow: Or
                            "WHERE D.DOCID = M.DOCID AND D.GOODSID = :goodsId) ORDER BY M.DOCID",
                        binds={"goodsId": "COST_MATERIAL.GOODSID"}, record_key_column="DOC_ID")
     with uow.begin() as unit:
-        found = [t.record_key for t in OracleRelatedQuery(MappingEntityDirectory(entities())).find(unit, finder, document)]
+        found = [t.record_key for t in OracleRelatedQuery(FakeEntityDirectory(entities())).find(unit, finder, document)]
     with_25 = column(engine, "SELECT DISTINCT DOCID FROM T_COST_PINGGU_DTL WHERE GOODSID = 25 ORDER BY DOCID")
     with_115 = column(engine, "SELECT DISTINCT DOCID FROM T_COST_PINGGU_DTL WHERE GOODSID = 115 ORDER BY DOCID")
     assert found == with_25 + [d for d in with_115 if d not in with_25]
@@ -211,12 +211,12 @@ def test_detail_bind_runs_per_row_and_each_document_once(engine: Engine, uow: Or
 
 
 def test_document_reader_loads_2550(engine: Engine, uow: OracleUnitOfWorkFactory) -> None:
-    document = OracleDocumentReader(uow, MappingEntityDirectory(entities())).load(DocumentRef("COST_PINGGU", "2550"))
+    document = OracleDocumentReader(uow, FakeEntityDirectory(entities())).load(DocumentRef("COST_PINGGU", "2550"))
     assert document is not None
     assert document.master.values["TOTAL_COST"] == scalar(engine, "SELECT TOTAL_COST FROM T_COST_PINGGU WHERE DOCID = 2550")
     assert [r.row_key for r in document.details["COST_PACKAGE"]] == column(
         engine, "SELECT DTLID FROM V_COST_PINGGU_PACKAGE WHERE DOCID = 2550 ORDER BY DTLID")
-    assert OracleDocumentReader(uow, MappingEntityDirectory(entities())).load(DocumentRef("COST_PINGGU", "999999999")) is None
+    assert OracleDocumentReader(uow, FakeEntityDirectory(entities())).load(DocumentRef("COST_PINGGU", "999999999")) is None
 
 
 def test_lookup_on_t_cost_goods(engine: Engine, uow: OracleUnitOfWorkFactory) -> None:

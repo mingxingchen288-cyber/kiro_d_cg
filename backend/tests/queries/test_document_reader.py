@@ -10,9 +10,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import text
 
-from cost_platform.contracts.fakes import FakeUnitOfWorkFactory
+from cost_platform.contracts.fakes import FakeEntityDirectory, FakeUnitOfWorkFactory
 from cost_platform.contracts.types import DetailLink, DocumentData, DocumentRef, EntityConfig
-from cost_platform.queries.catalog import MappingEntityDirectory
 from cost_platform.queries.documents import OracleDocumentReader
 from tests.contracts.test_document_reader import DocumentReaderContract
 
@@ -35,7 +34,7 @@ class SqliteDocumentReaderHarness:
         with self._factory.engine.begin() as conn:
             conn.execute(text("CREATE TABLE T_CT_DOC (DOCID NUMBER(19) PRIMARY KEY, GOODSNAME VARCHAR2(200), QTY NUMBER, AUDITED NUMBER(1))"))
             conn.execute(text("CREATE TABLE T_CT_DTL (DTLID NUMBER(19) PRIMARY KEY, DOCID NUMBER(19), PRICE NUMBER)"))
-        self.reader = OracleDocumentReader(self._factory, MappingEntityDirectory(CONTRACT_ENTITIES))
+        self.reader = OracleDocumentReader(self._factory, FakeEntityDirectory(CONTRACT_ENTITIES))
 
     def put(self, document: DocumentData) -> None:
         values = document.master.values
@@ -55,7 +54,7 @@ class TestOracleDocumentReaderOnSqlite(DocumentReaderContract):
 
 def test_details_are_read_through_the_read_view() -> None:
     """有 readView 的明细经视图读取（物料名称只在视图中），按主键排序；明细实体按主表实体 `details` 的顺序。"""
-    reader = OracleDocumentReader(database(), MappingEntityDirectory(entities()))
+    reader = OracleDocumentReader(database(), FakeEntityDirectory(entities()))
     loaded = reader.load(DocumentRef("COST_PINGGU", "1002"))
     assert loaded is not None
     assert loaded.master.values["GOODSNAME"] == "片剂B" and loaded.master.values["TOTAL_COST"] == Decimal("20.25")

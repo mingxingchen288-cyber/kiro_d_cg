@@ -14,7 +14,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import text
 
-from cost_platform.contracts.fakes import FakeUnitOfWorkFactory
+from cost_platform.contracts.fakes import FakeEntityDirectory, FakeUnitOfWorkFactory
 from cost_platform.contracts.types import (
     DetailLink,
     DocumentData,
@@ -27,7 +27,6 @@ from cost_platform.contracts.types import (
     SqlFinder,
     TargetObject,
 )
-from cost_platform.queries.catalog import MappingEntityDirectory
 from cost_platform.queries.related import OracleRelatedQuery
 from tests.contracts.test_related_query import Case, RelatedQueryContract
 
@@ -117,7 +116,7 @@ class SqliteRelatedQueryHarness:
     def __init__(self) -> None:
         self._stack = ExitStack()
         self.uow = self._stack.enter_context(database().begin())
-        self.query = OracleRelatedQuery(MappingEntityDirectory(ENTITIES))
+        self.query = OracleRelatedQuery(FakeEntityDirectory(ENTITIES))
 
     def close(self) -> None:
         self._stack.close()

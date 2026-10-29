@@ -7,5 +7,6 @@
 - `related.OracleRelatedQuery`：`RelatedQuery`（C08 第 9 节、QE-08）
 - `documents.OracleDocumentReader`：`DocumentReader`（C08 第 9 节）
 - `router.build_router`：C09 第 4 节的接口
-- `catalog`：本模块需要、契约的配置快照还没有提供的配置读取（QueryCatalog、EntityDirectory）
+- `catalog`：Lookup、字典、导出配置和汇总字段的读取（QueryCatalog；`snapshot_catalog` 按配置快照实现）
+- `plugin`：插件 `queries.readers`（RelatedQuery、DocumentReader）和 `queries`（HTTP 接口）
 """

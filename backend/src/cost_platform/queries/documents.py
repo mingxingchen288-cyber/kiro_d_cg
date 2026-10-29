@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from sqlalchemy import text
 
-from cost_platform.contracts.ports import UnitOfWorkFactory
+from cost_platform.contracts.ports import EntityDirectory, UnitOfWorkFactory
 from cost_platform.contracts.types import DocumentData, DocumentRef, Row
 
-from .catalog import EntityDirectory
 from .sql import Binds, Source, batches, key_text, row_values
 
 

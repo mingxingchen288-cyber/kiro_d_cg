@@ -17,7 +17,7 @@ from collections.abc import Iterable
 
 from sqlalchemy import text
 
-from cost_platform.contracts.ports import UnitOfWork
+from cost_platform.contracts.ports import EntityDirectory, UnitOfWork
 from cost_platform.contracts.types import (
     DocumentData,
     ErrorCode,
@@ -30,7 +30,6 @@ from cost_platform.contracts.types import (
     Value,
 )
 
-from .catalog import EntityDirectory
 from .sql import Binds, Columns, Source, batches, db_value, key_text
 
 
