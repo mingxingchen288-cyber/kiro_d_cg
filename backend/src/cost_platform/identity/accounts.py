@@ -13,7 +13,7 @@ from sqlalchemy import delete, func, insert, or_, select, text, update
 from sqlalchemy.engine import Connection
 
 from cost_platform.contracts.ports import UnitOfWorkFactory
-from cost_platform.contracts.types import AccountRef, ErrorCode, ErrorDetail, PlatformError
+from cost_platform.contracts.types import AccountRef, Department, ErrorCode, ErrorDetail, PlatformError
 
 from .passwords import Passwords
 from .sessions import AccountState
@@ -160,6 +160,13 @@ class OracleAccounts:
     def account(self, user_id: str) -> AccountRef | None:
         found = self.get(user_id)
         return None if found is None else found.ref()
+
+    def department(self, department_id: str) -> Department | None:
+        """部门；不存在时为 None（config 校验审批节点的 `department`，C06 第 10 节）。"""
+        with self._uow.begin() as uow:
+            row = uow.connection.execute(
+                select(pf_department).where(pf_department.c.department_id == department_id)).one_or_none()
+        return None if row is None else Department(department_id=row.department_id, name=row.name, parent_id=row.parent_id)
 
     # ------------------------------------------------------------ 写入
 

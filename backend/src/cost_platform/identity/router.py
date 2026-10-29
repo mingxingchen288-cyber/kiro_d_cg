@@ -2,7 +2,8 @@
 
 - 失败时抛 `PlatformError`，由 assembly 的异常处理按 C03 转成响应；请求体不符合 C09 时为 422 VALIDATION_FAILED。
 - 会话取自 Cookie `cp_session`；写请求的 CSRF 令牌取自 `X-CSRF-Token`；带 `X-Background-Request: 1` 的请求不顺延会话（ID-10）。
-- 请求来源（Origin）的检查不在这里：assembly 挂载时作为路由依赖加上（`include_router(..., dependencies=[...])`）。
+- 请求来源：写请求（GET、HEAD、OPTIONS 以外的方法，含登录）的 Origin 不在 `allowed_origins` 中时 403 ORIGIN_REJECTED
+  （assembly AS-02），作为本路由的依赖检查，在读请求体和会话之前。
 - `/api/admin/*` 只对管理员角色开放（C09 第 1 节）：按配置快照的角色 `admin` 判断，其他角色 403 PERMISSION_DENIED。
 - 账号、会话的读写是同步的数据库和 Redis 调用，放进线程池执行，不阻塞事件循环。
 
@@ -12,10 +13,10 @@ C09 之外的接口（旧系统有、C09 没有，见 `.reports/modules/identity
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Collection
 from typing import Any
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
@@ -48,6 +49,7 @@ from .admin import AccountAdmin
 from .service import IdentityService
 
 SESSION_COOKIE = "cp_session"
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
 class DepartmentDraft(Wire):
@@ -84,9 +86,15 @@ def _json(tp: Any, value: Any) -> JSONResponse:
 
 
 def identity_router(identity: IdentityService, admin: AccountAdmin, config: ConfigSnapshotReader,
-                    config_version: Callable[[], int]) -> APIRouter:
-    """`config_version`：当前配置版本，用于还没有选定角色时 `/api/me` 的 `configVersion`（这时读不了配置快照）。"""
-    router = APIRouter()
+                    allowed_origins: Collection[str]) -> APIRouter:
+    """`allowed_origins` 取 `.env` 的 `PLATFORM_ALLOWED_ORIGINS`。还没有选定角色时 `/api/me` 的 `configVersion`
+    取 `config.current_version()`（这时没有角色，读不了配置快照）。"""
+
+    def check_origin(request: Request) -> None:
+        if request.method not in _READ_METHODS and request.headers.get("origin") not in allowed_origins:
+            raise PlatformError(ErrorCode.ORIGIN_REJECTED, "请求来源不被允许")
+
+    router = APIRouter(dependencies=[Depends(check_origin)])
 
     def check_admin(request: Request, is_write: bool) -> None:
         who = identity.authenticate(_session_id(request), _csrf(request), is_write, _touch(request))
@@ -132,7 +140,8 @@ def identity_router(identity: IdentityService, admin: AccountAdmin, config: Conf
         def build() -> MeResponse:
             user, role_code, csrf = identity.session(_session_id(request), touch=_touch(request))
             if role_code is None:
-                return MeResponse(user=user, role=None, menus=[], config_version=config_version(), csrf_token=csrf)
+                return MeResponse(user=user, role=None, menus=[], config_version=config.current_version(),
+                                  csrf_token=csrf)
             snapshot = config.read(role_code)  # ID-09：菜单取自配置快照，已去掉该角色不能访问的页面
             role = snapshot.role()
             return MeResponse(user=user, role=RoleRef(code=role_code, name=role.name, admin=role.admin),

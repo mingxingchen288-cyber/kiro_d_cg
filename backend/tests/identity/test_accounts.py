@@ -7,7 +7,7 @@ from collections.abc import Iterable
 import pytest
 from sqlalchemy import insert, select
 
-from cost_platform.contracts.types import AccountRef, ErrorCode, PlatformError
+from cost_platform.contracts.types import AccountRef, Department, ErrorCode, PlatformError
 from cost_platform.identity.accounts import ADMIN_PASSWORD, ADMIN_ROLE, ADMIN_USERNAME, OracleAccounts
 from cost_platform.identity.tables import pf_user, pf_user_role
 
@@ -67,6 +67,16 @@ def test_departments_listed() -> None:
     second = env.accounts.create_department("国内营销中心", first.department_id)
     assert env.accounts.departments() == [first, second]
     assert second.parent_id == first.department_id
+
+
+def test_department_read_for_directory() -> None:
+    """`DirectoryReader.department`：config 保存审批流时核对节点的部门存在（C06 第 10 节）。"""
+    env = Env()
+    market = env.accounts.create_department("市场部", None)
+    domestic = env.accounts.create_department("国内营销中心", market.department_id)
+    assert env.accounts.department(domestic.department_id) == Department(
+        department_id=domestic.department_id, name="国内营销中心", parent_id=market.department_id)
+    assert env.accounts.department("999") is None
 
 
 # ---------------------------------------------------------------- DirectoryReader 契约测试（C08 第 14 节）

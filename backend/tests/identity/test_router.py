@@ -18,6 +18,7 @@ from cost_platform.identity.router import identity_router
 from .support import ACCOUNTANT, ADMIN_ROLE, BUYER, Env
 
 PASSWORD = "Abc123.."
+ORIGIN = "http://localhost:9527"   # .env.example 的 PLATFORM_ALLOWED_ORIGINS
 
 
 @pytest.fixture
@@ -27,16 +28,21 @@ def env() -> Env:
     return env
 
 
-@pytest.fixture
-def client(env: Env) -> TestClient:
+def _app(env: Env) -> FastAPI:
     app = FastAPI()
 
     @app.exception_handler(PlatformError)
     async def platform_error(_request: Request, exc: PlatformError) -> JSONResponse:
         return JSONResponse(dump_wire(ErrorResponse, exc.to_response()), status_code=exc.http_status)
 
-    app.include_router(identity_router(env.identity, env.admin, env.config, config_version=lambda: 13))
-    return TestClient(app)
+    app.include_router(identity_router(env.identity, env.admin, env.config, allowed_origins=frozenset({ORIGIN})))
+    return app
+
+
+@pytest.fixture
+def client(env: Env) -> TestClient:
+    """浏览器打开平台前端：每个请求都带前端的 Origin。"""
+    return TestClient(_app(env), headers={"Origin": ORIGIN})
 
 
 def _login(client: TestClient, username: str, password: str = PASSWORD) -> dict[str, Any]:
@@ -58,6 +64,14 @@ def test_login_sets_session_cookie(client: TestClient) -> None:
     cookie = response.headers["set-cookie"]
     assert cookie.startswith("cp_session=") and "HttpOnly" in cookie and "SameSite=lax" in cookie
     assert response.cookies["cp_session"] not in response.text  # 会话编号不出现在响应体中（C09 第 1 节）
+
+
+def test_write_from_other_origin_is_rejected(env: Env) -> None:
+    """AS-02：不是从平台前端发起的写请求（含登录）为 403 ORIGIN_REJECTED；读请求不看 Origin。"""
+    other = TestClient(_app(env), headers={"Origin": "http://evil.example"})
+    response = other.post("/api/auth/login", json={"username": "admin", "password": "admin123.."})
+    assert response.status_code == 403 and response.json()["code"] == "ORIGIN_REJECTED"
+    assert other.get("/api/me").json()["code"] == "SESSION_REQUIRED"
 
 
 def test_login_failed(client: TestClient) -> None:

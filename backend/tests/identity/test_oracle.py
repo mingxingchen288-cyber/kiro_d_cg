@@ -122,6 +122,8 @@ def test_departments_on_oracle(accounts: OracleAccounts) -> None:
     created = accounts.create_department(f"{DEPARTMENT_PREFIX}市场部", None)
     assert accounts.update_department(created.department_id, f"{DEPARTMENT_PREFIX}国际市场部", None) is not None
     assert f"{DEPARTMENT_PREFIX}国际市场部" in [d.name for d in accounts.departments()]
+    found = accounts.department(created.department_id)
+    assert found is not None and (found.name, found.parent_id) == (f"{DEPARTMENT_PREFIX}国际市场部", None)
     assert accounts.delete_department(created.department_id) is True
 
 
