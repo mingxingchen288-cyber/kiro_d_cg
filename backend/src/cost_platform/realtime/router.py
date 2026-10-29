@@ -18,10 +18,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Collection
 
+import anyio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -85,16 +85,27 @@ async def _deny(websocket: WebSocket, error: PlatformError) -> None:
 
 async def _serve(websocket: WebSocket, conn: Connection, registry: ConnectionRegistry,
                  check_session: SessionCheck) -> None:
-    reader = asyncio.create_task(_read(websocket, conn, registry, check_session))
-    writer = asyncio.create_task(_write(websocket, conn))
-    try:
-        done, _ = await asyncio.wait({reader, writer}, return_when=asyncio.FIRST_COMPLETED)
-    finally:
-        reader.cancel()
-        writer.cancel()
-        await asyncio.gather(reader, writer, return_exceptions=True)
-    for task in done:
-        task.result()  # 读写中意外的错误照常抛出，由 Starlette 记录并关闭连接
+    """读、发两个任务放在一个 anyio 任务组里：任一个结束时取消另一个，两个都结束后返回。
+
+    读写中意外的错误由任务组包成异常组抛出，由 Starlette 记录并关闭连接。
+
+    外面取消这个连接时（例如 Starlette 的 TestClient 关闭 WebSocket 时用 anyio 的取消范围取消应用），任务组把这次
+    取消原样传出去，发起取消的取消范围认得出，取消到它为止。不用 `asyncio.gather` 等两个任务：gather 本身被取消时，
+    抛出的是子任务被取消时产生的 CancelledError，外面的取消范围认不出，取消会漏出范围
+    （测试中表现为 TestClient 退出 WebSocket 时偶发 concurrent.futures.CancelledError）。
+    """
+    async with anyio.create_task_group() as tasks:
+
+        async def read() -> None:
+            await _read(websocket, conn, registry, check_session)
+            tasks.cancel_scope.cancel()
+
+        async def write() -> None:
+            await _write(websocket, conn)
+            tasks.cancel_scope.cancel()
+
+        tasks.start_soon(read)
+        tasks.start_soon(write)
 
 
 async def _read(websocket: WebSocket, conn: Connection, registry: ConnectionRegistry,

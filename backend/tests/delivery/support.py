@@ -104,6 +104,9 @@ def database() -> FakeUnitOfWorkFactory:
 
     换成不带 `detect_types` 的 SQLite 引擎：日期时间由 SQLAlchemy 的 DateTime 类型转换；路由在线程池中访问数据库，
     所以允许跨线程使用。
+
+    所有线程共用这一个 SQLite 连接，事务之间没有隔离：一个线程读库时看得到另一个线程还没提交的写入，读完时的回滚
+    还会把它撤掉。后台线程写库期间，测试不要在别的线程读库（见 test_plugin.py 的 `PushSignal`）。
     """
     factory = FakeUnitOfWorkFactory()
     factory.engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})

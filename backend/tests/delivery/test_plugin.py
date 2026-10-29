@@ -7,12 +7,13 @@
 from __future__ import annotations
 
 import asyncio
-import time
+import threading
 from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, Request
 
+from cost_platform.contracts.fakes import FakeRealtimePublisher
 from cost_platform.contracts.ports import (
     Clock,
     ContextProvider,
@@ -23,7 +24,7 @@ from cost_platform.contracts.ports import (
     UnitOfWorkFactory,
 )
 from cost_platform.contracts.registry import MULTI_PORTS, PluginView, Registry
-from cost_platform.contracts.types import ExecutionContext
+from cost_platform.contracts.types import ExecutionContext, RealtimeEvent
 from cost_platform.delivery import DeliveryService, RegisterNotificationsStage
 from cost_platform.delivery.plugin import MIGRATIONS, DeliveryPlugin
 
@@ -68,10 +69,28 @@ class Probe:
         self.got = {port: reg.all(port) if port in MULTI_PORTS else reg.get(port) for port in self.requires}
 
 
-def _boot(w: World) -> tuple[DeliveryPlugin, Probe]:
+class PushSignal:
+    """`RealtimePublisher`：转给 `FakeRealtimePublisher`，推送时置位 `pushed`。
+
+    后台线程提交发送之后才推送，`pushed` 置位时这条投递已经提交。测试等它，不在后台线程运行时轮询数据库：
+    替代事务的所有线程共用一个 SQLite 连接（support.py 的 `database()`），主线程读完库时的回滚会撤掉后台线程
+    还没提交的写入，投递就停在 pending、站内通知没有写入。
+    """
+
+    def __init__(self, target: FakeRealtimePublisher) -> None:
+        self._target = target
+        self.pushed = threading.Event()
+
+    def publish(self, event: RealtimeEvent) -> None:
+        self._target.publish(event)
+        self.pushed.set()
+
+
+def _boot(w: World, publisher: RealtimePublisher | None = None) -> tuple[DeliveryPlugin, Probe]:
+    """`publisher` 不给时用 `w.publisher`。"""
     plugin, probe = DeliveryPlugin(), Probe()
-    fakes = Provider({UnitOfWorkFactory: w.factory, RealtimePublisher: w.publisher, Clock: w.clock, IdGenerator: w.ids,
-                      ContextProvider: Contexts()})
+    fakes = Provider({UnitOfWorkFactory: w.factory, RealtimePublisher: publisher or w.publisher, Clock: w.clock,
+                      IdGenerator: w.ids, ContextProvider: Contexts()})
     ordered = Registry().boot([probe, plugin, fakes])
     assert [p.name for p in ordered] == ["fakes", "delivery", "probe"]
     return plugin, probe
@@ -91,15 +110,15 @@ def test_retry_thread_sends_due_delivery_and_stops() -> None:
     """E23 最终批准后给杨娜的"已通过"通知已登记、提交，但提交后没能立即发送；1 分钟后插件启动的后台线程补发。"""
     w = world()
     [delivery_id] = commit_registration(w, state(passed()), context(YANG_NA))
-    plugin, _ = _boot(w)
+    signal = PushSignal(w.publisher)
+    plugin, _ = _boot(w, signal)
     w.clock.set(T0 + timedelta(minutes=1))
 
     asyncio.run(plugin.start())
-    deadline = time.monotonic() + 5
-    while w.delivery(delivery_id)["status"] != "sent" and time.monotonic() < deadline:
-        time.sleep(0.05)
-    asyncio.run(plugin.stop())
+    pushed = signal.pushed.wait(timeout=5)    # 上限只防后台线程没有推送时一直等；下一轮在 60 秒后
+    asyncio.run(plugin.stop())                # 线程退出后再读库
 
+    assert pushed, "后台线程启动后的第一轮没有补发"
     assert w.delivery(delivery_id)["status"] == "sent"
     assert [r["user_id"] for r in w.inbox_rows()] == [YANG_NA]
     assert [e.payload.delivery_id for e in w.publisher.events] == [delivery_id]
