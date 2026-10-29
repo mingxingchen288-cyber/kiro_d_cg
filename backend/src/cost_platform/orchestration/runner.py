@@ -8,10 +8,12 @@
 2. 按 `STAGE_ORDER` 执行各位置上 `applies` 为真的阶段。架构第 7 节第 7 步"每个动作一轮"：到"展开动作"时，只要有展开动作的
    阶段 applies，就一轮轮执行 `ACTION_ROUND`——展开动作 → 加锁读取 → 冻结检查（只查这一轮新读入的单据，WP-18）→ 合并意图
    → 计算与规则；没有动作的命令（页面保存、审批处理）这几步（不含展开动作）执行一次。
-3. `CommandRecorder.complete`：命令结果、审计、命令记录（WP-11、WP-12）；结果为 unchanged 时不提交（事务回滚，命令记录一起撤销）。
+3. `CommandRecorder.complete`：命令结果、审计、逃生舱调用记录、命令记录（WP-11、WP-12、OP-04）；结果为 unchanged 时不提交
+   （事务回滚，命令记录一起撤销）。
 4. 提交后投递：`DeliveryDispatcher.dispatch_now`（DL-02）。"投递"不是阶段位置。
 
-判重、命令结果和审计、提交是命令事务本身，不是阶段位置（C08 第 6 节）。
+第 1–3 步和提交或回滚包在 `CommandMonitor.watch` 中（命令审查 WP-17，C08 第 5a 节）：成功、被拒绝、出错的命令都在事务结束
+之后记一条；投递在 watch 之后，不算在命令里。判重、命令结果和审计、提交是命令事务本身，不是阶段位置（C08 第 6 节）。
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ import dataclasses
 from collections.abc import Sequence
 
 from cost_platform.contracts.ports import (
+    CommandMonitor,
     CommandRecorder,
     DeliveryDispatcher,
     PipelineStage,
@@ -60,29 +63,37 @@ def stage_problems(stages: Sequence[PipelineStage]) -> list[str]:
 
 class CommandRunner:
     """`CommandExecutor`。`stages` 为各模块注册的全部管道阶段（注册表的 `all(PipelineStage)`），按位置分组，
-    同一位置内保持注册的先后。"""
+    同一位置内保持注册的先后；`monitor` 为命令审查。"""
 
-    def __init__(self, uow_factory: UnitOfWorkFactory, recorder: CommandRecorder, dispatcher: DeliveryDispatcher,
-                 stages: Sequence[PipelineStage]) -> None:
+    def __init__(self, uow_factory: UnitOfWorkFactory, recorder: CommandRecorder, monitor: CommandMonitor,
+                 dispatcher: DeliveryDispatcher, stages: Sequence[PipelineStage]) -> None:
         self._uow = uow_factory
         self._recorder = recorder
+        self._monitor = monitor
         self._dispatcher = dispatcher
         self._at = {name: [s for s in stages if s.name == name] for name in STAGE_ORDER}
 
     def execute(self, command: Command, ctx: ExecutionContext) -> CommandResult:
+        with self._monitor.watch(command, ctx):
+            result, deliveries = self._transaction(command, ctx)
+        if deliveries:
+            self._dispatcher.dispatch_now(deliveries)
+        return result
+
+    def _transaction(self, command: Command, ctx: ExecutionContext) -> tuple[CommandResult, list[str]]:
+        """命令事务：判重 → 各阶段 → complete → 提交。返回命令结果和提交后要投递的编号；判重命中、结果为 unchanged
+        （不提交，事务回滚）时没有要投递的。"""
         with self._uow.begin() as uow:
             replay = self._recorder.begin(uow, ctx.identity.user_id, command, ctx.now)
             if replay is not None:
-                return replay
+                return replay, []
             state = CommandState(command=command)
             self._run(uow, state, ctx)
             result = self._recorder.complete(uow, state, ctx)
             if result.outcome == "unchanged":
-                return result
+                return result, []
             uow.commit()
-        if state.delivery_ids:
-            self._dispatcher.dispatch_now(list(state.delivery_ids))
-        return result
+        return result, list(state.delivery_ids)
 
     # ---------------------------------------------------------------- 按 STAGE_ORDER 执行
 

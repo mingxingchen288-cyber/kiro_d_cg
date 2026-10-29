@@ -1,5 +1,5 @@
-"""orchestration 的 `CommandRunner`（模拟验证）：按 STAGE_ORDER 执行各位置的阶段、按钮每个动作一轮、提交后投递，
-以及 `CommandExecutor` 的契约测试。各模块的阶段用 contracts 的替代阶段 `FakeStage`；命令记录用本文件的内存实现
+"""orchestration 的 `CommandRunner`（模拟验证）：按 STAGE_ORDER 执行各位置的阶段、按钮每个动作一轮、提交后投递、
+命令事务包在命令审查（`FakeCommandMonitor`）中，以及 `CommandExecutor` 的契约测试。各模块的阶段用 contracts 的替代阶段 `FakeStage`；命令记录用本文件的内存实现
 （`CommandRecorder` 没有替代实现，真实实现在 tests/pipeline 中验证）。"""
 
 from __future__ import annotations
@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from cost_platform.contracts.fakes import FakeDeliveryDispatcher, FakeStage, FakeUnitOfWorkFactory
+from cost_platform.contracts.fakes import FakeCommandMonitor, FakeDeliveryDispatcher, FakeStage, FakeUnitOfWorkFactory
 from cost_platform.contracts.ports import UnitOfWork
 from cost_platform.contracts.types import (
     Command,
@@ -105,8 +105,10 @@ class Stages:
                                  effect=noted(name, special.get(name, (True, None))[1])) for name in STAGE_ORDER]
 
 
-def runner(stages: Stages, dispatcher: FakeDeliveryDispatcher | None = None) -> CommandRunner:
-    return CommandRunner(FakeUnitOfWorkFactory(), MemoryRecorder(), dispatcher or FakeDeliveryDispatcher(), stages.stages)
+def runner(stages: Stages, dispatcher: FakeDeliveryDispatcher | None = None,
+           monitor: FakeCommandMonitor | None = None) -> CommandRunner:
+    return CommandRunner(FakeUnitOfWorkFactory(), MemoryRecorder(), monitor or FakeCommandMonitor(),
+                         dispatcher or FakeDeliveryDispatcher(), stages.stages)
 
 
 # ---------------------------------------------------------------- 执行顺序
@@ -141,6 +143,47 @@ def test_deliveries_dispatched_after_commit() -> None:
     dispatcher = FakeDeliveryDispatcher()
     runner(Stages(), dispatcher).execute(sample_command(), context())
     assert dispatcher.dispatched == [["00000000-0000-4000-8000-0000000000d1"]]
+
+
+# ---------------------------------------------------------------- 命令审查（WP-17）
+
+class _Dispatcher(FakeDeliveryDispatcher):
+    """投递时记下命令审查已经记了几条：投递在 watch 之后。"""
+
+    def __init__(self, monitor: FakeCommandMonitor) -> None:
+        super().__init__()
+        self._monitor = monitor
+        self.watched_at_dispatch: list[int] = []
+
+    def dispatch_now(self, delivery_ids: list[str]) -> None:
+        self.watched_at_dispatch.append(len(self._monitor.watched))
+        super().dispatch_now(delivery_ids)
+
+
+def test_saved_command_goes_through_monitor_before_dispatch() -> None:
+    """成本单 200680 保存成功：判重到提交整个事务包在 watch 中，记为成功；提交后的投递在 watch 之后。"""
+    monitor = FakeCommandMonitor()
+    dispatcher = _Dispatcher(monitor)
+    command = sample_command()
+    result = runner(Stages(), dispatcher, monitor).execute(command, context())
+    assert result.outcome == "saved"
+    assert monitor.watched == [(command.request_key, None)]
+    assert dispatcher.watched_at_dispatch == [1]
+
+
+def test_rejected_command_goes_through_monitor() -> None:
+    """成本单 200680 被审批冻结，保存被拒绝：错误照常抛出，事务回滚，命令审查记下这个错误码；没有投递。"""
+    monitor = FakeCommandMonitor()
+    dispatcher = FakeDeliveryDispatcher()
+    stages = Stages()
+    next(s for s in stages.stages if s.name == "冻结检查").fail(
+        "run", PlatformError(ErrorCode.FROZEN_BY_APPROVAL, "单据已被审批冻结"))
+    command = sample_command()
+    with pytest.raises(PlatformError) as caught:
+        runner(stages, dispatcher, monitor).execute(command, context())
+    assert caught.value.code is ErrorCode.FROZEN_BY_APPROVAL
+    assert monitor.watched == [(command.request_key, ErrorCode.FROZEN_BY_APPROVAL)]
+    assert dispatcher.dispatched == []
 
 
 def test_stage_names_checked_against_stage_order() -> None:
