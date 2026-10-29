@@ -12,7 +12,11 @@
 - 交付物：连接池和事务；数值列与 Decimal 的转换；Oracle 错误映射；表和视图的结构读取，区分表和视图（`object_type`）；cmx 只读连接。
 - 接入责任：T-AS-4 注入各模块；各模块验证自己的 Oracle 存储时也使用本任务的实现。
 - 验收标准（真实验证，在 d_cg 上）：通过这几个端口的契约测试；`12345678901234567890.123456`、负数和零写入再读出数值相等，读取过程不出现 float（Hypothesis 生成数值做往返）；等锁超时、两个连接互相等锁形成的死锁、连接断开分别映射为 DOCUMENT_BUSY、DOCUMENT_BUSY、DATABASE_UNAVAILABLE；读取 cmx 的连接以只读事务打开，写语句报错。
-- 状态与证据：进行中。链路 0 已先交付最小部分，见 T-AS-9（[assembly](assembly.md)）；本卡的验收照常进行。
+- 状态与证据：进行中（2026-10-29；本卡的真实验证已通过，还没有独立复核）。链路 0 已先交付最小部分，见 T-AS-9（[assembly](assembly.md)）。
+  - 代码：`db_core/schema.py` 的 `OracleSchemaInspector`（C08 第 2 节的 `columns`、`object_type`、`primary_key`，另有 C08 没有的 `sequence_exists`、`column_comments`，见 `.reports/modules/db-core/contract-gaps.md` 第 1、2 条）；`engine.py` 的连接级取值类型改为 NUMBER 一律读成 Decimal（原来不带精度的 NUMBER 中的整数读成 int）；`legacy.py` 的只读连接不变。对照旧系统 `MetaConfigService.listViewColumns`、`WizardGenerateService.getPkColumn`、`ensureSequenceExists`。
+  - 真实验证（d_cg）：`backend` 目录 `uv run pytest -q -p no:cacheprovider -m "oracle or redis" tests/db_core`，39 passed、0 failed（`.reports/modules/db-core/13-pytest-db-core.txt`）。其中：`SchemaInspectorContract`、`UnitOfWorkContract`、`ConnectionFactoryContract` 用真实实现各跑一遍（`tests/db_core/test_ports.py`）；读 cmx 的连接写 d_cg 自己的表也报 ORA-01456（只读事务）；DB-01 用不带精度的 NUMBER 和 NUMBER(38,8) 两列往返 `12345678901234567890.123456`、它的负数、零、E04 的 ±1.23456789、物料清单的 75 和 0.064，再加 Hypothesis 生成的 40 个值，读出的列和 SQL 表达式结果都是 Decimal、数值相等（`test_decimal.py`）；DB-02 两个人同时锁成本单 2550 主表，后一个 `FOR UPDATE WAIT 1` 得到 DOCUMENT_BUSY，读不存在的列得到 INTERNAL_ERROR，响应中没有 ORA- 文本（`test_errors.py`）。实现前先跑测试：DB-01 有 6 个失败（整数读成 int），`11-`、`12-` 号输出。
+  - 上线后再补：两个连接互相等锁形成的死锁（ORA-00060）、连接断开的注入。`map_error` 已按 DB-02 映射这两类错误码，没有在 d_cg 上验证。
+  - 改了取值类型后，全部真实验证 `-m "oracle or redis" tests` 与改动前的基线相比没有因此新增的失败（`10-baseline-real-all.txt` 6 failed、101 passed；`17-after-real-all.txt` 4 failed、142 passed，失败项的原因见 `contract-gaps.md` 末尾）。
 
 ### T-DB-2 平台表迁移环境与核对命令
 
@@ -32,4 +36,10 @@
 - 交付物：复制命令；首批表清单（成本核算、液体成本核算和物料清单页面用到的表和视图，从 cmx 的旧页面配置中查出），每张表列出要保留的列和来源（DB-03）。
 - 接入责任：本任务一次性复制表结构和数据，平台不做持续同步；切换时停机后用 `--refresh` 重新复制一次（migration 的 MG-06）。
 - 验收标准（真实验证）：复制后每张表的列与清单相同、顺序同 cmx、没有虚拟列；行数等于 cmx 未删除的行数，清单中的列逐行与 cmx 相同（原虚拟列与 cmx 的计算结果相同）；视图去掉了方案名，引用 d_cg 的表；每张表的序列 `<表名>_SEQ` 起始值为 cmx 最大主键加一；重复执行时已存在的表不动，加 `--refresh <表名>` 才重新复制；不复制 `BP_T09_`、`PF_` 开头的对象。
-- 状态与证据：进行中。链路 0 已先交付最小部分，见 T-AS-9（[assembly](assembly.md)）；本卡的验收照常进行。链路 1 补上成本核算明细用到的表和视图（真实验证，d_cg）：`platform db copy-business-tables` 新建 T_COST_GOODS（12 列、14403 行，已删除的物料不复制）、T_COST_PINGGU_DTL（10 列、7926 行，BATCH_QTY、COST_BATCH 改为普通列，只复制未删除单据的未删除明细）、V_COST_PINGGU_MATERIAL（18 列、4149 行）、V_COST_PINGGU_PACKAGE（18 列、3604 行）；核对：列与清单相同、按 cmx 顺序、虚拟列 0，行数与 cmx 应有的行数相同，两张表和两个视图双向 MINUS 都是 0，序列从 cmx 最大主键加一开始；重复执行 5 项都未改动（`.reports/chain1/06-copy.log`、`07-复制核对.out.txt`、`08-copy-again.log`）。液体成本核算的表还没有复制。
+- 状态与证据：进行中。链路 0 已先交付最小部分，见 T-AS-9（[assembly](assembly.md)）；本卡的验收照常进行。链路 1 补上成本核算明细用到的表和视图（真实验证，d_cg）：`platform db copy-business-tables` 新建 T_COST_GOODS（12 列、14403 行，已删除的物料不复制）、T_COST_PINGGU_DTL（10 列、7926 行，BATCH_QTY、COST_BATCH 改为普通列，只复制未删除单据的未删除明细）、V_COST_PINGGU_MATERIAL（18 列、4149 行）、V_COST_PINGGU_PACKAGE（18 列、3604 行）；核对：列与清单相同、按 cmx 顺序、虚拟列 0，行数与 cmx 应有的行数相同，两张表和两个视图双向 MINUS 都是 0，序列从 cmx 最大主键加一开始；重复执行 5 项都未改动（`.reports/chain1/06-copy.log`、`07-复制核对.out.txt`、`08-copy-again.log`）。
+  - 2026-10-29 补上物料清单视图和液体成本核算（真实验证，d_cg；本卡验收标准已逐条核对，还没有独立复核）。清单的依据是 cmx 只读查询 `.reports/modules/db-core/01～04` 号：
+    - T_COST_GOODS_PRICE_V（12 列）：按 cmx 视图的定义，过滤掉产成品、半成品，ZX_PRICE 为空时取 PRICE，ROW_CLASS_FLAG 写法与 cmx 相同；去掉 DELETED、CREATE_*/UPDATE_*。ROW_CLASS_FLAG 要读 UPDATE_BY（旧页面按它给 ERP 行上色），所以 T_COST_GOODS 加保留 UPDATE_BY（视图不输出），`--refresh T_COST_GOODS` 重新复制为 13 列、14419 行（cmx 这期间新增了 16 个产成品、半成品，另有 15 行内容变了）。
+    - T_COST_PINGGU_LQ：旧液体页面主表显示的 42 列，493 行；T_COST_PINGGU_DTL_LQ：页面显示、值来自明细表本身的 9 列，5148 行（明细表自存的物料名等 8 列由视图从物料表取，不复制；SOURCE_TYPE、SOURCE_BATCH_QTY 页面不显示，不复制）；V_COST_PINGGU_MATERIAL_LQ、V_COST_PINGGU_PACKAGE_LQ 各 17 列，2535、2178 行。两张液体表都没有虚拟列。
+    - 复制命令另外把保留列在 cmx 中的列注释一起复制（T_COST_PINGGU_LQ 的 COST_PERBOX、M_PERPACK；`contract-gaps.md` 第 3 条）。
+    - 核对（`06-复制核对.out.txt`）：列与清单相同、按 cmx 顺序、虚拟列 0，类型、精度、可空、默认值与 cmx 相同；行数 14419/14419、493/493、5148/5148；三张表双向 MINUS 都是 0；三个视图的行数 9837/9837、2535/2535、2178/2178，与 cmx 视图（物料清单按未删除过滤，液体明细按未删除单据过滤）双向 MINUS 都是 0；视图只引用 d_cg 的表；序列 T_COST_GOODS_SEQ、T_COST_PINGGU_LQ_SEQ、T_COST_PINGGU_DTL_LQ_SEQ 从 300862、100041、100197 开始，都是 cmx 最大主键加一；主键 PK_T_COST_GOODS、PK_COST_PINGGU_LQ、PK_COST_PINGGU_DTL_LQ；含聚维酮K30（25）的液体成本单 74 张，与 C06 7.10 相同。
+    - 命令输出：`05-copy.log`（新建 5 项、重建物料表）、`07-copy-again.log`（再执行一次，10 项都"已存在，未改动"）。`tests/db_core/test_copy_tables.py` 每次检查各表的列和顺序、虚拟列、主键、序列，各视图有效且不引用 cmx，以及重复执行不改动（包含在上面 T-DB-1 的 39 passed 中）。行数和逐行内容只在复制当时核对：cmx 还在使用、数据在变，平台不做持续同步。

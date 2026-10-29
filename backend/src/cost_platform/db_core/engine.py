@@ -1,14 +1,16 @@
 """Oracle 连接池和 UnitOfWork（DB-01、DB-02）。
 
-SQLAlchemy Core 加 python-oracledb（thin 模式）。数值列读出为 Decimal 或 int（整数），不经过浮点；
-每条语句的调用超时为 25 秒（工程约定第 1 节）。
+SQLAlchemy Core 加 python-oracledb（thin 模式）。数值列（NUMBER、FLOAT，以及 SQL 表达式的结果）读出都是 Decimal，
+写入时绑定 Decimal，不经过浮点；每条语句的调用超时为 25 秒（工程约定第 1 节）。
 """
 
 from __future__ import annotations
 
+import decimal
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import Any
 
 import oracledb
 from sqlalchemy import Engine, create_engine, event
@@ -35,8 +37,25 @@ def create_oracle_engine(user: str, password: str, dsn: str) -> Engine:
     @event.listens_for(engine, "connect")
     def _on_connect(dbapi_connection, _record) -> None:  # type: ignore[no-untyped-def]
         dbapi_connection.call_timeout = CALL_TIMEOUT_MS
+        dbapi_connection.outputtypehandler = _numbers_as_decimal(dbapi_connection.outputtypehandler)
 
     return engine
+
+
+def _numbers_as_decimal(dialect_handler: Callable[..., Any] | None) -> Callable[..., Any]:
+    """连接级的取值类型：Oracle NUMBER 一律取为 Decimal（DB-01）。
+
+    SQLAlchemy 的 Oracle 方言（这个监听器之前已装好它的处理函数）对不带精度的 NUMBER 先按文本取回，整数值转成 int，
+    FLOAT 和负小数位的 NUMBER 取为 float；这里都改为 Decimal，与 contracts 的替代事务一致。其他类型仍交给方言处理。
+    只影响 `text()` 这类没有声明类型的查询；用 SQLAlchemy 类型声明了列的查询按各自的类型取值。
+    """
+
+    def handler(cursor: Any, name: str, default_type: Any, size: int, precision: int, scale: int) -> Any:
+        if default_type == oracledb.DB_TYPE_NUMBER:
+            return cursor.var(decimal.Decimal, arraysize=cursor.arraysize)
+        return dialect_handler(cursor, name, default_type, size, precision, scale) if dialect_handler else None
+
+    return handler
 
 
 def map_error(exc: DBAPIError) -> PlatformError:

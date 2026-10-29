@@ -3,7 +3,8 @@
 表：只复制 business_tables.json 为每张表列出的列（页面显示的列，以及用户点名保留的列），按 cmx 的列顺序；
 虚拟列复制为普通列，值为复制时 cmx 算出的当前值；`excludeDeleted` 为 true 时不复制已删除（DELETED=1）的行；
 `parent` 给出主表时，只复制主表中未删除的行的明细（主表的 `excludeDeleted` 为 true 时）。
-补上列默认值和主键，建序列 `<表名>_SEQ`，起始值为 cmx 最大主键加一。
+补上列默认值和主键，建序列 `<表名>_SEQ`，起始值为 cmx 最大主键加一。保留列在 cmx 中的列注释也一起复制
+（旧向导的列标题取列注释，`SchemaInspector` 的 `column_comments` 读它；2026-10-29 加入，之前复制的表要 `--refresh` 才有）。
 视图（`"kind": "view"`）：清单中写的是 d_cg 版本的 SQL（去掉方案名、引用 d_cg 的表、去掉不复制的列和 DELETED 条件），
 按它建视图。
 已存在的表和视图不动；`refresh` 中的先删除（视图为替换）再建。cmx 只读。
@@ -92,6 +93,12 @@ def _copy(conn: Connection, table: str, spec: TableSpec, specs: Mapping[str, Tab
         # 虚拟列的表达式不作为默认值；cmx 标识列的默认值取 cmx 自己的序列，平台新增行的主键取 <表名>_SEQ（WP-09）
         if virtual == "NO" and expression and "NEXTVAL" not in expression.upper():
             conn.exec_driver_sql(f"ALTER TABLE {table} MODIFY ({column} DEFAULT {expression})")
+    comments = conn.execute(text(
+        "SELECT column_name, comments FROM all_col_comments WHERE owner = 'CMX' AND table_name = :t AND comments IS NOT NULL"),
+        {"t": table}).all()
+    kept_comments = [(column, str(comment)) for column, comment in comments if column in wanted]
+    for column, comment in kept_comments:
+        conn.exec_driver_sql(f"COMMENT ON COLUMN {table}.{column} IS '{comment.replace(chr(39), chr(39) * 2)}'")
     pk_name, pk_columns = _primary_key(conn, table)
     if pk_name.startswith("SYS_"):  # 系统生成的约束名不照搬
         pk_name = f"PK_{table}"
@@ -105,7 +112,7 @@ def _copy(conn: Connection, table: str, spec: TableSpec, specs: Mapping[str, Tab
     conn.exec_driver_sql(f"CREATE SEQUENCE {sequence} START WITH {int(max_key) + 1} NOCACHE")
     virtual_count = sum(1 for c in columns if c[1] == "YES")
     return (f"{table}: 复制 {rows} 行、{len(columns)} 列（cmx 共 {len(source)} 列，其中 {virtual_count} 个虚拟列改为普通列），"
-            f"主键 {pk_name}({', '.join(pk_columns)})，序列 {sequence} 从 {int(max_key) + 1} 开始")
+            f"列注释 {len(kept_comments)} 个，主键 {pk_name}({', '.join(pk_columns)})，序列 {sequence} 从 {int(max_key) + 1} 开始")
 
 
 def _create_view(conn: Connection, view: str, spec: ViewSpec) -> str:

@@ -53,7 +53,7 @@
     ]
   },
   "T_COST_GOODS": {
-    "source": "旧物料清单页 goods-price-manage 的列元数据（CMX.T_COST_COLUMN_METADATA，TABLE_METADATA_ID=132）VISIBLE=1 的 10 列，加上成本核算两个明细视图从物料表读的 SUQTY、GOODSNAME_EN；没有虚拟列。已删除的物料不复制：未删除单据的明细视图行没有落在已删除物料上的（.reports/chain1/02 号）",
+    "source": "旧物料清单页 goods-price-manage 的列元数据（CMX.T_COST_COLUMN_METADATA，TABLE_METADATA_ID=132）VISIBLE=1 的 10 列，加上成本核算两个明细视图从物料表读的 SUQTY、GOODSNAME_EN，和物料清单视图 T_COST_GOODS_PRICE_V 算行样式标记 ROW_CLASS_FLAG 要读的 UPDATE_BY（旧页面 GRID_STYLE 按它给 ERP 行上色，.reports/modules/db-core/02、03 号；2026-10-29 加入）；没有虚拟列。已删除的物料不复制：未删除单据的明细视图行没有落在已删除物料上的（.reports/chain1/02 号，液体成本见 .reports/modules/db-core/02 号）",
     "excludeDeleted": true,
     "columns": [
       "GOODSID",
@@ -66,6 +66,7 @@
       "ISERP",
       "GOODSTYPE",
       "PACKTYPE",
+      "UPDATE_BY",
       "GOODSNAME_EN",
       "ZX_PRICE"
     ]
@@ -99,5 +100,87 @@
     "kind": "view",
     "source": "CMX.V_COST_PINGGU_PACKAGE（包材明细 CostPackage 的查询视图）：改法同上",
     "sql": "SELECT d.DTLID, d.DOCID, d.GOODSID, d.PER_HL, d.EXADD_MATER, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.MEMO, f.GOODSNAME_EN, f.PRICE BASE_PRICE, f.SUQTY, f.GOODSNAME, f.USEFLAG DTL_USEFLAG, f.STANDARDTYPE, f.FACTORYNAME, f.GOODSTYPE, NVL(d.CUSTOMER_SPECIFIED, 0) CUSTOMER_SPECIFIED FROM T_COST_PINGGU_DTL d, T_COST_GOODS f WHERE f.USEFLAG IN ('非印字包材', '印字包材') AND d.GOODSID = f.GOODSID"
+  },
+  "T_COST_GOODS_PRICE_V": {
+    "kind": "view",
+    "source": "CMX.T_COST_GOODS_PRICE_V（旧物料清单页 goods-price-manage、表元数据 132 CostGoodsPrice 的查询视图，C06 7.8 的展示视图；.reports/modules/db-core/01 号）：去掉不复制的 DELETED、CREATE_TIME、UPDATE_TIME、CREATE_BY，UPDATE_BY 只用来算 ROW_CLASS_FLAG、不作为视图的列（页面不显示）；过滤掉产成品、半成品，ZX_PRICE 为空时取 PRICE，ROW_CLASS_FLAG 的写法与 cmx 相同。cmx 视图不过滤 DELETED（旧页面查询时另加），d_cg 的物料表已经不含已删除的行",
+    "sql": "SELECT GOODSID, GOODSNAME, PRICE, USEFLAG, GOODSTYPE, PACKTYPE, FACTORYNAME, ISERP, CASE WHEN ISERP = 1 AND UPDATE_BY <> 'ERP_SYNC' AND PRICE IS NULL THEN 'erp-price-null' WHEN ISERP = 1 AND UPDATE_BY <> 'ERP_SYNC' THEN 'erp-updated' WHEN ISERP = 1 THEN 'erp' ELSE NULL END AS ROW_CLASS_FLAG, STANDARDTYPE, GOODSNAME_EN, DECODE(ZX_PRICE, NULL, PRICE, ZX_PRICE) ZX_PRICE FROM T_COST_GOODS WHERE USEFLAG NOT IN ('产成品', '半成品')"
+  },
+  "T_COST_PINGGU_LQ": {
+    "source": "旧页面 cost-pinggu-lq（物料成本核算表_液体）主表的列元数据（CMX.T_COST_COLUMN_METADATA，TABLE_METADATA_ID=176）VISIBLE=1 的 42 列；cmx 表 50 列，没有虚拟列。不复制页面不显示的 USEFLAG、YIELD_TIME、APEX_PL_TIME、DELETED、CREATE_*/UPDATE_*（.reports/modules/db-core/02 号）。已删除的单据不复制",
+    "excludeDeleted": true,
+    "columns": [
+      "GOODSID",
+      "GOODSNAME",
+      "STRENGTH",
+      "MA_NO",
+      "APEX_PL",
+      "MAH",
+      "P_PERPACK",
+      "FORM",
+      "S_PERBACK",
+      "PACKTYPE",
+      "X_PERBACK",
+      "TOTAL_FL",
+      "TOTAL_BC",
+      "TOTAL_YL",
+      "MEMO",
+      "USESTATUS",
+      "DOCID",
+      "DOSAGE",
+      "ANNUAL_QTY",
+      "YIELD",
+      "TOTAL_COST",
+      "OUT_PRICE_F",
+      "OUT_PRICE_RMB",
+      "SALEMONEY",
+      "JGF_BATCH",
+      "JGF_PERQP",
+      "COST_PERQP",
+      "ML_PERQP",
+      "Y_JG_RE",
+      "Y_ML",
+      "Y_SALE",
+      "CUSTOMID",
+      "CUSTOMNAME",
+      "COUNTRY",
+      "PROJECTNO",
+      "FMNAME",
+      "FMRATE",
+      "GOODSNAME_EN",
+      "LIVERY",
+      "COST_PERBOX",
+      "M_PERPACK",
+      "TRANPOSID"
+    ]
+  },
+  "T_COST_PINGGU_DTL_LQ": {
+    "source": "旧页面 cost-pinggu-lq 明细 material、package 的列元数据（TABLE_METADATA_ID=177、178）VISIBLE=1 且值来自明细表本身的 9 列；cmx 表 26 列，没有虚拟列。页面显示的 DTL_USEFLAG、GOODSNAME、SUQTY、BASE_PRICE、STANDARDTYPE、GOODSTYPE、FACTORYNAME、GOODSNAME_EN 由视图从物料表取，明细表自存的那份不复制；FACTORYID、MODIFYDATE、DELETED、CREATE_*/UPDATE_* 不复制；SOURCE_TYPE、SOURCE_BATCH_QTY 页面不显示，不复制（旧 CALC 规则有一个分支读 SOURCE_BATCH_QTY，cmx 未删除单据的 5148 条明细中它全为空或 0，这个分支不成立；.reports/modules/db-core/02、03、04 号）。已删除的明细和已删除单据的明细不复制",
+    "excludeDeleted": true,
+    "parent": {
+      "table": "T_COST_PINGGU_LQ",
+      "column": "DOCID"
+    },
+    "columns": [
+      "DOCID",
+      "GOODSID",
+      "PER_HL",
+      "EXADD_MATER",
+      "BATCH_QTY",
+      "PRICE",
+      "COST_BATCH",
+      "MEMO",
+      "DTLID"
+    ]
+  },
+  "V_COST_PINGGU_MATERIAL_LQ": {
+    "kind": "view",
+    "source": "CMX.V_COST_PINGGU_MATERIAL_LQ（液体原辅料明细 CostMaterialLq 的查询视图）：去掉方案名和 DELETED 条件，去掉不复制的 DELETED、CREATE_*/UPDATE_*、SOURCE_TYPE、SOURCE_BATCH_QTY；BASE_PRICE 与 cmx 相同取物料表的 PRICE",
+    "sql": "SELECT d.DTLID, d.DOCID, d.GOODSID, d.PER_HL, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.EXADD_MATER, d.MEMO, f.GOODSNAME_EN, f.PRICE BASE_PRICE, f.SUQTY, f.GOODSNAME, f.USEFLAG DTL_USEFLAG, f.STANDARDTYPE, f.FACTORYNAME, f.GOODSTYPE FROM T_COST_PINGGU_DTL_LQ d, T_COST_GOODS f WHERE f.USEFLAG IN ('原料', '辅料') AND d.GOODSID = f.GOODSID"
+  },
+  "V_COST_PINGGU_PACKAGE_LQ": {
+    "kind": "view",
+    "source": "CMX.V_COST_PINGGU_PACKAGE_LQ（液体包材明细 CostPackageLq 的查询视图）：改法同上",
+    "sql": "SELECT d.DTLID, d.DOCID, d.GOODSID, d.PER_HL, d.EXADD_MATER, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.MEMO, f.GOODSNAME_EN, f.PRICE BASE_PRICE, f.SUQTY, f.GOODSNAME, f.USEFLAG DTL_USEFLAG, f.STANDARDTYPE, f.FACTORYNAME, f.GOODSTYPE FROM T_COST_PINGGU_DTL_LQ d, T_COST_GOODS f WHERE f.USEFLAG IN ('非印字包材', '印字包材') AND d.GOODSID = f.GOODSID"
   }
 }
