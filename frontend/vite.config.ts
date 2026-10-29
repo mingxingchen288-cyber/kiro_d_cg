@@ -11,14 +11,21 @@ import { createViteProxy, getBuildTime } from './build/config';
  */
 const rulesCoreWeb = fileURLToPath(new URL('../rules-core/dist/web', import.meta.url));
 
+/**
+ * 前端只读仓库根目录的环境文件（assembly 的 AS-09）：`.env`（不进版本库，含 AG Grid 授权）和 `.env.test`、`.env.prod`。
+ * `envDir` 和 `loadEnv()` 都指向这里；保留 Vite 默认的 `VITE_` 前缀，根目录 `.env` 中的 `PLATFORM_*` 不进浏览器和产物。
+ */
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+
 export default defineConfig(configEnv => {
-  const viteEnv = loadEnv(configEnv.mode, process.cwd()) as unknown as Env.ImportMeta;
+  const viteEnv = loadEnv(configEnv.mode, repoRoot) as unknown as Env.ImportMeta;
 
   const buildTime = getBuildTime();
 
   const enableProxy = configEnv.command === 'serve' && !configEnv.isPreview;
 
   return {
+    envDir: repoRoot,
     base: viteEnv.VITE_BASE_URL,
     resolve: {
       alias: {
