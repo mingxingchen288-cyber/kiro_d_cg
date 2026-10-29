@@ -1,8 +1,8 @@
-"""本模块实现的管道阶段（C08 第 6 节）：按钮操作的"确定涉及的单据"和"动作执行"中的展开。
+"""本模块实现的管道阶段（C08 第 6 节）：按钮操作的"确定涉及的单据"和"展开动作"。
 
-orchestration 按架构第 7 节的顺序调用：确定涉及的单据 → 加锁读取 → 冻结检查 → 每个动作一轮
-（`ActionStage.applies` 为 True 时调用 `run` 展开下一个动作 → write-pipeline 取出 intents 加锁、冻结检查、合并、
-写权限、计算）→ 触发审批 → 写入 → 写命令记录。
+orchestration 按 `STAGE_ORDER` 调用：确定涉及的单据 → 加锁读取 → 冻结检查 → … → 每个动作一轮
+（`ActionStage.applies` 为 True 时调用 `run` 展开下一个动作 → write-pipeline 的"加锁读取"→ 只对这一轮新读入的单据
+"冻结检查"→ write-pipeline 的"合并意图""计算与规则"）→ 触发审批 → 写入变更 → 命令记录。
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ class ButtonInvolvedStage:
     - `actions` 为操作的通用动作；操作本身是逃生舱（`kind` 为 `escapeHatch`）时为调用它的一个 `escapeHatch` 动作。
     """
 
-    name = "operations.involved"
+    name = "确定涉及的单据"
 
     def __init__(self, related: RelatedQuery) -> None:
         self._resolver = SelectionResolver(related)
@@ -80,7 +80,7 @@ class ButtonInvolvedStage:
 
 
 class ActionStage:
-    """"动作执行"中 operations 的部分（OP-01–OP-04、OP-07）：每次 `run` 展开 `actions` 中的下一个动作。
+    """"展开动作"（OP-01–OP-04、OP-07）：每次 `run` 展开 `actions` 中的下一个动作。
 
     `applies` 在还有没执行的动作时为 True。展开结果写入 `intents`；逃生舱在这一轮直接执行。第一轮先检查选中的行
     是否还在：已被删除的按操作的 `rowNotFound` 处理，`skip` 写入 `skipped`，`reject` 返回 409 ROW_NOT_FOUND（WP-05）。
@@ -88,9 +88,10 @@ class ActionStage:
     CommandState 中没有字段的两项，由下面两个方法交给编排层（contract-gaps.md 第 2、4 项）：
     - `propagation_ended`：`propagation` 为 `end` 的操作写到的目标单据，不触发审批（OP-03）；
     - `escape_hatch_calls`：逃生舱的调用记录，随命令记录写入（OP-04）。
+    2026-10-29 插件接线时这两项没有接（plugin-spec 第 4 节）：编排只经 `PipelineStage` 调用本阶段，不调用这两个方法。
     """
 
-    name = "operations.actions"
+    name = "展开动作"
 
     def __init__(self, related: RelatedQuery, registry: EscapeHatchRegistry | None = None,
                  runner: EscapeHatchRunner | None = None) -> None:
