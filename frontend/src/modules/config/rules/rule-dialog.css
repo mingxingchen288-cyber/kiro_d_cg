@@ -1,0 +1,31 @@
+/* 规则弹窗的样式，取自旧系统 RuleConfigDialog.vue */
+.dialog-body { display: flex; gap: 12px; max-height: 65vh; }
+.spacer { flex: 1; }
+.rules-area { flex: 1; overflow-y: auto; padding-right: 4px; min-width: 0; }
+.field-sidebar { width: 220px; flex-shrink: 0; display: flex; flex-direction: column; border-left: 1px solid #e8e8e8; padding-left: 12px; }
+.sidebar-header { font-size: 13px; font-weight: 500; color: #333; margin-bottom: 6px; }
+.sidebar-scroll { flex: 1; overflow-y: auto; }
+.sidebar-filter { margin-bottom: 6px; }
+.field-group { margin-bottom: 10px; }
+.group-title { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #666; margin-bottom: 4px; font-weight: 500; }
+.field-item { display: flex; align-items: center; gap: 6px; padding: 2px 4px; font-size: 12px; border-radius: 3px; cursor: pointer; user-select: none; }
+.field-item:hover { background: #f0f0f0; }
+.field-name { color: #2080f0; white-space: nowrap; }
+.field-code { color: #999; }
+.rule-card { border: 1px solid #e8e8e8; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; background: #fafafa; }
+.rule-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.rule-index { font-size: 12px; color: #999; }
+.rule-row { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.rule-field { display: flex; flex-direction: column; gap: 2px; }
+.field-grow { flex: 1; }
+.w-80 { width: 80px; }
+.w-100 { width: 100px; }
+.w-140 { width: 140px; }
+.w-180 { width: 180px; }
+.w-200 { width: 200px; }
+.align-self-end { align-self: flex-end; }
+.mt-4 { margin-top: 4px; }
+.field-label { font-size: 12px; color: #666; }
+.formula-card { border: 1px dashed #d9d9d9; border-radius: 4px; padding: 8px; margin: 6px 0; background: #fff; }
+.condition-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.section-label { font-size: 12px; color: #666; margin: 6px 0 4px; }
