@@ -8,7 +8,7 @@
 | 加锁读取 | `LockStage` | `involved` 或 `intents` 所属单据中有还没读入 `current` 的已有单据 | `DocumentLoader.lock` |
 | 合并修改 | `MergePatchesStage` | `command.documents` 不为空 | `DocumentMerger.merge_patches` |
 | 合并意图 | `MergeIntentsStage` | `intents` 不为空 | `IntentMerger.absorb`（不再加锁、不再做冻结检查） |
-| 计算与规则 | `RecalculateStage` | `changes.rows` 不为空 | `Recalculator.run` + `check_required` |
+| 计算与规则 | `RecalculateStage` | `changes.rows` 不为空 | `lookups.fill_lookup_fields` + `Recalculator.run` + `check_required` |
 | 写入变更 | `WriteChangesStage` | `changes.rows` 不为空 | `ChangeWriter.apply` |
 
 按钮的每个动作一轮："展开动作 → 加锁读取 → 冻结检查（只查这一轮新读入的单据）→ 合并意图 → 计算与规则"，由编排执行；
@@ -34,6 +34,7 @@ from cost_platform.contracts.types import (
 
 from .calc import Recalculator, check_required, patch_needs_details
 from .loader import DocumentLoader, document_ref, is_new_document, known_missing, sort_key
+from .lookups import fill_lookup_fields
 from .merge import DocumentMerger, IntentMerger, RowRef
 from .plan import find_change
 from .writer import ChangeWriter
@@ -129,7 +130,8 @@ def patched_rows(state: CommandState) -> set[RowRef]:
 
 
 class RecalculateStage:
-    """计算与规则（WP-07、WP-08、WP-15）：对有变化的单据按 commit 阶段求值，计算带出的变化并入 `changes`，提示写入
+    """计算与规则（WP-07、WP-08、WP-15）：新增的行、换了 Lookup 字段值的行先按 Lookup 带出没有物理列的字段
+    （`lookups.fill_lookup_fields`）；对有变化的单据按 commit 阶段求值，计算带出的变化并入 `changes`，提示写入
     `prompts`、效果写入 `effects`；再检查本次 Patch 新增、修改的行的必填字段。规则拒绝时 422 RULE_REJECTED，必填为空时
     422 VALIDATION_FAILED。"""
 
@@ -142,6 +144,7 @@ class RecalculateStage:
         return bool(state.changes.rows)
 
     def run(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> None:
+        fill_lookup_fields(uow, state, ctx)
         field_states = self._calc.run(state, ctx)
         check_required(state, ctx, patched_rows(state), field_states)
 

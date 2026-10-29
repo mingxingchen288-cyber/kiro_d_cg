@@ -39,6 +39,7 @@ from cost_platform.contracts.types import (
 )
 from cost_platform.contracts.values import from_wire, to_wire
 
+from .lookups import lookup_keys_read_by_rules
 from .merge import RowRef, Scales
 from .plan import find_change, note_modify, row_id
 from .values import NoScales, stored_value
@@ -84,12 +85,15 @@ def pack_id_of(state: CommandState, ctx: ExecutionContext, ref: DocumentRef) -> 
 
 def needs_recalculation(state: CommandState, ctx: ExecutionContext, ref: DocumentRef) -> bool:
     """WP-08（用户 2026-10-29 选定）：这张单据有新增、删除的行，或者改到了保存时执行的规则读取的字段
-    （`ConfigSnapshot.rule_fields`），才求值。只改备注这类字段时不求值，其他列保持原样。"""
+    （`ConfigSnapshot.rule_fields`），才求值。只改备注这类字段时不求值，其他列保持原样。
+    改了 Lookup 字段、而它回填的没有物理列的字段有规则读取时（例如换了物料，每批数量按物料名称取公式），也求值。"""
     used = ctx.config.rule_fields(pack_id_of(state, ctx, ref))
+    keys = lookup_keys_read_by_rules(ctx, state.command.page, used)
     for change in state.changes.rows:
         if change.document != ref:
             continue
-        if change.op in ("add", "delete") or set(change.values) & used.get(change.entity, frozenset()):
+        read = used.get(change.entity, frozenset()) | keys.get(change.entity, frozenset())
+        if change.op in ("add", "delete") or set(change.values) & read:
             return True
     return False
 
