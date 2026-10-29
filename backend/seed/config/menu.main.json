@@ -16,6 +16,16 @@
             "pageCode": "COST_PINGGU"
           }
         ]
+      },
+      {
+        "key": "config",
+        "title": "配置",
+        "kind": "config"
+      },
+      {
+        "key": "admin",
+        "title": "系统管理",
+        "kind": "admin"
       }
     ]
   }
