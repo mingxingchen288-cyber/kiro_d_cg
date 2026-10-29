@@ -1,11 +1,12 @@
 """通知投递和站内通知（docs/模块/delivery.md）。
 
-assembly 的接法（架构 6.1、第 7 节）：
-- `DeliveryService(uow_factory, realtime_publisher, clock, ids)`，它就是 `DeliveryDispatcher`；
-- 把 `RegisterNotificationsStage(service)`（第 11 阶段，命令事务内）和 `DispatchStage(service)`（第 13 阶段，提交后）注册进写入管道；
-- 挂载 `delivery_router(service, context)`（C09 第 7 节）；
-- 启动后台任务：在线程中运行 `run_retry_loop(service, stop_event)`；
-- 平台表迁移目录：`cost_platform.delivery.migrations`。
+接线见 `plugin.py` 的 `DeliveryPlugin`（plugin-spec 第 2 节）：
+- `DeliveryService(uow_factory, realtime_publisher, clock, ids)`，它就是 `DeliveryDispatcher`，orchestration 提交后调用；
+- 管道阶段只注册 `RegisterNotificationsStage(service)`（"登记通知"，命令事务内）；`DispatchStage` 不注册
+  （"投递"不是管道位置，见 plugin-spec 第 3 节），保留给单独使用；
+- 路由 `delivery_router(service, context)`（C09 第 7 节）；
+- 后台重试：插件 start 时在线程中运行 `run_retry_loop(service, stop_event)`，stop 时结束；
+- 平台表迁移目录：`plugin.MIGRATIONS`。
 """
 
 from .router import delivery_router
