@@ -18,7 +18,10 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'uv run uvicorn cost_platform.assembly.app:create_app --factory --host 127.0.0.1 --port 8080',
+      // assembly 的 rules-core 插件要用 rules-core 的 Python 包（wheel，不在 backend 的依赖里）
+      command:
+        'uv run --with ../rules-core/dist/python/cost_rules_core-0.1.0-cp313-cp313-win_amd64.whl ' +
+        'uvicorn cost_platform.assembly.app:create_app --factory --host 127.0.0.1 --port 8080',
       cwd: '../backend',
       url: 'http://127.0.0.1:8080/health',
       reuseExistingServer: true,

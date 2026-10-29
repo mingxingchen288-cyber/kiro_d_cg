@@ -1,6 +1,6 @@
-"""命令行 `platform`（AS-05）：`db` 交给 db-core；`migrate` 以后由 migration 提供。
+"""命令行 `platform`（AS-05）：`db` 交给 db-core（经它的 plugin.py 导出的函数）；`migrate` 以后由 migration 提供。
 
-  platform db upgrade                          执行各模块的平台表迁移
+  platform db upgrade                          执行各模块的平台表迁移（迁移目录取各模块 plugin.py 的 MIGRATIONS）
   platform db check                            核对迁移是否为最新，不是时退出码为 1
   platform db copy-business-tables [--refresh 表名 ...]   从 cmx 复制业务表
 """
@@ -10,11 +10,10 @@ from __future__ import annotations
 import argparse
 import sys
 
-from cost_platform.db_core import copy_tables, migrate
-from cost_platform.db_core.engine import create_oracle_engine
+from cost_platform.db_core.plugin import copy_tables, create_oracle_engine, migrate
 
+from .plugins import MIGRATION_DIRS
 from .settings import Settings
-from .wiring import MIGRATION_DIRS
 
 
 def main(argv: list[str] | None = None) -> int:

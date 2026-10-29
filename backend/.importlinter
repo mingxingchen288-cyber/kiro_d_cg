@@ -42,3 +42,56 @@ source_modules =
 forbidden_modules =
     cost_platform.**
 as_packages = False
+
+# Plugin wiring (docs: .reports/modules/plugin-spec.md section 1). Checked by backend/tests/architecture/test_imports.py.
+
+[importlinter:contract:plugin-imports]
+name = A module's plugin.py imports only contracts and its own module
+type = forbidden
+# Every cost_platform.<module>.plugin overlaps its own package in the list below, and the
+# forbidden contract skips overlapping pairs, so a plugin may import its own module.
+# Only direct imports: what the plugin's own module imports is covered by the contracts above.
+source_modules =
+    cost_platform.*.plugin
+forbidden_modules =
+    cost_platform.assembly
+    cost_platform.config
+    cost_platform.identity
+    cost_platform.authz
+    cost_platform.pipeline
+    cost_platform.approval
+    cost_platform.operations
+    cost_platform.delivery
+    cost_platform.realtime
+    cost_platform.queries
+    cost_platform.db_core
+    cost_platform.migration
+    cost_platform.orchestration
+allow_indirect_imports = true
+
+[importlinter:contract:assembly-imports]
+name = assembly imports only the plugin.py of each module
+type = forbidden
+# Also allowed: contracts, assembly itself, third-party packages (cost_rules_core, fastapi ...),
+# none of which are in forbidden_modules.
+source_modules =
+    cost_platform.assembly
+forbidden_modules =
+    cost_platform.config
+    cost_platform.identity
+    cost_platform.authz
+    cost_platform.pipeline
+    cost_platform.approval
+    cost_platform.operations
+    cost_platform.delivery
+    cost_platform.realtime
+    cost_platform.queries
+    cost_platform.db_core
+    cost_platform.migration
+    cost_platform.orchestration
+ignore_imports =
+    cost_platform.assembly -> cost_platform.*.plugin
+    cost_platform.assembly.** -> cost_platform.*.plugin
+# The two expressions above may match nothing while the plugins are being written.
+unmatched_ignore_imports_alerting = none
+allow_indirect_imports = true

@@ -26,10 +26,14 @@ class Settings:
     db_user: str
     db_password: str = field(repr=False)
     db_dsn: str
+    redis_url: str
+    redis_namespace: str
     allowed_origins: frozenset[str]
     lock_wait_seconds: int
+    request_wait_seconds: int
     session_idle_minutes: int
     config_dir: Path
+    """基础配置项目录：PF_CONFIG_ITEM 没有基础配置项时，config 启动时把这里的配置项导入一次。"""
 
     @classmethod
     def load(cls) -> Settings:
@@ -38,8 +42,11 @@ class Settings:
             db_user=env["PLATFORM_DB_USER"],
             db_password=env["PLATFORM_DB_PASSWORD"],
             db_dsn=env["PLATFORM_DB_DSN"],
+            redis_url=env.get("PLATFORM_REDIS_URL", "redis://127.0.0.1:6379/0"),
+            redis_namespace=env.get("PLATFORM_REDIS_NAMESPACE", "cost-platform"),
             allowed_origins=frozenset(o.strip() for o in env.get("PLATFORM_ALLOWED_ORIGINS", "").split(",") if o.strip()),
             lock_wait_seconds=int(env.get("PLATFORM_LOCK_WAIT_SECONDS", "5")),
+            request_wait_seconds=int(env.get("PLATFORM_REQUEST_WAIT_SECONDS", "5")),
             session_idle_minutes=int(env.get("PLATFORM_SESSION_IDLE_MINUTES", "120")),
             config_dir=Path(env.get("PLATFORM_CONFIG_DIR", str(BACKEND / "seed" / "config"))),
         )
