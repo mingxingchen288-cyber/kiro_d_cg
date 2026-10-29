@@ -1,4 +1,5 @@
-"""页面视图（CF-03、C05，T-CF-2）：三层叠加、内置按钮的 requiresSelection、按角色过滤按钮。"""
+"""页面视图（CF-03、C05，T-CF-2）：三层叠加、可编辑与保存操作的 writableFields 取交集、内置按钮的 requiresSelection、
+按角色过滤按钮、新增和删除显示在页面配置放了它们的区域。"""
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from cost_platform.config.catalog import Catalog
-from cost_platform.config.views import BUILTIN_REQUIRES_SELECTION, build_page_view, field_state
+from cost_platform.config.views import BUILTIN_REQUIRES_SELECTION, build_page_view, build_views, field_state
 from cost_platform.contracts.types import (
     ConfigDraft,
     EntityConfig,
@@ -57,8 +58,10 @@ def test_layers_only_tighten(field: EntityField, has_erp_row: bool, entity_layer
 
 def _view(items: list[ConfigDraft], page: str, role: str) -> PageView:
     catalog = Catalog({}).merged(items)
-    return build_page_view(page, catalog.page(page), catalog.entities(), catalog.roles()[role], 7,
-                           PackRef(pack_id=catalog.page(page).master.entity, version=5))
+    config = catalog.page(page)
+    operation = catalog.operation(config.save_operation)
+    return build_page_view(page, config, catalog.entities(), catalog.roles()[role], 7,
+                           PackRef(pack_id=config.master.entity, version=5), operation.writable_fields)
 
 
 def _with(items: list[ConfigDraft], config_type: str, key: str, content: dict[str, Any]) -> list[ConfigDraft]:
@@ -74,30 +77,54 @@ def _seed_with_buttons(role_buttons: list[str]) -> list[ConfigDraft]:
     items = seed_drafts()
     page = next(d for d in items if d.type == "page").content
     page = {**page, "master": {**page["master"], "buttons": BUTTONS},
-            "details": [{**page["details"][0], "buttons": BUTTONS[:3]}, page["details"][1]]}
+            "details": [{**page["details"][0], "buttons": BUTTONS[:3]}, {**page["details"][1], "buttons": []}]}
     role = {"name": "成本会计", "admin": False, "pages": {"COST_PINGGU": {"buttons": role_buttons}}}
     return [*_with(items, "page", "COST_PINGGU", page), draft("role", "COST_ACCOUNTANT", role)]
 
 
 def test_builtin_buttons_requires_selection() -> None:
-    """CF-03：区域按钮中 copyRow、saveGridConfig 的 requiresSelection 按平台的表给出；业务按钮取页面配置的值；
-    addRow、deleteRow 是页面级按钮，不在区域按钮中。"""
+    """CF-03：区域按钮中内置动作的 requiresSelection 按平台的表给出，业务按钮取页面配置的值；
+    页面配置放了 addRow、deleteRow 的区域，区域按钮中有这两个按钮（C05：显示在放了它们的区域），没放的区域没有。"""
     view = _view(_seed_with_buttons(["*"]), "COST_PINGGU", "COST_ACCOUNTANT")
     master = [(b.key, b.action, b.operation, b.requires_selection) for b in view.master.buttons]
-    assert master == [("master:copyRow", "copyRow", None, True),
+    assert master == [("master:addRow", "addRow", None, False),
+                      ("master:copyRow", "copyRow", None, True),
+                      ("master:deleteRow", "deleteRow", None, True),
                       ("master:syncPrice", "syncPrice", "COST_PINGGU.save", False),
                       ("master:saveGridConfig", "saveGridConfig", None, False)]
-    assert [(b.key, b.requires_selection) for b in view.details[0].buttons] == [("COST_MATERIAL:copyRow", True)]
+    assert [(b.key, b.requires_selection) for b in view.details[0].buttons] == [
+        ("COST_MATERIAL:addRow", False), ("COST_MATERIAL:copyRow", True), ("COST_MATERIAL:deleteRow", True)]
+    assert view.details[1].buttons == []
     assert view.system_buttons == ["save", "addRow", "deleteRow", "advancedSearch"]
     assert BUILTIN_REQUIRES_SELECTION == {"copyRow": True, "deleteRow": True, "addRow": False, "saveGridConfig": False}
 
 
 def test_buttons_filtered_by_role() -> None:
-    """按钮只留当前角色有权限的（C06 第 8 节的权限键）；没有 system:save 时 systemButtons 中没有 save。"""
+    """按钮只留当前角色有权限的（C06 第 8 节的权限键）：新增、删除看 system:addRow、system:deleteRow；
+    没有 system:save 时 systemButtons 中没有 save。"""
     view = _view(_seed_with_buttons(["master:copyRow", "system:addRow", "COST_MATERIAL:copyRow"]), "COST_PINGGU", "COST_ACCOUNTANT")
-    assert [b.key for b in view.master.buttons] == ["master:copyRow"]
-    assert [b.key for b in view.details[0].buttons] == ["COST_MATERIAL:copyRow"]
+    assert [b.key for b in view.master.buttons] == ["master:addRow", "master:copyRow"]
+    assert [b.key for b in view.details[0].buttons] == ["COST_MATERIAL:addRow", "COST_MATERIAL:copyRow"]
     assert view.system_buttons == ["addRow"]
+
+
+def test_editable_within_save_operation_writable_fields() -> None:
+    """C05：页面视图的 editable 与页面保存操作的 writableFields 取交集。成本核算主表的备注（MEMO）三层都可编辑，
+    从 COST_PINGGU.save 的 writableFields 中去掉后，页面视图（经 build_views，与保存时生成的相同）中只读，其他字段不变。"""
+    items = seed_drafts()
+    role = draft("role", "COST_ACCOUNTANT", {"name": "成本会计", "admin": False, "pages": {"COST_PINGGU": {"buttons": ["*"]}}})
+    operation = next(d for d in items if (d.type, d.key) == ("operation", "COST_PINGGU.save")).content
+    narrowed = {**operation["writableFields"], "COST_PINGGU": [n for n in operation["writableFields"]["COST_PINGGU"] if n != "MEMO"]}
+
+    def editable(drafts: list[ConfigDraft]) -> dict[str, bool]:
+        view = build_views(Catalog({}).merged([*drafts, role]), 7, {})[("COST_PINGGU", "COST_ACCOUNTANT")]
+        return {f.name: f.editable for f in view.master.fields}
+
+    before = editable(items)
+    after = editable(_with(items, "operation", "COST_PINGGU.save", {**operation, "writableFields": narrowed}))
+    assert before["MEMO"] is True and after["MEMO"] is False
+    assert {n for n, e in after.items() if e} == {n for n, e in before.items() if e} - {"MEMO"}
+    assert {n for n, e in before.items() if e} <= set(operation["writableFields"]["COST_PINGGU"])
 
 
 def test_seed_page_view() -> None:
@@ -121,14 +148,18 @@ def test_seed_page_view() -> None:
 
 
 def test_erp_row_entity() -> None:
-    """有 erpRow 的物料清单：ERP 列按页面设置可编辑（前端在 ERP 行上再显示为只读），erpRow.column 本身不可编辑。"""
+    """有 erpRow 的物料清单：ERP 列按页面设置可编辑（前端在 ERP 行上再显示为只读），erpRow.column 本身不可编辑。
+    PRICE 同时列入保存操作的 writableFields（页面视图的 editable 与它取交集）。"""
     from .support import goods_price_items
 
     items = goods_price_items()
     page = {**next(d for d in items if d.type == "page").content}
     page["master"] = {**page["master"], "fields": {"PRICE": {"editable": True}}}
+    operation = next(d for d in items if d.type == "operation").content
+    operation = {**operation, "writableFields": {"COST_GOODS_PRICE": ["PRICE", "ZX_PRICE"]}}
     role = draft("role", "R", {"name": "R", "admin": False, "pages": {"GOODS_PRICE_MANAGE": {}}})
-    view = _view([*_with(items, "page", "GOODS_PRICE_MANAGE", page), role], "GOODS_PRICE_MANAGE", "R")
+    items = _with(_with(items, "page", "GOODS_PRICE_MANAGE", page), "operation", "GOODS_PRICE_MANAGE.save", operation)
+    view = _view([*items, role], "GOODS_PRICE_MANAGE", "R")
     fields = {f.name: f for f in view.master.fields}
     assert fields["PRICE"].editable is True and fields["PRICE"].source == "erp"
     assert fields["ISERP"].editable is False

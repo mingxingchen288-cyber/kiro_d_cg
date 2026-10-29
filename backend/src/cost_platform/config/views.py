@@ -3,15 +3,18 @@
 三层叠加：实体（`fieldDefaults`）→ 页面（主表区或明细区的 `fields`）→ 角色（`columns` 的 `master` 或明细实体）。
 可见、可编辑只能收紧，必填只能增加。字段本身不能编辑的情况：`role` 不是 `input`（计算字段、系统字段）、`column` 为 null
 （只在 readView 中）、没有 `erpRow` 的实体的 ERP 列、`erpRow.column` 本身（只由平台写，C06 第 2 节）。
+可编辑再与页面保存操作的 `writableFields` 取交集（C05）：后端保存时按它拒绝（authz 的 `writable_fields`），
+页面上显示能编辑的字段，保存时一定能写。
 
-按钮：区域按钮按页面配置的顺序，只留当前角色有权限的（`*` 或权限键 `master:<动作>`、`<明细实体>:<动作>`）；
-`addRow`、`deleteRow` 是页面级按钮（`systemButtons`），不放进区域按钮（C05）。内置动作是否要求选中行按 CF-03 的表，
+按钮：区域按钮按页面配置的顺序，只留当前角色有权限的：`addRow`、`deleteRow` 是页面级按钮，要 `system:<动作>`
+（同时列在 `systemButtons` 中），前端只在页面配置放了这两个按钮的区域显示它们（C05、frontend-page 的 FP-14）；
+其他按钮要 `*` 或权限键 `master:<动作>`、`<明细实体>:<动作>`。内置动作是否要求选中行按 CF-03 的表，
 业务动作取页面配置中的值。
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 
 from cost_platform.contracts.types import (
     ButtonConfig,
@@ -53,18 +56,20 @@ def field_state(field: EntityField, entity: EntityConfig, layers: Sequence[Layer
     return visible, editable, required
 
 
-def _view_field(field: EntityField, entity: EntityConfig, setting: FieldSetting | None, role: FieldFlags | None) -> ViewField:
+def _view_field(field: EntityField, entity: EntityConfig, setting: FieldSetting | None, role: FieldFlags | None,
+                writable: Collection[str]) -> ViewField:
     visible, editable, required = field_state(field, entity, [entity.field_defaults.get(field.name), setting, role])
     return ViewField(
         name=field.name, label=field.label, type=field.type, scale=field.scale, source=field.source,
-        calculated=field.role == "calculated", visible=visible, editable=editable, required=required,
-        width=setting.width if setting else None, pinned=setting.pinned if setting else None,
+        calculated=field.role == "calculated", visible=visible, editable=editable and field.name in writable,
+        required=required, width=setting.width if setting else None, pinned=setting.pinned if setting else None,
         dict_type=setting.dict_type if setting else None, lookup=setting.lookup if setting else None,
     )
 
 
-def _fields(entity: EntityConfig, settings: Mapping[str, FieldSetting], columns: Mapping[str, FieldFlags]) -> list[ViewField]:
-    return [_view_field(f, entity, settings.get(f.name), columns.get(f.name)) for f in entity.fields]
+def _fields(entity: EntityConfig, settings: Mapping[str, FieldSetting], columns: Mapping[str, FieldFlags],
+            writable: Collection[str]) -> list[ViewField]:
+    return [_view_field(f, entity, settings.get(f.name), columns.get(f.name), writable) for f in entity.fields]
 
 
 def _allowed(grant: RolePage, key: str) -> bool:
@@ -74,10 +79,9 @@ def _allowed(grant: RolePage, key: str) -> bool:
 def _buttons(region: str, buttons: Sequence[ButtonConfig], grant: RolePage) -> list[ViewButton]:
     result = []
     for button in buttons:
-        if button.action in PAGE_LEVEL_ACTIONS:
-            continue
         key = f"{region}:{button.action}"
-        if not _allowed(grant, key):
+        permission = f"system:{button.action}" if button.action in PAGE_LEVEL_ACTIONS else key
+        if not _allowed(grant, permission):
             continue
         if button.action in BUILTIN_REQUIRES_SELECTION:
             requires, operation = BUILTIN_REQUIRES_SELECTION[button.action], None
@@ -89,13 +93,15 @@ def _buttons(region: str, buttons: Sequence[ButtonConfig], grant: RolePage) -> l
 
 
 def build_page_view(page_code: str, page: PageConfig, entities: Mapping[str, EntityConfig], role: RoleConfig,
-                    version: int, pack: PackRef) -> PageView:
-    """角色在该页面的权限见 `role.pages[page_code]`；调用方已确认角色可以访问该页面。"""
+                    version: int, pack: PackRef, writable_fields: Mapping[str, Sequence[str]]) -> PageView:
+    """角色在该页面的权限见 `role.pages[page_code]`；调用方已确认角色可以访问该页面。
+    `writable_fields` 是页面保存操作（`page.save_operation`）的 `writableFields`。"""
     grant = role.pages[page_code]
     entity = entities[page.master.entity]
     master = ViewMaster(
         entity=page.master.entity, primary_key=entity.primary_key,
-        fields=_fields(entity, page.master.fields, grant.columns.get("master", {})),
+        fields=_fields(entity, page.master.fields, grant.columns.get("master", {}),
+                       set(writable_fields.get(page.master.entity, ()))),
         buttons=_buttons("master", page.master.buttons, grant), grid=page.master.grid,
         form_layout=page.master.form_layout, erp_row=entity.erp_row,
     )
@@ -105,7 +111,8 @@ def build_page_view(page_code: str, page: PageConfig, entities: Mapping[str, Ent
         detail = entities[area.entity]
         details.append(ViewDetail(
             entity=area.entity, title=area.title, primary_key=detail.primary_key, parent_key=parent_keys[area.entity],
-            fields=_fields(detail, area.fields, grant.columns.get(area.entity, {})),
+            fields=_fields(detail, area.fields, grant.columns.get(area.entity, {}),
+                           set(writable_fields.get(area.entity, ()))),
             buttons=_buttons(area.entity, area.buttons, grant), grid=area.grid, form_layout=area.form_layout,
             erp_row=detail.erp_row,
         ))
@@ -129,5 +136,7 @@ def build_views(catalog: Catalog, version: int, pack_versions: Mapping[str, int]
     for page_code, role_code in view_pairs(catalog):
         page = pages[page_code]
         pack = PackRef(pack_id=page.master.entity, version=pack_versions.get(page.master.entity, version))
-        views[(page_code, role_code)] = build_page_view(page_code, page, entities, roles[role_code], version, pack)
+        operation = catalog.operation(page.save_operation)
+        writable = operation.writable_fields if operation is not None else {}
+        views[(page_code, role_code)] = build_page_view(page_code, page, entities, roles[role_code], version, pack, writable)
     return views
