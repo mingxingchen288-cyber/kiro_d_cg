@@ -12,7 +12,7 @@
 - 交付物：C06 第 10 节的全部校验（配置的数据结构使用 contracts 中的 C06 类型，见 contracts 的 CT-02）；配置项的读写。
 - 接入责任：frontend-config 经 T-CF-3 的接口使用；migration 经 `ConfigImporter` 使用，T-AS-8 联调。
 - 验收标准：模拟验证：C06 的每个样例都能保存；第 10 节每条校验各有一个通过和一个不通过的样例，不通过时什么都不写；通过 `ConfigImporter` 的契约测试，另按 C08 第 4 节验证：本批的项可以引用已有配置和本批的其他项，有一项不通过时整批不写，已有的项不覆盖、列入 `skipped`；同一批中两项类型和编码相同时整批拒绝，明细列出这两项，即使它们与已有配置项相同；错误明细的 `path` 以 `items[序号]` 开头；审批流（2026-10-28 随 C06 v17，只验正向流程）：C06 7.8、7.9、7.10 三个样例在 d_cg 上能保存，SQL 片段按 C06 7.2 包好后交给数据库解析通过；真实验证：在 d_cg 上保存、读取、删除配置项。
-- 状态与证据：进行中。链路 0 已先交付最小部分，见 T-AS-9（[assembly](assembly.md)）；本卡的验收照常进行。
+- 状态与证据：进行中（2026-10-29；还没有独立复核）。`ConfigImporter` 随迁移暂停，没有做，它的验收条目一并暂停。模拟验证：`backend` 目录 `uv run --with ..\rules-core\dist\python\cost_rules_core-0.1.0-cp313-cp313-win_amd64.whl pytest -q -p no:cacheprovider -m "not oracle and not redis" tests/config`，102 passed、0 failed（`.reports/modules/config/pytest-config.txt`）；第 10 节每条校验的通过、不通过样例在 `tests/config/test_validation.py`（37 条），7.8～7.10 三个审批流样例的 SQL 片段按 7.2 包好后交给数据库（内存 SQLite）解析通过；不通过时什么都不写见 `test_save.py`。C06 正文中引用了不存在的列的几个样例不能保存，见 `.reports/modules/config/contract-gaps.md` 第 10 条。真实验证：`tests/config/test_oracle.py`（d_cg 上保存、读取、删除，三个样例交给 Oracle 解析）已写好，没有运行（等合并后统一升级 PF_ 表；7.8、7.10 还需要 db-core 把 T_COST_GOODS_PRICE_V 和液体成本的表、视图复制到 d_cg）。
 
 ### T-CF-2 页面视图与规则包生成
 
@@ -22,7 +22,7 @@
 - 交付物：按（页面、角色）生成的页面视图；按业务对象生成的规则包，规则和条件转成 JDM。
 - 接入责任：页面视图经配置快照和 C09 供前后端使用；规则包由 rules-core 解释，T-AS-5 联调。
 - 验收标准：基于属性的测试：任意实体、页面、角色设置叠加后，可见、可编辑不比上层宽，必填不比上层少，没有 `erpRow` 的实体 ERP 列始终只读；页面视图中内置按钮的 `requiresSelection` 符合 CF-03 的表，业务按钮的取页面配置中的值；C06 第 5 节的两条规则和 7.4、7.5 两个审批流生成的规则包能被 rules-core 编译并通过对应样例。
-- 状态与证据：进行中。链路 1 先交付最小部分：文件配置生成页面视图的明细区 `details`（`parentKey` 取主表实体的 `details`），`column` 为 null 的字段只读。真实联调见 T-AS-9（[assembly](assembly.md)）。规则包生成和 Redis 快照未做。
+- 状态与证据：待联调（2026-10-29；还没有独立复核）。模拟验证（命令同 T-CF-1，102 passed）：`tests/config/test_views.py` 的属性测试（300 例）和按钮的 `requiresSelection`；`test_packs.py` 用 rules-core 的真实 wheel：seed 的成本核算配置加计算规则生成的规则包 `load_pack` 后对样例 09（cmx 单据 200726）算出相同结果，C06 第 5 节的计算规则对 E02 算出 1020 和 5.1，界面规则能编译（rules-core 还没有界面规则的求值，T-RC-2），依赖成环时保存被拒绝并列出环上的规则；`test_packs_jdm.py`：JDM 与 `rules-core/fixtures/gen_packs.py` 逐个相同。验收标准中"7.4、7.5 两个审批流生成的规则包"随 C07 v4 不再适用（审批条件是 SQL，不进规则包）。校验、界面规则在规则包中的写法见 contract-gaps 第 4 条。
 
 ### T-CF-3 保存接口、Redis 切换与崩溃恢复
 
@@ -32,7 +32,7 @@
 - 交付物：上述接口和函数；保存后发布 `config.changed`。
 - 接入责任：T-AS-4 挂载路由，在启动时调用初始化，启动恢复任务。
 - 验收标准：模拟验证，在每一步之后注入进程退出：Oracle 提交前退出，配置不变，60 秒后登记被删除；提交后、写 Redis 前退出，下一个请求就用上新配置（只为这个请求查一次 Oracle），5 秒内恢复任务补写 Redis 并发布 `config.changed`；Redis 不可用时保存返回 CONFIG_UNAVAILABLE；没有待生效登记时，读取快照不访问 Oracle；两次保存并发时依次执行，代号各加一；真实验证：在 Oracle 和 Redis 上重复以上中断，并确认一批配置项一起切换，读不到新旧混合的版本。
-- 状态与证据：未开始。
+- 状态与证据：进行中（2026-10-29；还没有独立复核）。模拟验证（命令同 T-CF-1）：`tests/config/test_recovery.py` 6 条（E18 的两种恢复路径、提交前退出、Redis 不可用、提交后写 Redis 失败、依次保存），`test_save.py` 8 条，`test_router.py` 4 条（C09 第 3 节接口），`test_cache.py` 内存实现 6 条（按代号切换、不写回已删除的项、整体补写、待生效登记）。并发保存在替代实现上只能依次执行，真实的排队见 `test_oracle.py::test_concurrent_saves_queue_on_generation_row`。真实验证：`test_oracle_redis.py`（d_cg + Redis 上重复各步之后的中断）、`test_cache.py` 的 Redis 用例（Lua 脚本：一批一起切换、不回退）已写好，没有运行（本机没有 Redis；PF_ 表等合并后统一升级）。
 
 ### T-CF-4 配置快照读取
 
@@ -42,7 +42,7 @@
 - 交付物：`ConfigSnapshotReader`。
 - 接入责任：T-AS-4 接入 assembly 的中间件。
 - 验收标准：通过契约测试；一次读取只访问 Redis 一次；缺项时回查 Oracle 并补写，回查后仍取不到时按 C08 第 4 节报错（页面不存在 404、不能访问 403，其他配置项 500，角色已删除 401 SESSION_ROLE_REVOKED），已经取得的快照不受影响；基于属性的测试：保存和读取交替进行时，每次读到的快照都属于同一版本组合，同一快照的内容不变。
-- 状态与证据：进行中。链路 0 已先交付最小部分，见 T-AS-9（[assembly](assembly.md)）；本卡的验收照常进行。
+- 状态与证据：进行中（2026-10-29；还没有独立复核）。模拟验证（命令同 T-CF-1）：`tests/config/test_snapshot.py` 20 条，含 `ConfigSnapshotReaderContract` 契约测试（13 条，真实的保存流程 + 内存 Redis）、一次读取只访问 Redis 一次且不访问 Oracle、Redis 清空时回查并补写、Redis 不可用时直接查 Oracle、CF-12 菜单过滤、保存和读取交替的属性测试（两个进程，快照都属于同一版本组合）。真实验证：`test_oracle.py::TestOracleConfigReader`（d_cg 上跑同一套契约测试）、`test_oracle_redis.py::test_read_is_one_redis_round_trip`（统计 Redis 命令数）已写好，没有运行。
 
 ### T-CF-5 启动预热
 
@@ -52,7 +52,7 @@
 - 交付物：预热函数；`ready` 状态供 assembly 的 `/health` 和中间件读取。
 - 接入责任：T-AS-2 在启动流程中调用（用替代实现），T-AS-4 接入真实实现联调。
 - 验收标准：模拟验证：预热后，每个角色的第一个请求不再回查 Oracle，也不再编译规则包；Redis 中已有更新的版本时不被覆盖；有规则包编译失败时启动失败；Redis 不可用时 `ready` 为 false，恢复后自动完成；真实验证：用迁移后的配置在 d_cg 和 Redis 上预热，记录角色数、规则包数和耗时。
-- 状态与证据：未开始。
+- 状态与证据：进行中（2026-10-29；还没有独立复核）。模拟验证（命令同 T-CF-1）：`tests/config/test_warmup.py` 5 条，覆盖验收标准的四项，另有 Oracle 不可用时启动失败。真实验证：`test_oracle_redis.py::test_warm_up_on_d_cg_and_redis` 已写好，没有运行；迁移暂停，先用 d_cg 中已有的配置预热。
 
 ### T-CF-6 新建页面向导
 
@@ -62,4 +62,4 @@
 - 交付物：C09 第 3 节的两个向导接口。
 - 接入责任：frontend-config 使用（T-AS-7）。
 - 验收标准：模拟验证：生成的实体、页面、保存操作、菜单和权限都通过 C06 第 10 节的校验；页面的 `audit`、`detailMode` 与请求相同；页面的 `saveOperation` 引用生成的保存操作，保存操作的 `kind`、`propagation` 符合 CF-14，`writableFields` 逐项符合 CF-14：不含计算字段和系统字段（`role` 不是 `input`）、只在视图中的字段、实体或页面设为不可编辑的字段、主键、主从关联字段、`erpRow.column` 和不可写的 ERP 列；在写入任一项时注入失败，什么都不写；要新建的实体、页面或保存操作已存在，或菜单、ADMIN 角色中已有这个页面时，返回 422 且什么都不写；菜单和 ADMIN 角色中原有的内容不变。真实验证：用 `T_COST_GOODS_PRICE_V` 和 `T_COST_GOODS` 生成物料清单页，生成的字段与视图列一致，视图独有的列为只读；序列不存在的表返回 422 且什么都不写；配置代号只加一。
-- 状态与证据：未开始。
+- 状态与证据：进行中（2026-10-29；还没有独立复核）。模拟验证（命令同 T-CF-1）：`tests/config/test_wizard.py` 5 条（读结构、单表页、主从页、已存在时 422 且什么都不写、序列不存在时 422 且什么都不写），生成的各项经保存流程按 C06 第 10 节校验后写入，代号只加一。"在写入任一项时注入失败"上线后再补（写入在同一个事务中，校验失败和序列不存在的回滚已验证）。生成请求中实体的写法和响应体见 contract-gaps 第 6 条。真实验证：`test_oracle.py::test_wizard_on_d_cg` 已写好，没有运行（需要 d_cg 中有 T_COST_GOODS_PRICE_V）。
