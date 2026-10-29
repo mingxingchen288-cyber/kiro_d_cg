@@ -1,12 +1,11 @@
-"""本模块需要、而契约中的配置快照还没有提供的配置读取（缺口见 `.reports/modules/approval/contract-gaps.md`）。
+"""本模块用到的配置读取：审批流（带编码和名称）和按表找实体（原缺口见 `.reports/modules/approval/contract-gaps.md`
+第 1、2 项，2026-10-29 契约已补上 `ConfigSnapshot.approval_flow_entries` 和 `EntityDirectory`）。
 
-- 审批流的编码和名称：C08 第 4 节 `ConfigSnapshot.approval_flows(page)` 只返回 `ApprovalFlowConfig`（C06 第 7 节的
-  `content`），没有配置项的 `key` 和 `name`；审批实例、进度、勾选（C09 的 `flow`、`flowName`）都要用它们。
-- 按表找实体：冻结表、修改表注册与否，以及"表 + 主键"所属的实体和单据（C06 7.4、7.5），需要知道哪些实体的 `table`
-  是这张表；快照只能按实体编码取。
+- 审批流的编码和名称：审批实例、进度、勾选（C09 的 `flow`、`flowName`）都要用它们。
+- 按表找实体：冻结表、修改表注册与否，以及"表 + 主键"所属的实体和单据（C06 7.4、7.5）。
 
-assembly 按与执行上下文同一版本的配置实现 `ApprovalCatalog`，经 `CatalogOf` 注入；`ItemsApprovalCatalog` 是按给定
-配置内容的实现，测试和 assembly 都可以直接用。
+接线时用 `SnapshotApprovalCatalog`（由 `catalog_of(entity_directory)` 经 `CatalogOf` 注入，plugin.py）；
+`ItemsApprovalCatalog` 是按给定配置内容的实现，测试直接用。
 """
 
 from __future__ import annotations
@@ -15,6 +14,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
+from cost_platform.contracts.ports import ConfigSnapshot, EntityDirectory
 from cost_platform.contracts.types import (
     ApprovalFlowConfig,
     ConfigDraft,
@@ -60,6 +60,29 @@ class ApprovalCatalog(Protocol):
 
 CatalogOf = Callable[[ExecutionContext], ApprovalCatalog]
 """取本次请求所用的配置（与执行上下文中的配置快照同一版本）。"""
+
+
+class SnapshotApprovalCatalog:
+    """接线用的 `ApprovalCatalog`（2026-10-29 契约补上后）：审批流取本次请求的配置快照
+    `ConfigSnapshot.approval_flow_entries`；按表找实体取 `EntityDirectory.entities_on_table`（最新已发布的实体配置，
+    端口不带 ctx），实体的配置仍取本次请求的快照。"""
+
+    def __init__(self, snapshot: ConfigSnapshot, entities: EntityDirectory) -> None:
+        self._snapshot = snapshot
+        self._entities = entities
+
+    def flows(self, page: str) -> list[NamedFlow]:
+        return [NamedFlow(e.code, e.name, e.flow) for e in self._snapshot.approval_flow_entries(page)]
+
+    def entities_on_table(self, table: str) -> list[TableEntity]:
+        entity = self._snapshot.entity
+        return [TableEntity(found.entity, entity(found.entity), found.master, entity(found.master), found.parent_key)
+                for found in sorted(self._entities.entities_on_table(table), key=lambda f: f.entity)]
+
+
+def catalog_of(entities: EntityDirectory) -> CatalogOf:
+    """`ApprovalDeps.catalog`：每个请求按它的执行上下文建 `SnapshotApprovalCatalog`。"""
+    return lambda ctx: SnapshotApprovalCatalog(ctx.config, entities)
 
 
 class ItemsApprovalCatalog:

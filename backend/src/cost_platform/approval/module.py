@@ -1,10 +1,10 @@
-"""approval 提供的能力：`FreezeReader` 和管道阶段（C08 第 6、13 节），由 assembly 注册到 orchestration。
+"""approval 提供的能力：`FreezeReader` 和管道阶段（C08 第 6、13 节），由插件 `approval`（plugin.py）注册。
 
-阶段在架构第 7 节中的位置：
+阶段在 `STAGE_ORDER` 中的位置（阶段的 `name`）：
 - 确定涉及的单据（审批命令）：`resolve`；
-- 冻结检查：`freeze_check`（动作执行中新找到的单据由 write-pipeline 再执行一次，WP-18）；
+- 冻结检查：`freeze_check`（每个动作一轮时，编排只对这一轮新读入的单据再执行一次，WP-18）；
 - 审批处理：`process`；
-- 触发审批：`trigger`，紧接着强制审批检查 `required`（第 8 步）。
+- 触发审批：`trigger`，之后是强制审批检查 `required`。
 """
 
 from __future__ import annotations

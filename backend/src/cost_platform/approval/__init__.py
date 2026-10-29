@@ -1,12 +1,12 @@
 """审批、冻结（docs/模块/approval.md）。
 
-assembly 的用法：
+接线由 `plugin.py` 的两个插件完成（assembly 只把它们放进插件清单）：
 
 ```python
-deps = ApprovalDeps(catalog=..., schema=..., directory=..., documents=..., rules=..., tables=...)
-approval = create_approval(deps)            # FreezeReader 和管道阶段
+deps = ApprovalDeps(catalog=catalog_of(entity_directory), schema=..., directory=..., documents=..., rules=..., tables=...)
+approval = create_approval(deps)            # 插件 approval：FreezeReader 和管道阶段
 service = ApprovalService(deps, uow_factory, command_executor)
-app.include_router(approval_router(service, context))
+approval_router(service, context_provider.context)   # 插件 approval.service：APIRouter
 ```
 """
 
