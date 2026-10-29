@@ -13,9 +13,9 @@ from cost_platform.contracts import fakes, ports
 from cost_platform.contracts.fakes import PORT_FAKES, Call, FakeClock, FakeDocumentReader, Scripted
 from cost_platform.contracts.types import DocumentRef, ErrorCode, PlatformError
 
-REAL_ONLY = {"CommandRecorder", "TableWriter", "ContextProvider"}
-"""不写替代实现和契约测试、直接用真实实现验证的端口：第 5a 节的写入能力（2026-10-28，用户："按这个做"，在 d_cg 上验证），
-以及 assembly 提供的 `ContextProvider`（2026-10-29，把 HTTP 请求变成执行上下文，由浏览器联调验证）。"""
+REAL_ONLY = {"CommandRecorder", "TableWriter"}
+"""不写替代实现和契约测试、直接用真实实现验证的端口：第 5a 节的写入能力（2026-10-28，用户："按这个做"，在 d_cg 上验证）。
+同在第 5a 节的 `CommandMonitor` 有替代实现：orchestration 的测试要用它。"""
 
 PORTS = {name: obj for name, obj in vars(ports).items()
          if inspect.isclass(obj) and getattr(obj, "_is_protocol", False) and obj.__module__ == ports.__name__
@@ -46,6 +46,8 @@ PORT_CONTRACTS = {
     "Clock": "test_clock.ClockContract",
     "IdGenerator": "test_id_generator.IdGeneratorContract",
     "FreezeReader": "test_freeze_reader.FreezeReaderContract",
+    "CommandMonitor": "test_command_monitor.CommandMonitorContract",
+    "ContextProvider": "test_context_provider.ContextProviderContract",
 }
 
 
@@ -56,7 +58,7 @@ def _protocol_members(protocol: type) -> tuple[dict[str, inspect.Signature], set
 
 
 def test_every_port_has_fake_and_contract() -> None:
-    assert len(PORTS) == 23
+    assert len(PORTS) == 25
     assert set(PORT_FAKES) == set(PORTS)
     assert set(PORT_CONTRACTS) == set(PORTS)
     for name, target in PORT_CONTRACTS.items():
@@ -87,8 +89,8 @@ def test_fake_matches_port(port: str) -> None:
 
 def test_fakes_package_lists_every_module() -> None:
     names = {m.name for m in pkgutil.iter_modules([str(Path(fakes.__file__).parent)])}
-    assert names == {"_script", "approval", "authz", "config", "db", "delivery", "identity", "pipeline", "queries", "realtime",
-                     "rules", "system"}
+    assert names == {"_script", "approval", "assembly", "authz", "config", "db", "delivery", "identity", "pipeline", "queries",
+                     "realtime", "rules", "system"}
 
 
 # ---------------------------------------------------------------- 预设错误

@@ -10,12 +10,13 @@
 
 from ._script import Call, Scripted
 from .approval import FakeFreezeReader
+from .assembly import FakeContextProvider
 from .authz import FakePermissionChecker
 from .config import FakeConfigImporter, FakeConfigSnapshot, FakeConfigSnapshotReader, FakeEntityDirectory
 from .db import FakeConnectionFactory, FakeSchemaInspector, FakeUnitOfWork, FakeUnitOfWorkFactory
 from .delivery import FakeDeliveryDispatcher
 from .identity import FakeAuthenticator, FakeDirectory
-from .pipeline import FakeCommandExecutor, FakeStage, unchanged
+from .pipeline import FakeCommandExecutor, FakeCommandMonitor, FakeStage, unchanged
 from .queries import FakeDocumentReader, FakePersonalConfigImporter, FakeRelatedQuery
 from .realtime import FakeRealtimePublisher
 from .rules import FakePack, FakeRulesEngine
@@ -34,6 +35,7 @@ PORT_FAKES = {
     "ConfigImporter": FakeConfigImporter,
     "EntityDirectory": FakeEntityDirectory,
     "CommandExecutor": FakeCommandExecutor,
+    "CommandMonitor": FakeCommandMonitor,
     "PipelineStage": FakeStage,
     "PermissionChecker": FakePermissionChecker,
     "RulesEngine": FakeRulesEngine,
@@ -45,6 +47,7 @@ PORT_FAKES = {
     "Clock": FakeClock,
     "IdGenerator": FakeIdGenerator,
     "FreezeReader": FakeFreezeReader,
+    "ContextProvider": FakeContextProvider,
 }
 """C08 每个端口（ports.py 中的 Protocol）对应的替代实现。"""
 
@@ -54,10 +57,12 @@ __all__ = [
     "FakeAuthenticator",
     "FakeClock",
     "FakeCommandExecutor",
+    "FakeCommandMonitor",
     "FakeConfigImporter",
     "FakeConfigSnapshot",
     "FakeConfigSnapshotReader",
     "FakeConnectionFactory",
+    "FakeContextProvider",
     "FakeDeliveryDispatcher",
     "FakeDirectory",
     "FakeDocumentReader",

@@ -258,6 +258,16 @@ class TableWriter(Protocol):
     def delete(self, uow: UnitOfWork, table: str, key_column: str, key: str) -> None: ...
 
 
+class CommandMonitor(Protocol):
+    """命令审查（WP-17、C09 第 7a 节）：管理员开启后，每个命令结束时（提交或回滚之后）记一条：命令、结果、错误和期间执行的
+    每条 SQL。2026-10-29 接线时由使用方 orchestration 提出：记录要包住整个命令事务，只有执行命令的一方做得到；
+    `CommandRecorder` 的写入在命令事务里，命令回滚时一起撤销，所以不放进 `CommandRecorder`。"""
+
+    def watch(self, command: Command, ctx: ExecutionContext) -> AbstractContextManager[None]:
+        """进入时开始记录；退出时按有没有异常记一条（异常照常抛出，记录失败不影响命令）。开关关闭时什么都不做。"""
+        ...
+
+
 # ============================================================ 6. 管道阶段
 
 class PipelineStage(Protocol):

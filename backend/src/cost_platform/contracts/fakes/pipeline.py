@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 from ..ports import UnitOfWork
 from ..types import Command, CommandResult, CommandState, ErrorCode, ExecutionContext, PlatformError
@@ -46,6 +47,30 @@ class FakeCommandExecutor(Scripted):
         self._done[key] = (digest, result)
         self.executed.append((command, ctx))
         return result
+
+
+class FakeCommandMonitor(Scripted):
+    """`CommandMonitor`：`watched` 按结束的先后记下（请求键、错误码），成功的命令错误码为 None，不是 PlatformError 的异常
+    记为 INTERNAL_ERROR。异常照常抛出。"""
+
+    scriptable = ('watch',)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.watched: list[tuple[str, ErrorCode | None]] = []
+
+    @contextmanager
+    def watch(self, command: Command, ctx: ExecutionContext) -> Iterator[None]:
+        self._record("watch", command, ctx)
+        try:
+            yield
+        except PlatformError as error:
+            self.watched.append((command.request_key, error.code))
+            raise
+        except BaseException:
+            self.watched.append((command.request_key, ErrorCode.INTERNAL_ERROR))
+            raise
+        self.watched.append((command.request_key, None))
 
 
 StageEffect = Callable[[UnitOfWork, CommandState, ExecutionContext], None]

@@ -2245,4 +2245,6 @@ class CommandState:
     prompts: list[Prompt] = dc_field(default_factory=list)
     skipped: list[SkippedRow] = dc_field(default_factory=list)
     pending_documents: set[DocumentRef] = dc_field(default_factory=set)
+    escape_hatch_calls: list[dict[str, Any]] = dc_field(default_factory=list)
+    """逃生舱的调用记录（OP-04）：每次调用一项，已是写进命令记录的 JSON（键为 camelCase，值按 C01 写成文本）。"""
     outcome: Outcome | None = None
