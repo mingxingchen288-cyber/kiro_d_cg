@@ -4,7 +4,7 @@
 
 ## 1. 职责
 
-- 负责：列表（服务端行模型的分页、排序、筛选、高级查询、汇总、总数）、按主键取行、单据加载、Lookup、字典、个人列配置、导出 xlsx；实现 `RelatedQuery`、`DocumentReader`、`PersonalConfigImporter`；[C09 第 4 节](../契约/C09-HTTP接口.md)的接口。
+- 负责：列表（服务端行模型的分页、排序、筛选、高级查询、汇总、总数）、按主键取行、单据加载、Lookup、字典、个人列配置、导出 xlsx；实现 `RelatedQuery`（按钮的 `updateRecords` 用）、`DocumentReader`、`PersonalConfigImporter`；[C09 第 4 节](../契约/C09-HTTP接口.md)的接口。
 - 不负责：写业务表（write-pipeline）；行权限条件的生成（authz）；冻结记录（approval）。
 
 ## 2. 所有权
@@ -47,7 +47,7 @@
 
 ## 6. 接入方式
 
-- assembly 挂载本模块的路由；approval 调用 `RelatedQuery`、`DocumentReader`；operations 调用 `RelatedQuery`；migration 调用 `PersonalConfigImporter`。
+- assembly 挂载本模块的路由；approval 调用 `DocumentReader`；operations 调用 `RelatedQuery`；migration 调用 `PersonalConfigImporter`。
 - 真实联调：批次 B。
 
 ## 7. 验收边界

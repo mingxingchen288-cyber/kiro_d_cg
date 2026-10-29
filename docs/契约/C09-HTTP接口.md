@@ -1,6 +1,6 @@
 # C09 HTTP 接口
 
-版本：v8。维护：contracts。状态：已确认。v8 按用户 2026-10-28 的纠正，通过请求提交勾选的行（`checkedRows`）。v7 随 C06 v15 把审批详情的候选单据改为影响对象、按行勾选（用户 2026-10-28 确认审批流合并展示与动作）。
+版本：v9。维护：contracts。状态：已确认。v9 随 C06 v17（用户 2026-10-28 确认《审批流配置定稿》）：审批人改了勾选后详情重新计算，增加 `preview`；受影响单据按修改表的主键勾选（`checkedRows[].key`、`ref.key`）；`steps` 按审批流的 `order` 排列，`entry` 改名为 `node`；`view.master` 带块的 `key`、`title`；记录已不存在的行改为 `missing: true` 并给出查到的值。`preview` 的请求响应格式、字段改名属于实现细节，由实施者决定（架构第 5 节）。v8 按用户 2026-10-28 的纠正，通过请求提交勾选的行（`checkedRows`）。v7 随 C06 v15 把审批详情的候选单据改为影响对象、按行勾选（用户 2026-10-28 确认审批流合并展示与动作）。
 
 ## 1. 通用规则
 
@@ -50,6 +50,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 | DELETE | `/api/config/items/{type}/{key}` | 无 | 204；仍被其他配置引用时返回 422 VALIDATION_FAILED |
 | POST | `/api/config/validate` | `{"items": [配置项]}` | `{"ok": false, "errors": [C03 的 details 项]}`。只校验，不保存 |
 | POST | `/api/config/wizard/columns` | `{"readView": "T_COST_GOODS_PRICE_V", "table": "T_COST_GOODS"}` | `{"primaryKey": "GOODSID", "sequence": {"name": "T_COST_GOODS_SEQ", "exists": true}, "columns": [{"name": "ZX_PRICE", "type": "number", "label": "执行价", "inTable": true}]}`；只读取结构，不写任何东西 |
+| POST | `/api/config/schema/columns` | `{"name": "V_COST_PINGGU_MATERIAL"}` | `{"objectType": "view", "primaryKey": null, "columns": [{"name": "DTLID", "type": "number"}]}`；表时 `primaryKey` 为单列主键（没有时为 null），不存在时 `objectType` 为 null、`columns` 为空。只读取结构，供审批流配置填表名、选列（C06 7.4、7.5） |
 | POST | `/api/config/wizard/generate` | `{"parentMenu": "cost", "pageCode": "GOODS_PRICE_MANAGE", "title": "物料清单及成本", "layout": "single", "detailMode": "tabs", "audit": true, "master": {实体}, "details": []}`。`audit`、`detailMode` 必须写，原样写入生成的页面（C06 第 3 节），单表页也要写 `detailMode` | 生成的实体、页面、页面的保存操作、菜单配置项，以及 ADMIN 角色的 `*` 权限，在一个事务中写入（config CF-14），任一项失败时全部不写；序列不存在时返回 422，提示用户先建序列 |
 
 表单布局是页面配置的一部分，随 `PUT /api/config/items/page/{pageCode}` 保存。两个管理员同时编辑同一配置项时，后保存的覆盖先保存的。
@@ -102,12 +103,13 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 |---|---|---|---|
 | GET | `/api/approvals` | `?box=todo` 或 `?box=mine`，以及 `startRow`、`endRow` | `{"rows": [ApprovalSummary], "total": 7}` |
 | GET | `/api/approvals/{approvalId}` | 无 | `ApprovalDetail`；只读，不加锁 |
-| POST | `/api/approvals/{approvalId}/pass` | `{"requestKey": "…", "fingerprint": "sha256:…", "checkedRows": [{"flow": "GOODS_TO_COST", "block": "costs", "entity": "COST_MATERIAL", "recordKey": "2550", "rowKeys": ["6101"]}], "comment": "价格已核对", "params": {"effectiveDate": "2026-11-01"}}`，`checkedRows` 为这次勾选的影响对象的行，`params` 为本次通过要填写的人工参数（C06 7.1） | 命令结果（C02），`outcome` 为 `approvalProcessed`；必填的人工参数没有填写时返回 422 |
+| POST | `/api/approvals/{approvalId}/preview` | `{"checkedRows": [{"flow": "GOODS_TO_COST", "block": "costMaterial", "key": "206323"}]}`，写法同通过请求 | `{"view": {…}, "fingerprint": "sha256:…"}`：按这些勾选重新计算的 `view` 和指纹，格式同 `ApprovalDetail`；只读，不加锁 |
+| POST | `/api/approvals/{approvalId}/pass` | `{"requestKey": "…", "fingerprint": "sha256:…", "checkedRows": [{"flow": "GOODS_TO_COST", "block": "costMaterial", "key": "206323"}], "comment": "价格已核对", "params": {"effectiveDate": "2026-11-01"}}`，`checkedRows` 为这次勾选的受影响单据的行，`key` 为修改表的主键值（C06 7.5）；`params` 为本次通过要填写的人工参数（C06 7.1） | 命令结果（C02），`outcome` 为 `approvalProcessed`；必填的人工参数没有填写时返回 422 |
 | POST | `/api/approvals/{approvalId}/reject` | `{"requestKey": "…", "comment": "价格偏高"}`，`comment` 为驳回原因，必填 | 命令结果；没填原因返回 422 VALIDATION_FAILED |
 | POST | `/api/approvals/{approvalId}/withdraw` | `{"requestKey": "…", "comment": "录入有误"}`，`comment` 可以不填 | 命令结果 |
 
 ```json
-{"approvalId": "203", "page": "GOODS_PRICE_MANAGE", "pageTitle": "物料清单及成本", "operation": "COST_GOODS_PRICE.save", "operationLabel": "保存", "source": {"entity": "COST_GOODS_PRICE", "recordKey": "115", "label": "硬脂酸镁"}, "applicant": {"userId": "112", "displayName": "杨娜"}, "submittedAt": "2026-10-24T09:30:00", "status": "pending", "level": 1}
+{"approvalId": "203", "page": "GOODS_PRICE_MANAGE", "pageTitle": "物料清单及成本", "operation": "COST_GOODS_PRICE.save", "operationLabel": "保存", "source": {"entity": "COST_GOODS_PRICE", "recordKey": "25", "label": "聚维酮K30"}, "applicant": {"userId": "112", "displayName": "杨娜"}, "submittedAt": "2026-10-24T09:30:00", "status": "pending", "level": 1}
 ```
 
 ```json
@@ -118,28 +120,28 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
   "pageTitle": "物料清单及成本",
   "operation": "COST_GOODS_PRICE.save",
   "operationLabel": "保存",
-  "source": {"entity": "COST_GOODS_PRICE", "recordKey": "115", "label": "硬脂酸镁"},
+  "source": {"entity": "COST_GOODS_PRICE", "recordKey": "25", "label": "聚维酮K30"},
   "applicant": {"userId": "112", "displayName": "杨娜"},
   "submittedAt": "2026-10-24T09:30:00",
   "currentLevel": 1,
   "steps": [
-    {"level": 1, "flow": "GOODS_TO_COST", "flowName": "物料清单改价 → 勾选成本单", "entry": "逐成本单确认同步", "mode": "or", "status": "pending",
-     "members": [{"type": "user", "id": "111", "name": "系统管理员", "status": "pending", "processedBy": null, "processedAt": null, "comment": null}]},
-    {"level": 1, "flow": "GOODS_PRICE_AUDIT", "flowName": "物料改价复核", "entry": "采购复核", "mode": "or", "status": "pending",
-     "members": [{"type": "user", "id": "111", "name": "系统管理员", "status": "pending", "processedBy": null, "processedAt": null, "comment": null}]},
-    {"level": 2, "flow": "GOODS_PRICE_AUDIT", "flowName": "物料改价复核", "entry": "管理员复核", "mode": "or", "status": "upcoming",
+    {"level": 1, "flow": "GOODS_TO_COST", "flowName": "物料清单改价审批", "node": "管理员审批", "mode": "or", "status": "pending",
+     "members": [{"type": "role", "id": "ADMIN", "name": "系统管理员", "status": "pending", "processedBy": null, "processedAt": null, "comment": null}]},
+    {"level": 1, "flow": "GOODS_PRICE_AUDIT", "flowName": "物料改价复核", "node": "采购复核", "mode": "or", "status": "pending",
+     "members": [{"type": "role", "id": "008", "name": "采购", "status": "pending", "processedBy": null, "processedAt": null, "comment": null}]},
+    {"level": 2, "flow": "GOODS_PRICE_AUDIT", "flowName": "物料改价复核", "node": "管理员复核", "mode": "or", "status": "upcoming",
      "members": [{"type": "role", "id": "ADMIN", "name": "系统管理员", "status": "pending", "processedBy": null, "processedAt": null, "comment": null}]}
   ],
   "view": {
-    "master": {"columns": ["物料ID", "名称", "价格变化"],
-      "rows": [{"op": "modify", "flows": ["GOODS_TO_COST", "GOODS_PRICE_AUDIT"], "cells": [{"before": "115", "after": "115"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}]}]},
+    "master": {"key": "goods", "title": "物料清单", "columns": ["物料ID", "物料名称", "参考价格", "单价"],
+      "rows": [{"op": "modify", "flows": ["GOODS_TO_COST", "GOODS_PRICE_AUDIT"], "cells": [{"before": "25", "after": "25"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75", "after": "75"}, {"before": "75", "after": "80"}]}]},
     "details": [],
-    "affected": [{"flow": "GOODS_TO_COST", "key": "costs", "title": "受影响的成本单", "selection": "checked", "editable": true,
+    "affected": [{"flow": "GOODS_TO_COST", "key": "costMaterial", "title": "成本核算（原辅料）", "selection": "checked", "editable": true,
       "columns": ["单据号", "产品", "物料", "单价", "金额", "每盒成本", "千片加工费"],
       "rows": [
-        {"op": "modify", "ref": {"entity": "COST_MATERIAL", "recordKey": "2550", "rowKeys": ["6101"]}, "checked": true, "cells": [{"before": "2550", "after": "2550"}, {"before": "250mg乙酰唑胺片", "after": "250mg乙酰唑胺片"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}, {"before": "1500", "after": "1200"}, {"before": "1.2034", "after": "1.1987"}, {"before": "30.50", "after": "30.21"}]},
-        {"op": "modify", "ref": {"entity": "COST_MATERIAL", "recordKey": "2551", "rowKeys": ["6102"]}, "checked": true, "cells": [{"before": "2551", "after": "2551"}, {"before": "500mg乙酰唑胺片", "after": "500mg乙酰唑胺片"}, {"before": "硬脂酸镁", "after": "硬脂酸镁"}, {"before": "75", "after": "60"}, {"before": "3000", "after": "2400"}, {"before": "0.9821", "after": "0.9790"}, {"before": "28.10", "after": "27.95"}]},
-        {"op": "none", "missing": {"recordKey": null, "label": null}, "cells": [{"before": null, "after": null}, {"before": null, "after": null}, {"before": null, "after": null}, {"before": null, "after": null}, {"before": null, "after": null}, {"before": null, "after": null}, {"before": null, "after": null}]}
+        {"op": "modify", "ref": {"key": "206323"}, "checked": true, "cells": [{"before": "2550", "after": "2550"}, {"before": "250mg乙酰唑胺片", "after": "250mg乙酰唑胺片"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75", "after": "80"}, {"before": "750", "after": "800"}, {"before": "13.0065", "after": "13.0507"}, {"before": "94.73", "after": "94.29"}]},
+        {"op": "none", "ref": {"key": "103681"}, "checked": false, "cells": [{"before": "2556", "after": "2556"}, {"before": "10mg氯丙嗪片", "after": "10mg氯丙嗪片"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75", "after": "75"}, {"before": "23.25", "after": "23.25"}, {"before": "1.1566", "after": "1.1566"}, {"before": "689.03", "after": "689.03"}]},
+        {"op": "none", "missing": true, "cells": [{"before": "2601", "after": "2601"}, {"before": null, "after": null}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75", "after": "75"}, {"before": "150", "after": "150"}, {"before": null, "after": null}, {"before": null, "after": null}]}
       ]}]
   },
   "fingerprint": "sha256:5b1e0c6d9a3f47e28b1c6d0e9f3a2b4c5d6e7f8091a2b3c4d5e6f708192a3b4c",
@@ -148,17 +150,18 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 }
 ```
 
-- 每个审批对应一张单据：主从页为一行主表及其明细，单表页为一行；一张单据命中多个审批流时合成一个审批（[approval](../模块/approval.md) AP-01、AP-09）。样例中的页面、物料、成本单、账号和角色取自旧系统的真实数据（经 d_cg 读取 CMX）；旧系统没有会同时命中同一张单据的两个审批流，`GOODS_PRICE_AUDIT` 是为说明合并展示假设的第二个审批流，C06 中没有定义。
+- 每个审批对应一张单据：主从页为一行主表及其明细，单表页为一行；一张单据命中多个审批流时合成一个审批（[approval](../模块/approval.md) AP-01、AP-09）。样例中的页面、物料、成本单和角色取自 d_cg 的真实数据：聚维酮K30（物料 25）参考价格 75，成本单 2550、2556 中它的明细为 206323、103681。执行价改成 80、每盒成本和千片加工费的修改后、第三行"记录已不存在"，以及第二个审批流 `GOODS_PRICE_AUDIT`，都是为说明假设的；`GOODS_PRICE_AUDIT` 在 C06 中没有定义。
 - 待办列表每个审批一行（`ApprovalSummary`）。详情分主表和从表：
   - 主表：来自页面（`pageTitle`、`operationLabel`）、提交时间（`submittedAt`）、提交人（`applicant`）、来源单据号（`source.recordKey`）。新增的单据在提交审批时已取得主键（approval AP-02），来源单据号总是有值。
-  - 从表：`steps`，每个入口一项，按级别、再按审批流的 `createdSeq` 排列；`flow`、`flowName` 标出入口来自哪个审批流。只列已进入的入口，以及按当前数据推算后面会进入的入口（approval AP-08）。`status` 取 `passed`、`pending`（本级待处理）、`rejected`、`upcoming`（还没到，按当前数据推算会进入）。`members[].status` 取 `pending`、`passed`、`rejected`；`processedBy` 为实际处理的账号（`{"userId", "displayName"}`），按角色配置的成员由该角色的某个账号处理。
-- `view` 是按 C06 7.6 的 `display` 生成的"修改内容"：`master`、`details` 为来源单据的主表和明细，`affected` 为影响对象，每块一项，`selection` 为 `hidden` 的块不返回。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"，相同时只显示当前值。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（`rows` 为 `all` 时未改动的行，以及记录已不存在的行）。来源单据的行总带 `flows`：这一行触发的审批流编码列表，为空数组表示没有触发、随审批等待；影响对象的行没有这个值，按 C01 第 1 节省略。一张单据命中多个审批流时，来源单据只返回一份，影响对象每个审批流各自的块，带 `flow`（C06 7.6）。
-- 影响对象每行一个勾选框：`ref` 标出这一行（实体、所属单据的主键、明细主键），`checked` 为当前是否勾选，默认为 true，上一级取消的为 false。`editable` 为 true 时当前用户这次通过可以改勾选：块的 `selection` 为 `checked`，且当前用户是该审批流本级入口的待处理审批人；上一级取消的行不能再勾回。样例中的明细主键 6101、6102 是为说明而假设的。
-- 影响对象中记录已不存在的行（approval AP-21）排在这一块最后：`missing` 给出 `recordKey`（单据主键，取不到时为 null）和 `label`（关联 SQL 中 `labelColumn` 的值，没有时为 null）；`op` 为 `none`，`cells` 每格的 `before`、`after` 都为 null；没有 `ref` 和 `checked`，不能勾选。前端整行红底，显示"记录已不存在"（frontend-approval FA-09）。样例的第三行是为说明而假设的：假设关联 SQL 从成本单明细出发、左连接成本单主表取单据号，保存前有一条含物料 115 的明细所属的成本单已被删除；C06 7.5 的 `GOODS_TO_COST` 只查明细表，不会查出这种行。
-- 同一账号在本级多个入口中待处理时，通过一次即计入这些入口（approval AP-16）；通过请求的 `checkedRows` 列出当前用户能改勾选的各块中勾选的行，用 `flow`、`block` 指出属于哪个审批流的哪一块；这些块中没有列出的行就是取消了，只能从上一级保留的行中选；不能改勾选的块不用提交，保持上一级的结果。
+  - 从表：`steps`，每个节点一项，按级别、再按审批流的 `order` 排列；`flow`、`flowName` 标出节点来自哪个审批流，`node` 为节点名称。只列已进入的节点，以及按当前数据推算后面会进入的节点（approval AP-08）。`status` 取 `passed`、`pending`（本级待处理）、`rejected`、`upcoming`（还没到，按当前数据推算会进入）。`members[].status` 取 `pending`、`passed`、`rejected`；`processedBy` 为实际处理的账号（`{"userId", "displayName"}`），按角色配置的成员由该角色的某个账号处理。
+- `view` 是按 C06 7.5 的 `display` 生成的"修改内容"：`master` 为来源单据主表的块（`key`、`title`），`details` 为来源单据的明细，每块一项，`affected` 为受影响单据，每块一项，`selection` 为 `hidden` 的块不返回。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"，相同时只显示当前值（C06 7.6）。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（没有改动的行、取消勾选的行，以及记录已不存在的行）。来源单据的行总带 `flows`：这一行触发的审批流编码列表，为空数组表示没有触发、随审批等待；受影响单据的行没有这个值，按 C01 第 1 节省略。一张单据命中多个审批流时，来源单据只返回一份，受影响单据每个审批流各自的块，带 `flow`。
+- 受影响单据按修改表的主键分勾选框：`ref.key` 为这一行修改表的主键值，主键相同的几行只有第一行带 `ref` 和 `checked`，其余行省略（C06 7.5）。`checked` 为当前是否勾选：打开详情时默认为 true，上一级取消的为 false。`editable` 为 true 时当前用户这次通过可以改勾选：块的 `selection` 为 `checked`，且当前用户是该审批流本级节点的待处理审批人；上一级取消的行不能再勾回。样例为取消勾选 2556 之后 `preview` 返回的结果：这一行 `op` 为 `none`，修改后等于修改前。
+- 审批人改了勾选，前端用 `preview` 提交当前的勾选，后台按"当前数据 + 已勾选行要写的值"和各页面的计算规则重新计算，返回新的 `view` 和指纹（approval AP-08）；`preview` 不保存勾选，通过时以 `pass` 提交的勾选为准。
+- 受影响单据中记录已不存在的行（`keyColumn` 为空，approval AP-21）排在这一块最后：`missing` 为 true，`op` 为 `none`，`cells` 为查到的值；没有 `ref` 和 `checked`，不能勾选。前端整行红底，显示"记录已不存在"（frontend-approval FA-09）。
+- 同一账号在本级多个节点中待处理时，通过一次即计入这些节点（approval AP-16）；通过请求的 `checkedRows` 列出当前用户能改勾选的各块中勾选的行，用 `flow`、`block` 指出属于哪个审批流的哪一块；这些块中没有列出的行就是取消了，只能从上一级保留的行中选；不能改勾选的块不用提交，保持上一级的结果。
 - 任何已登录的用户都能查看审批详情和进度，`actions` 给出当前用户能做的操作。
 - `params` 是当前用户这次通过要填写的人工参数，格式同 C06 7.1 的 `params`：取各审批流中 `source` 为 `manual`、`level` 为当前级别的参数；这次通过会使审批到达终点时，还包括不带 `level` 的参数。不是本级待处理的审批人，或者没有要填写的参数时，为空数组。
-- 打开详情之后结果发生变化时，通过返回 409 RECONFIRM_REQUIRED，前端重新读取详情。
+- 打开详情或预览之后结果发生变化时，通过返回 409 RECONFIRM_REQUIRED，前端重新读取详情。
 - 不是本级尚未处理的审批人提交通过或驳回，不是发起人提交撤回，或者已有人做过通过之后提交撤回，返回 403 PERMISSION_DENIED。
 
 ## 7. delivery
