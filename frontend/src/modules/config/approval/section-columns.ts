@@ -91,7 +91,12 @@ export function displayColumns(tables: PageTable[], sourceColumns: (name: string
       }
     },
     linkColumn('columns', '显示列', 220, (d: DisplayRow) => columnsSummary(d.columns)),
-    { ...selectColumn('selection', '勾选方式', selectionOptions, 150), editable: affected, valueFormatter: p => (p.data?.region === 'affected' ? selectionOptions.find(o => o.value === p.value)?.label ?? '' : '—') },
+    {
+      ...selectColumn('selection', '勾选方式', selectionOptions, 150),
+      editable: affected,
+      // 下拉列表中的选项格式化时没有行数据（AG Grid 的 formatValue 不带行），也要显示选项名称；只有主表、明细块的格子显示"—"
+      valueFormatter: p => (p.data && p.data.region !== 'affected' ? '—' : selectionOptions.find(o => o.value === p.value)?.label ?? '')
+    },
     { ...linkColumn('actions', '审批通过后的操作', 220, (d: DisplayRow) => (d.region === 'affected' ? actionsSummary(d.actions) : '应用本次修改')), flex: 1 }
   ] as ColDef<DisplayRow>[];
 }

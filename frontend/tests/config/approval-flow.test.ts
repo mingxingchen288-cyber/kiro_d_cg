@@ -4,7 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { PlatformError } from '../../src/contracts/errors';
-import { ApprovalFlowEditor } from '../../src/modules/config/approval/flow-editor';
+import { ApprovalFlowEditor, detailDialog } from '../../src/modules/config/approval/flow-editor';
+import { displayColumns } from '../../src/modules/config/approval/section-columns';
 import { type DisplayRow, type FreezeRow, type NodeRow, operationsSummary } from '../../src/modules/config/approval/flow-model';
 import { fieldChoices, insertToken, paramToken } from '../../src/modules/config/approval/params';
 import { COST_TO_GOODS, GOODS_TO_COST, TECH_CUSTOMER_MATERIAL } from './flow-samples';
@@ -208,6 +209,34 @@ describe('审批流配置（FC-05）', () => {
 
     expect(await editor.saveCurrent()).toEqual(GOODS_TO_COST);
     expect(backend.get('approvalFlow', 'GOODS_TO_COST')?.content).toEqual(GOODS_TO_COST);
+  });
+
+  it('双击明细表：入口条件、审批人、显示列、受影响单据的通过后操作打开弹窗，节点名称、冻结表、块编码等就地编辑', () => {
+    // 7.8 配置时依次双击的格子
+    expect(detailDialog('name', {})).toBeNull();
+    expect(detailDialog('condition', {})).toBe('condition');
+    expect(detailDialog('approvers', {})).toBe('approvers');
+    expect(detailDialog('table', {})).toBeNull();
+    for (const column of ['key', 'title', 'region', 'source', 'targetTable', 'keyColumn', 'selection']) {
+      expect(detailDialog(column, { region: 'affected' })).toBeNull();
+    }
+    expect(detailDialog('columns', { region: 'master' })).toBe('columns');
+    expect(detailDialog('actions', { region: 'affected' })).toBe('actions');
+    expect(detailDialog('actions', { region: 'detail' })).toBeNull();
+  });
+
+  it('受影响单据的"勾选方式"：下拉列表的三个选项显示名称，选"全部执行，不能取消"后格子显示它；主表、明细块显示"—"', () => {
+    const column = displayColumns([], () => null).find(c => c.field === 'selection')!;
+    const format = column.valueFormatter as (p: { value: unknown; data?: Partial<DisplayRow> }) => string;
+    // 下拉列表格式化选项时没有行数据
+    expect(['checked', 'all', 'hidden'].map(value => format({ value }))).toEqual([
+      '默认全选，可取消',
+      '全部执行，不能取消',
+      '不给审批人看，全部执行'
+    ]);
+    expect(format({ value: 'all', data: { region: 'affected' } })).toBe('全部执行，不能取消');
+    expect(format({ value: null, data: { region: 'master' } })).toBe('—');
+    expect(format({ value: null, data: { region: 'detail' } })).toBe('—');
   });
 
   it('再次打开已保存的审批流：三个 Tab 的行与保存的内容一致，不改动直接保存内容不变', async () => {

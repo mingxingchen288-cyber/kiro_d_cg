@@ -52,6 +52,21 @@ export const TAB_HELP: Record<FlowTab, string> = {
     '修改内容按"主表一块、明细每张表一个 Tab"展示；受影响单据写关联条件，查到的行按修改表的主键勾选，全部级别通过后对勾选的行执行"审批通过后的操作"。双击关联条件、显示列、审批通过后的操作可编辑。'
 };
 
+export type DetailDialog = 'condition' | 'approvers' | 'columns' | 'actions';
+
+/**
+ * 明细表（审批节点、冻结节点、展示数据）双击某一格时打开哪个弹窗：入口条件 / 关联条件、审批人、显示列、
+ * 受影响单据的通过后操作。其余格子（节点名称、冻结表、块编码、展示标题等）返回 null，双击就地编辑，
+ * 不能先结束编辑（同旧系统 SectionApproval.vue 的 detailEdit，只在打开弹窗时 stopEditing）。
+ */
+export function detailDialog(column: string | undefined, row: { region?: string }): DetailDialog | null {
+  if (column === 'condition') return 'condition';
+  if (column === 'approvers') return 'approvers';
+  if (column === 'columns') return 'columns';
+  if (column === 'actions' && row.region === 'affected') return 'actions';
+  return null;
+}
+
 export class ApprovalFlowEditor {
   readonly state = reactive({
     loading: false,

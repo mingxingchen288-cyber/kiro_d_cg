@@ -10,7 +10,7 @@ import type { CellDoubleClickedEvent, CellValueChangedEvent } from 'ag-grid-comm
 import type { Option } from '../core/catalog';
 import { useConfigContext } from '../core/context';
 import ConfigGrid from '../components/ConfigGrid.vue';
-import { ApprovalFlowEditor, type FlowTab, TAB_HELP } from './flow-editor';
+import { ApprovalFlowEditor, type FlowTab, TAB_HELP, detailDialog } from './flow-editor';
 import type { DisplayRow, FlowDraft, FreezeRow, NodeRow } from './flow-model';
 import { displayColumns, flowColumns, freezeColumns, nodeColumns } from './section-columns';
 import ApprovalActionsEditor from './ApprovalActionsEditor.vue';
@@ -110,24 +110,25 @@ async function onMasterEdit(event: CellDoubleClickedEvent) {
 
 async function onDetailEdit(event: CellDoubleClickedEvent) {
   const row = event.data;
-  const column = event.colDef.colId ?? event.colDef.field;
-  if (state.busy || !row) return;
+  const target = detailDialog(event.colDef.colId ?? event.colDef.field, row ?? {});
+  // 不打开弹窗的格子由表格就地编辑，这里不能结束编辑（双击后表格已进入编辑）
+  if (state.busy || !row || !target) return;
   stopEditing();
-  if (column === 'condition') {
+  if (target === 'condition') {
     const title = state.tab === 'nodes' ? `${row.name} · 入口条件（第 ${row.level} 级）` : state.tab === 'freeze' ? `${row.table || '冻结表'} · 关联条件` : `${row.title} · 关联条件`;
     conditionTarget.value = { row, title, withType: state.tab === 'nodes' };
     dialog.condition = true;
   }
-  if (column === 'approvers') {
+  if (target === 'approvers') {
     approverTarget.value = row;
     dialog.approvers = true;
   }
-  if (column === 'columns' || (column === 'actions' && row.region === 'affected')) {
+  if (target === 'columns' || target === 'actions') {
     blockTarget.value = row;
     const choices = await columnChoices(row);
     fieldOptions.value = choices.fields;
     targetOptions.value = choices.target ?? [];
-    if (column === 'columns') dialog.columns = true;
+    if (target === 'columns') dialog.columns = true;
     else {
       escapeOptions.value = (await store.loadAll('operation')).filter(o => o.content.kind === 'escapeHatch').map(o => ({ label: `${o.name} · ${o.key}`, value: o.key }));
       dialog.actions = true;
