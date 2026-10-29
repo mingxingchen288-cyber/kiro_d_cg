@@ -365,8 +365,43 @@ class Evaluator:
 
     # ---------------------------------------------------------------- 来源单据的表格
 
+    def _fill_lookups(self, uow: UnitOfWork, ctx: ExecutionContext, record: ApprovalRecord, source: SourceState) -> None:
+        """名称这类没有物理列的字段，已有的行由读取视图带出；新增的行、换了 Lookup 字段值的行（例如换了物料）库里还没有，
+        视图带不出来。这些行按页面上这个字段的 Lookup（C06 第 3 节的 `fill`）用修改后的值查一次，把回填字段中没有物理列的
+        填进修改后的值。没有配置 Lookup 的字段不处理。"""
+        view = ctx.config.page_view(record.page)
+        doc = source.after
+        regions = [(view.master.entity, view.master.fields, [doc.master]),
+                   *((d.entity, d.fields, doc.details.get(d.entity, [])) for d in view.details)]
+        for code, fields, rows in regions:
+            entity = ctx.config.entity(code)
+            columnless = {f.name for f in entity.fields if f.column is None}
+            for view_field in fields:
+                setting = view_field.lookup
+                lookup = ctx.config.lookup(setting.code) if setting is not None else None
+                if setting is None or lookup is None or view_field.name not in setting.fill:
+                    continue
+                targets = {name: column for name, column in setting.fill.items() if name in columnless}
+                pending: dict[str, list[Row]] = {}
+                for row in rows:
+                    value = row.values.get(view_field.name)
+                    before = find_row(source.before, code, row.row_key, None) if row.row_key else None
+                    if value is None or (before is not None and key_text(before.values.get(view_field.name)) == key_text(value)):
+                        continue
+                    pending.setdefault(key_text(value), []).append(row)
+                if not targets or not pending:
+                    continue
+                key_column = setting.fill[view_field.name]
+                columns = [key_column, *dict.fromkeys(targets.values())]
+                statement, binds = keys_sql(lookup.table, key_column, list(pending), columns)
+                for found in self.deps.sql.rows(uow, statement, binds):
+                    for row in pending.get(key_text(found.get(key_column.upper())), []):
+                        for name, column in targets.items():
+                            row.values[name] = found.get(column.upper())
+
     def _source_tables(self, uow: UnitOfWork, ctx: ExecutionContext, record: ApprovalRecord, source: SourceState,
                        scopes: Mapping[int, RowScope]) -> tuple[ViewMasterTable, list[ViewDetailTable]]:
+        self._fill_lookups(uow, ctx, record, source)
         master_code = record.source.entity
         master_entity = ctx.config.entity(master_code)
         flows_of: dict[tuple[str, str], list[str]] = {}

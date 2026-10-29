@@ -32,6 +32,16 @@ def test_e37_detail_trigger_column_and_goods_block() -> None:
     assert detail.view.master.key == "cost" and detail.view.master.columns == ["单据号", "产品", "每盒成本", "千片加工费"]
 
 
+def test_e37_changed_material_shows_new_name_from_lookup() -> None:
+    """E37 中玉米淀粉换成微晶纤维素（13165）：物料列有 Lookup 时，物料名称按新的物料ID查出，显示"玉米淀粉 → 微晶纤维素"；
+    没换物料的行仍是视图带出的名称。"""
+    h = Harness(["COST_TO_GOODS"], goods_lookup=True)
+    approval = e37_save(h, "90")
+    [material] = [d for d in h.detail(ADMIN, approval.approval_id).view.details if d.key == "material"]
+    assert cells(material.rows[0])[1] == ("聚维酮K30", "聚维酮K30")
+    assert cells(material.rows[1])[:3] == [("310", "13165"), ("玉米淀粉", "微晶纤维素"), ("22", "40")]
+
+
 def test_e37_steps_show_upcoming_countersign_and_actions() -> None:
     """进度列已进入的节点和按当前数据推算后面会进入的节点（90 > 82.5，第 2 级会签）。"""
     h = Harness(["COST_TO_GOODS"])
