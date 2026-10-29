@@ -3,9 +3,10 @@
  * "表与列"中的一张表，同旧系统 SectionTables.vue 的一个折叠项：视图 / 目标表 / PK 等表信息和"保存表信息"，
  * 列表格（标题、类型、写入列、来源、角色、小数位、显示、编辑、必填、宽度、固定、字典、Lookup、默认值、选项值、对比），
  * 按钮"从视图重新导入""选择视图列添加""删除选中列""上移""下移""保存列"。
- * 保存列：先保存实体（C06 第 2 节），再保存页面的字段设置（第 3 节），都先校验。
+ * "显示、编辑、必填"显示实际结果，不能改的格子不能勾，原因在"不能修改的原因"列和悬停提示中（FC-09）。
+ * 保存列：先保存实体（C06 第 2 节），再保存页面的字段设置（第 3 节），再同步页面保存操作的可写字段（第 4 节），都先校验。
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { NAlert, NButton, NDataTable, NDescriptions, NDescriptionsItem, NInput, NModal, NRadio, NRadioGroup, NSpace, NSwitch } from 'naive-ui';
 import type { ColDef } from 'ag-grid-community';
 import type { PageTable } from '../core/catalog';
@@ -19,12 +20,13 @@ import ProblemList from '../components/ProblemList.vue';
 import { booleanColumn, linkColumn, selectColumn } from '../components/grid-columns';
 import CompareDialog from './CompareDialog.vue';
 import LookupSettingDialog from './LookupSettingDialog.vue';
-import { type FieldRow, type FlagScope, applyRows, fieldRows, newRowsFrom } from './table-fields';
+import { type FieldRow, type Flag, type FlagScope, applyRows, fieldRows, flagLock, flagValue, lockText, newRowsFrom, saveColumns as saveTableColumns } from './table-fields';
 
 const props = defineProps<{ page: ItemEditor<'page'>; table: PageTable; area: PageArea; dicts: Array<{ label: string; value: string }>; lookups: Array<{ label: string; value: string }> }>();
 const emit = defineEmits<{ reload: [] }>();
 const { api, store, notify } = useConfigContext();
 const entity = new ItemEditor(store, 'entity', notify);
+const operation = new ItemEditor(store, 'operation', notify);
 const scope = ref<FlagScope>('page');
 const rows = ref<FieldRow[]>([]);
 const selected = ref<FieldRow[]>([]);
@@ -37,6 +39,18 @@ const compareRow = ref<FieldRow | null>(null);
 const showLookup = ref(false);
 const showCompare = ref(false);
 const content = computed(() => entity.state.current?.content ?? null);
+const erpRow = () => content.value?.erpRow ?? null;
+
+/** 显示、编辑、必填：不能改的格子显示实际结果、不能勾，悬停显示原因 */
+function flagColumn(flag: Flag, headerName: string): ColDef {
+  const lock = (data?: FieldRow) => (data ? flagLock(data, flag, erpRow()) : '');
+  return {
+    ...booleanColumn(flag, headerName, 55),
+    valueGetter: p => (p.data ? flagValue(p.data, flag, erpRow()) : null),
+    editable: p => !lock(p.data),
+    tooltipValueGetter: p => lock(p.data) || undefined
+  };
+}
 
 const columns = computed<ColDef[]>(() => [
   { field: 'name', headerName: '字段名', width: 130, editable: false },
@@ -46,9 +60,17 @@ const columns = computed<ColDef[]>(() => [
   selectColumn('source', '来源', [{ label: '自有', value: 'own' }, { label: 'ERP', value: 'erp' }], 70),
   selectColumn('role', '角色', [{ label: '输入', value: 'input' }, { label: '计算', value: 'calculated' }, { label: '系统', value: 'system' }], 70),
   { field: 'scale', headerName: '小数位', width: 70, cellDataType: 'number' },
-  booleanColumn('visible', '显示', 55),
-  booleanColumn('editable', '编辑', 55),
-  booleanColumn('required', '必填', 55),
+  flagColumn('visible', '显示'),
+  flagColumn('editable', '编辑'),
+  flagColumn('required', '必填'),
+  {
+    colId: 'locks',
+    headerName: '不能修改的原因',
+    width: 220,
+    editable: false,
+    valueGetter: p => (p.data ? lockText(p.data, erpRow()) : ''),
+    tooltipValueGetter: p => (p.data ? lockText(p.data, erpRow()) : '')
+  },
   { field: 'width', headerName: '宽度', width: 65, cellDataType: 'number' },
   selectColumn('pinned', '固定', [{ label: '不固定', value: null }, { label: '左', value: 'left' }, { label: '右', value: 'right' }], 70),
   selectColumn('dictType', '字典', [{ label: '（无）', value: null }, ...props.dicts], 110),
@@ -82,13 +104,9 @@ async function saveTableInfo() {
 async function saveColumns() {
   grid.value?.stopEditing();
   if (!content.value) return;
-  const applied = applyRows(content.value, settings(), rows.value, scope.value);
-  entity.state.current!.content = applied.entity;
-  props.area.fields = applied.settings;
-  if ((await entity.save()) === null) return;
-  props.page.markDirty();
-  if ((await props.page.save()) !== null) {
-    rows.value = fieldRows(entity.state.current!.content, settings(), scope.value);
+  const area = props.area;
+  if (await saveTableColumns({ store, notify, page: props.page, entity, operation, area, rows: rows.value, scope: scope.value })) {
+    rows.value = fieldRows(entity.state.current!.content, area.fields ?? {}, scope.value);
     emit('reload');
   }
 }
@@ -149,6 +167,9 @@ function onEdit(event: { colDef: ColDef; data: FieldRow }) {
 
 const rowStyle = (p: { data?: FieldRow }) => (p.data && !p.data.column ? { background: '#fffbe6' } : undefined);
 
+// 哪些格子能改随 ERP 行标识变化；表格中改角色、写入列、来源时由 @change 刷新
+watch(() => content.value?.erpRow, () => grid.value?.refresh(), { deep: true });
+
 onMounted(load);
 </script>
 
@@ -176,7 +197,7 @@ onMounted(load);
       <NButton size="tiny" :loading="entity.state.busy" @click="saveTableInfo">保存表信息</NButton>
       <span class="hint">{{ entity.state.status }}</span>
     </div>
-    <ProblemList :problems="[...entity.state.problems, ...page.state.problems]" />
+    <ProblemList :problems="[...entity.state.problems, ...page.state.problems, ...operation.state.problems]" />
     <div class="scope">
       <span class="hint">显示 / 编辑 / 必填：</span>
       <NRadioGroup :value="scope" size="small" @update:value="switchScope">
@@ -185,7 +206,11 @@ onMounted(load);
       </NRadioGroup>
       <span class="hint">下层只能收紧可见、可编辑，必填只能增加；黄色行是视图中有、表中没有的列，只读显示。</span>
     </div>
-    <ConfigGrid ref="grid" :rows="rows" :columns="columns" :height="Math.max(250, Math.min(520, rows.length * 29 + 40))" multiple row-key="_id" :row-style="rowStyle" @select="selected = $event" @edit="onEdit" />
+    <div class="hint scope-note">
+      表中是实际结果：不能勾的格子见"不能修改的原因"列。保存列时同步本页面保存操作（{{ page.state.current?.content.saveOperation }}）的可写字段；
+      角色的列权限（角色配置）还会再收紧显示和编辑，这里不显示。
+    </div>
+    <ConfigGrid ref="grid" :rows="rows" :columns="columns" :height="Math.max(250, Math.min(520, rows.length * 29 + 40))" multiple row-key="_id" :row-style="rowStyle" @select="selected = $event" @edit="onEdit" @change="grid?.refresh()" />
     <div class="grid-actions">
       <NSpace size="small" justify="end">
         <NButton size="small" @click="reimport">从视图重新导入</NButton>
@@ -193,7 +218,7 @@ onMounted(load);
         <NButton size="small" :disabled="selected.length !== 1" @click="move(-1)">上移</NButton>
         <NButton size="small" :disabled="selected.length !== 1" @click="move(1)">下移</NButton>
         <NButton size="small" type="error" :disabled="!selected.length" @click="removeSelected">删除选中列</NButton>
-        <NButton size="small" type="primary" :loading="entity.state.busy || page.state.busy" @click="saveColumns">保存列</NButton>
+        <NButton size="small" type="primary" :loading="entity.state.busy || page.state.busy || operation.state.busy" @click="saveColumns">保存列</NButton>
       </NSpace>
     </div>
     <NModal v-model:show="showAdd" preset="card" title="选择视图列添加" :style="{ width: '760px' }">
@@ -221,6 +246,7 @@ onMounted(load);
 .table-meta { margin-bottom: 8px; }
 .table-actions { margin: 4px 0 8px; display: flex; gap: 8px; align-items: center; }
 .scope { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.scope-note { margin: -4px 0 8px; }
 .hint { color: #999; font-size: 12px; }
 .grid-actions { margin-top: 8px; }
 .add-column-meta { color: #666; font-size: 13px; margin-bottom: 8px; }

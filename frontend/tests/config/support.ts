@@ -4,7 +4,10 @@
  *
  * 页面和实体按成本核算（COST_PINGGU：主表成本单，明细原辅料 COST_MATERIAL、包材 COST_PACKAGE）和
  * 物料清单及成本（GOODS_PRICE_MANAGE：单表 COST_GOODS_PRICE）的真实字段取一部分，审批流样例取 C06 7.8～7.10。
+ * `useSeed` 把成本核算换成 `backend/seed/config/` 中的完整配置（表与列的用例用）。
  */
+import { readFileSync, readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createPlatformApi } from '../../src/contracts/api';
 import { type ErrorDetail, PlatformError } from '../../src/contracts/errors';
 import { createFakeShell } from '../../src/contracts/fakes/shell';
@@ -197,6 +200,23 @@ export function createBackend() {
       validateErrors = errors;
     }
   };
+}
+
+const SEED = fileURLToPath(new URL('../../../backend/seed/config/', import.meta.url));
+
+/** `backend/seed/config/` 中的实体、页面、操作和 Lookup（链路 0 手写的成本核算配置），按文件读出，版本为 1 */
+export function seedItems(): StoredItem[] {
+  return readdirSync(SEED)
+    .filter(file => /^(entity|page|operation|lookup)\..+\.json$/.test(file))
+    .map(file => {
+      const item = JSON.parse(readFileSync(`${SEED}${file}`, 'utf-8')) as Omit<StoredItem, 'version'>;
+      return { type: item.type, key: item.key, name: item.name, version: 1, content: item.content };
+    });
+}
+
+/** 模拟后端中的成本核算换成 seed 的配置 */
+export function useSeed(backend: ReturnType<typeof createBackend>) {
+  for (const item of seedItems()) backend.items.set(`${item.type}/${item.key}`, structuredClone(item));
 }
 
 export const detail = (path: string, message: string, configType = 'approvalFlow', configKey: string | null = null): ErrorDetail => ({
