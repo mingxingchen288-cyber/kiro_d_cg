@@ -21,6 +21,7 @@ import type {
   ListRequest,
   PersonalColumn,
   PersonalConfig,
+  RecordResponse,
   RoleRef
 } from '../../contracts/http';
 import type { PageView, ViewButton, ViewRegion } from '../../contracts/page-view';
@@ -158,6 +159,8 @@ export class PageRuntime {
   private readonly pendingPreviews = new Set<Promise<void>>();
   private readonly unsubscribers: Array<() => void> = [];
   private loadToken = 0;
+  /** 保存、业务按钮的结果写进模型的次数：单据加载期间这个数变了，读到的可能是写入前的数据（见 ensureRecord） */
+  private resultGeneration = 0;
 
   constructor(
     readonly pageCode: string,
@@ -327,7 +330,15 @@ export class PageRuntime {
     }
     this.loadToken += 1;
     try {
-      const record = await this.api.loadRecord(this.pageCode, recordId);
+      // 读取期间保存或按钮的结果已写进模型时重新读取：例如改了 200680 的备注马上保存，预览补读这张单据的响应晚于保存结果到达，
+      // 读到的是保存前的备注，登记进去会把刚保存的值改回旧值
+      let generation: number;
+      let record: RecordResponse;
+      do {
+        generation = this.resultGeneration;
+        // eslint-disable-next-line no-await-in-loop
+        record = await this.api.loadRecord(this.pageCode, recordId);
+      } while (generation !== this.resultGeneration);
       this.model.registerRecord(recordId, record);
     } catch (error) {
       this.deps.message.error(`单据 ${recordId} 的明细读取失败：${messageOf(error)}`);
@@ -678,6 +689,7 @@ export class PageRuntime {
    * 补查失败时重查当前页；提交审批的单据显示正式数据（新增行移除、删除和修改恢复）。最后清空编辑缓冲。
    */
   private async applySaveResult(result: CommandResult) {
+    this.resultGeneration += 1;
     const view = this.view.value!;
     const master = view.master.entity;
     const buffer = this.model.buffer;
@@ -840,6 +852,7 @@ export class PageRuntime {
       await this.failed(error);
       return null;
     }
+    this.resultGeneration += 1;
     const discard: RowId[] = [];
     const updates = new Map<string, string[]>();
     const removes = new Map<string, string[]>();

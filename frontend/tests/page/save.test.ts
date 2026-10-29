@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandResult } from '../../src/contracts/command';
 import { PlatformError } from '../../src/contracts/errors';
+import type { RecordResponse } from '../../src/contracts/http';
 import { approvalDetailSample } from '../../src/contracts/fakes/samples';
 import { MASTER, MATERIAL, RECORDS, masterRow, materialRow, openCostPage, selectRecord } from './support';
 
@@ -52,6 +53,49 @@ describe('保存（FP-06）', () => {
     expect(runtime.state.saving).toBe(false);
     expect(fake.dirty.get('/page/COST_PINGGU')).toBe(false);
     expect(fake.messages).toContainEqual({ kind: 'success', text: '已保存' });
+  });
+
+  it('E01：把 200680 的备注从"测试"改回空马上保存，预览补读单据的响应晚于保存结果到达：仍显示保存后的空值', async () => {
+    const ctx = await openCostPage();
+    const { runtime, fake, master } = ctx;
+    runtime.model.registerMasterRows([masterRow('200680', '测试')]);
+    master.ids.push('200680');
+    // 第一次读单据：请求在保存提交前发出，响应等保存结果到达后才返回，内容是保存前的"测试"
+    let recordRequested!: () => void;
+    const requested = new Promise<void>(resolve => {
+      recordRequested = resolve;
+    });
+    let returnStale!: () => void;
+    const stale = new Promise<RecordResponse>(resolve => {
+      returnStale = () => resolve({ master: masterRow('200680', '测试'), details: { [MATERIAL]: [] } });
+    });
+    let reads = 0;
+    fake.http.on('GET', '/api/pages/:pageCode/records/:recordKey', () => {
+      reads += 1;
+      if (reads === 1) {
+        recordRequested();
+        return stale;
+      }
+      return { master: masterRow('200680', null), details: { [MATERIAL]: [] } };
+    });
+    let returnSaved!: () => void;
+    const savedResult = new Promise<CommandResult>(resolve => {
+      returnSaved = () => resolve(saved([{ ...masterRow('200680', null), entity: MASTER }]));
+    });
+    fake.http.on('POST', '/api/commands', () => savedResult);
+
+    expect(runtime.edit(MASTER, '200680', 'MEMO', null)).toBe(true);
+    const saving = runtime.save();
+    await requested;
+    returnSaved();
+    await saving;
+    returnStale();
+    await runtime.settled();
+
+    expect(runtime.gridRow(MASTER, '200680').MEMO).toBeNull();
+    expect(runtime.model.buffer.committed(MASTER, '200680')?.MEMO).toBeNull();
+    // 保存结果到达后重新读了一次
+    expect(reads).toBe(2);
   });
 
   it('保存期间整页只读，单元格不能编辑', async () => {

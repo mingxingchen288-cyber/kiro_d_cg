@@ -1,7 +1,8 @@
 /**
  * 计算客户端（C07 第 5 节，C11 `ShellApi.calc`）：rules-core 交付的 `createCalcWorkerClient`，第一次使用时才创建 Worker。
- * rules-core 说明页面要带 COOP、COEP 响应头，由 assembly 配置开发服务器和生产环境（AS-06）；
- * `rules-core/dist/web/` 是构建产物、不入库，由 assembly 按 rules-core 模块说明第 6 节放进前端工程后改这里的路径。
+ * `rules-core/dist/web/` 是 rules-core 的构建产物、不入库（先运行 tools/build-rules-core.ps1）。构建时 Vite 按
+ * `new URL(..., import.meta.url)` 把 Worker（worker.js 连同 index.js）和 rules_core.wasm 打进前端产物 dist/assets；
+ * 开发服务器在 vite.config.ts 中放行这个目录，并带 rules-core 要求的 COOP、COEP 响应头（AS-06）。
  */
 import type { CalcWorkerClient } from '@/contracts/rules';
 import { createCalcWorkerClient } from '../../../rules-core/dist/web/client.js';

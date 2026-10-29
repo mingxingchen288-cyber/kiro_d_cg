@@ -1,8 +1,15 @@
 import process from 'node:process';
 import { URL, fileURLToPath } from 'node:url';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 import { setupVitePlugins } from './build/plugins';
 import { createViteProxy, getBuildTime } from './build/config';
+
+/**
+ * rules-core 交付的计算 Worker 和 WASM（rules-core 模块说明第 6 节），由 src/service/calc.ts 引用。
+ * 构建时 Vite 把 worker.js（连同 index.js）和 rules_core.wasm 带哈希打进 dist/assets；
+ * 这个目录在前端工程之外，开发服务器要放行，否则 worker.js、index.js、rules_core.wasm 返回 403。
+ */
+const rulesCoreWeb = fileURLToPath(new URL('../rules-core/dist/web', import.meta.url));
 
 export default defineConfig(configEnv => {
   const viteEnv = loadEnv(configEnv.mode, process.cwd()) as unknown as Env.ImportMeta;
@@ -35,7 +42,16 @@ export default defineConfig(configEnv => {
       host: '0.0.0.0',
       port: 9527,
       open: true,
-      proxy: createViteProxy(viteEnv, enableProxy)
+      proxy: createViteProxy(viteEnv, enableProxy),
+      // rules-core 的 WASM 要求页面跨源隔离（AS-06）；生产环境由后端提供前端静态文件时加同样的头（T-AS-7，还没做）
+      headers: {
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp'
+      },
+      fs: {
+        // 设置 allow 会替换默认值，所以保留默认放行的前端工程目录
+        allow: [searchForWorkspaceRoot(process.cwd()), rulesCoreWeb]
+      }
     },
     preview: {
       port: 9725
