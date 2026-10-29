@@ -70,7 +70,7 @@ def test_generate_single_page(env: Env) -> None:
                                     "pageCode": "GOODS_PRICE_MANAGE"}
     admin = env.stored("role", "ADMIN")
     assert admin["pages"]["GOODS_PRICE_MANAGE"] == {"buttons": ["*"]}
-    assert admin["pages"]["COST_PINGGU"] == {"buttons": ["system:save"]}
+    assert admin["pages"]["COST_PINGGU"] == {"buttons": ["*"]}
     view = env.reader.read("ADMIN").page_view("GOODS_PRICE_MANAGE")
     assert {f.name for f in view.master.fields if not f.editable} >= view_only | {"GOODSID", "ISERP"}
     assert [e.payload.pages for e in env.publisher.events] == [["GOODS_PRICE_MANAGE"]]

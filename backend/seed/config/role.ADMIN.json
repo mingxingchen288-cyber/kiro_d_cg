@@ -8,7 +8,7 @@
     "pages": {
       "COST_PINGGU": {
         "buttons": [
-          "system:save"
+          "*"
         ]
       }
     }
