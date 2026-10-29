@@ -39,6 +39,7 @@ from .types import (
     SqlCondition,
     TargetFinderConfig,
     TargetObject,
+    Value,
 )
 
 if TYPE_CHECKING:
@@ -68,7 +69,11 @@ class SchemaInspector(Protocol):
         ...
 
     def object_type(self, name: str) -> Literal["table", "view"] | None:
-        """这个名字在数据库中是表还是视图；都不是时为 None。config 用它检查审批锁定对象只能是表（C06 第 10 节）。"""
+        """这个名字在数据库中是表还是视图；都不是时为 None。config 用它检查审批的冻结表、修改表只能是表（C06 第 10 节）。"""
+        ...
+
+    def primary_key(self, table: str) -> str | None:
+        """表的单列主键列名；没有主键、主键多于一列或不是表时为 None（C06 7.5 的 keyColumn 省略时用）。"""
         ...
 
 
@@ -115,8 +120,8 @@ class ConfigSnapshot(Protocol):
 
     def operation(self, code: str) -> OperationConfig: ...
 
-    def approval_flows(self, operation: str) -> list[ApprovalFlowConfig]:
-        """来源操作为 operation 的审批流，按创建先后排列。"""
+    def approval_flows(self, page: str) -> list[ApprovalFlowConfig]:
+        """所属页面为 page 的启用审批流，按 order、编码排列（C06 7.1）。"""
         ...
 
     def approval_flow(self, code: str) -> ApprovalFlowConfig: ...
@@ -158,7 +163,7 @@ class CommandExecutor(Protocol):
 # ============================================================ 5a. write-pipeline 提供的写入能力
 #
 # 由 orchestration 按命令的流程调用（2026-10-28 用户："模块是用来提供能力的，最终消费这些能力的是另外一个东西"）。
-# 这三个端口直接用真实实现在 d_cg 上验证，没有替代实现。
+# 这四个端口直接用真实实现在 d_cg 上验证，没有替代实现。
 
 class CommandRecorder(Protocol):
     def begin(self, uow: UnitOfWork, user_id: str, command: Command, now: datetime) -> CommandResult | None:
@@ -196,6 +201,22 @@ class ChangeMerger(Protocol):
         """把 Patch 合并到当前数据（WP-04）：只改出现的字段，与当前值相同不算变化；返回有变化的行，
         并把新值写进 `current` 中对应的行，作为候选数据。字段不在 writable 中时抛 FIELD_NOT_WRITABLE。"""
         ...
+
+
+class TableWriter(Protocol):
+    """审批流通过后写没在平台注册的表（C06 7.5，WP-19）：按主键直接写，不校验、不重算。"""
+
+    def lock_row(self, uow: UnitOfWork, table: str, key_column: str, key: str) -> dict[str, Value] | None:
+        """`SELECT … FOR UPDATE WAIT n` 读出整行；不存在时为 None。"""
+        ...
+
+    def update(self, uow: UnitOfWork, table: str, key_column: str, key: str, values: dict[str, Value]) -> None: ...
+
+    def insert(self, uow: UnitOfWork, table: str, values: dict[str, Value]) -> str:
+        """主键取 `<表名>_SEQ`，返回新主键。"""
+        ...
+
+    def delete(self, uow: UnitOfWork, table: str, key_column: str, key: str) -> None: ...
 
 
 # ============================================================ 6. 管道阶段
@@ -240,8 +261,7 @@ class RulesEngine(Protocol):
 
 class RelatedQuery(Protocol):
     def find(self, uow: UnitOfWork, finder: TargetFinderConfig, source: DocumentData) -> list[TargetObject]:
-        """finder 为审批流 freeze 或 display.affected[].find 中的一项，或按钮通用动作 updateRecords 的 find；
-        只读，参数用绑定变量。
+        """finder 为按钮通用动作 updateRecords 的 find（C06 6.1）；只读，参数用绑定变量。审批流不用它（C06 7.2）。
 
         关联 SQL 查出的行中主键为空的，返回为 `missing` 的对象，不报错；缺少主键列时为 500（C08 第 9 节）。
         """
@@ -291,6 +311,6 @@ class IdGenerator(Protocol):
 # ============================================================ 13. approval 提供
 
 class FreezeReader(Protocol):
-    def find(self, uow: UnitOfWork, entity: str, record_keys: list[str]) -> dict[str, FreezeEntry]:
-        """按单据主键返回冻结记录，每张单据最多一条，未冻结的不在结果中；只读，不加锁。"""
+    def find(self, uow: UnitOfWork, table: str, record_keys: list[str]) -> dict[str, FreezeEntry]:
+        """table 为根表（见 FreezeEntry）；按根表主键返回冻结记录，每个主键最多一条，未冻结的不在结果中；只读，不加锁。"""
         ...

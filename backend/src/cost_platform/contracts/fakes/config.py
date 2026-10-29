@@ -84,19 +84,15 @@ def _references(config_type: str, content: Any) -> list[tuple[str, str, str]]:
     elif config_type == "rule":
         refs.append(({"entity": "entity", "operation": "operation", "page": "page"}[content.layer], content.target, ".target"))
     elif config_type == "approvalFlow":
-        refs.append(("operation", content.source_operation, ".sourceOperation"))
-        refs += [("entity", e, f".trigger.changedFields.{e}") for e in content.trigger.changed_fields]
-        refs += [("role", a.role, f".levels[{i}].entries[{j}].approvers[{k}].role")
-                 for i, level in enumerate(content.levels) for j, entry in enumerate(level.entries)
-                 for k, a in enumerate(entry.approvers) if isinstance(a, RoleApprover)]
-        refs += [("entity", f.entity, f".freeze[{i}].entity") for i, f in enumerate(content.freeze)]
-        if content.display:
-            if content.display.source:
-                refs += [("entity", d.entity, f".display.source.details[{i}].entity")
-                         for i, d in enumerate(content.display.source.details)]
-            for i, block in enumerate(content.display.affected):
-                refs.append(("entity", block.find.entity, f".display.affected[{i}].find.entity"))
-                actions(block.actions, f".display.affected[{i}].actions")
+        refs.append(("page", content.page, ".page"))
+        refs += [("entity", e, f".operations.{e}") for e in content.operations]
+        refs += [("role", a.role, f".levels[{i}].nodes[{j}].approvers[{k}].role")
+                 for i, level in enumerate(content.levels) for j, node in enumerate(level.nodes)
+                 for k, a in enumerate(node.approvers) if isinstance(a, RoleApprover)]
+        for i, block in enumerate(content.display):
+            if block.region in ("master", "detail"):
+                refs.append(("entity", block.source, f".display[{i}].source"))
+            actions(block.actions, f".display[{i}].actions")
     elif config_type == "role":
         refs += [("page", p, f".pages.{p}") for p in content.pages]
     elif config_type == "menu":
@@ -188,9 +184,10 @@ class FakeConfigSnapshot(Scripted):
     def operation(self, code: str) -> OperationConfig:
         return self._get("operation", self._operations, code)
 
-    def approval_flows(self, operation: str) -> list[ApprovalFlowConfig]:
-        self._record("approval_flows", operation)
-        return sorted((f for f in self._flows.values() if f.source_operation == operation), key=lambda f: f.created_seq)
+    def approval_flows(self, page: str) -> list[ApprovalFlowConfig]:
+        self._record("approval_flows", page)
+        flows = [(code, f) for code, f in self._flows.items() if f.page == page and f.enabled]
+        return [f for _, f in sorted(flows, key=lambda item: (item[1].order, item[0]))]
 
     def approval_flow(self, code: str) -> ApprovalFlowConfig:
         return self._get("approval_flow", self._flows, code)

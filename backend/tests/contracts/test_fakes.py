@@ -13,7 +13,7 @@ from cost_platform.contracts import fakes, ports
 from cost_platform.contracts.fakes import PORT_FAKES, Call, FakeClock, FakeDocumentReader, Scripted
 from cost_platform.contracts.types import DocumentRef, ErrorCode, PlatformError
 
-REAL_ONLY = {"CommandRecorder", "DocumentStore", "ChangeMerger"}
+REAL_ONLY = {"CommandRecorder", "DocumentStore", "ChangeMerger", "TableWriter"}
 """2026-10-28 起新增的写入能力端口（ports.py 第 5a 节）：不写替代实现和契约测试，直接用真实实现在 d_cg 上验证
 （用户："按这个做"，按纵向切片先跑通最小真实链路）。"""
 

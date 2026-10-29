@@ -15,9 +15,9 @@ from cost_platform.contracts.fakes import FakeFreezeReader, FakeUnitOfWorkFactor
 from cost_platform.contracts.ports import FreezeReader, UnitOfWork
 from cost_platform.contracts.types import FreezeEntry
 
-A = FreezeEntry(approval_id="203", entity="COST_PINGGU", record_key="1001")
-B = FreezeEntry(approval_id="204", entity="COST_PINGGU", record_key="1002")
-OTHER_ENTITY = FreezeEntry(approval_id="205", entity="COST_GOODS_PRICE", record_key="1003")
+A = FreezeEntry(approval_id="203", table="T_COST_PINGGU", record_key="1001")
+B = FreezeEntry(approval_id="204", table="T_COST_PINGGU", record_key="1002")
+OTHER_ENTITY = FreezeEntry(approval_id="205", table="T_COST_GOODS", record_key="1003")
 
 
 class FreezeReaderHarness(Protocol):
@@ -41,19 +41,19 @@ class FreezeReaderContract:
         return harness
 
     def test_returns_only_requested_frozen_documents(self, arranged: FreezeReaderHarness) -> None:
-        """按单据主键返回冻结记录，未冻结的不在结果中。"""
-        found = arranged.reader.find(arranged.uow, "COST_PINGGU", ["1001", "1009"])
+        """按根表主键返回冻结记录，未冻结的不在结果中。"""
+        found = arranged.reader.find(arranged.uow, "T_COST_PINGGU", ["1001", "1009"])
         assert found == {"1001": A}
 
-    def test_filters_by_entity(self, arranged: FreezeReaderHarness) -> None:
-        assert arranged.reader.find(arranged.uow, "COST_PINGGU", ["1003"]) == {}
-        assert arranged.reader.find(arranged.uow, "COST_GOODS_PRICE", ["1001", "1003"]) == {"1003": OTHER_ENTITY}
+    def test_filters_by_table(self, arranged: FreezeReaderHarness) -> None:
+        assert arranged.reader.find(arranged.uow, "T_COST_PINGGU", ["1003"]) == {}
+        assert arranged.reader.find(arranged.uow, "T_COST_GOODS", ["1001", "1003"]) == {"1003": OTHER_ENTITY}
 
     def test_several_documents(self, arranged: FreezeReaderHarness) -> None:
-        assert arranged.reader.find(arranged.uow, "COST_PINGGU", ["1002", "1001"]) == {"1001": A, "1002": B}
+        assert arranged.reader.find(arranged.uow, "T_COST_PINGGU", ["1002", "1001"]) == {"1001": A, "1002": B}
 
     def test_empty_request(self, arranged: FreezeReaderHarness) -> None:
-        assert arranged.reader.find(arranged.uow, "COST_PINGGU", []) == {}
+        assert arranged.reader.find(arranged.uow, "T_COST_PINGGU", []) == {}
 
 
 class FakeFreezeReaderHarness:
@@ -82,6 +82,6 @@ def test_fake_one_approval_per_document() -> None:
     reader = FakeFreezeReader()
     reader.freeze(A)
     with pytest.raises(ValueError):
-        reader.freeze(FreezeEntry(approval_id="999", entity=A.entity, record_key=A.record_key))
+        reader.freeze(FreezeEntry(approval_id="999", table=A.table, record_key=A.record_key))
     reader.release(A.approval_id)
-    reader.freeze(FreezeEntry(approval_id="999", entity=A.entity, record_key=A.record_key))
+    reader.freeze(FreezeEntry(approval_id="999", table=A.table, record_key=A.record_key))

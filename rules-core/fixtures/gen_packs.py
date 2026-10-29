@@ -48,16 +48,14 @@ def pack(pack_id: str, version: int, fields: dict[str, dict[str, Any]], rules: l
             if key in r:
                 entry[key] = r[key]
         entry.update({"category": r.get("category", "calc"), "order": r["order"], "serverOnly": r.get("serverOnly", False), "jdm": r["id"]})
-        if r.get("flow"):
-            entry["flow"] = r["flow"]
         out_rules.append(entry)
         if entry["category"] == "calc":
             graphs[r["id"]] = jdm(r["id"], r["field"], calc_expression(r))
         else:
-            # validate、ui、approvalTrigger 以后实现；先给出条件表达式，load_pack 照常检查和编译
+            # validate、ui 以后实现；先给出条件表达式，load_pack 照常检查和编译
             graphs[r["id"]] = jdm(r["id"], "matched", r["when"])
     return {"packId": pack_id, "version": version, "coreVersion": "0.1.0", "fields": fields,
-            "rules": out_rules, "approvalEntries": [], "jdm": graphs}
+            "rules": out_rules, "jdm": graphs}
 
 
 def num(role: str = "input", scale: int | None = None) -> dict[str, Any]:
@@ -126,11 +124,9 @@ COST_RULES: list[dict[str, Any]] = [
     {"id": "R_MAT_BATCH_QTY", "entity": "COST_MATERIAL", "field": "BATCH_QTY", "order": 15, "branches": BATCH_QTY_BRANCHES},
     {"id": "R_PKG_COST_BATCH", "entity": "COST_PACKAGE", "field": "COST_BATCH", "order": 16, "expression": "BATCH_QTY * PRICE"},
     {"id": "R_PKG_BATCH_QTY", "entity": "COST_PACKAGE", "field": "BATCH_QTY", "order": 17, "branches": BATCH_QTY_BRANCHES},
-    # 以下三类以后实现：求值时没有提示、没有效果
+    # 以下两类以后实现：求值时没有提示、没有效果
     {"id": "R_V_PRICE", "entity": "COST_MATERIAL", "category": "validate", "order": 100, "when": "PRICE < 0"},
     {"id": "R_UI_ERP", "layer": "page", "page": "COST_PINGGU", "category": "ui", "order": 200, "when": "DTL_USEFLAG == '原料'"},
-    {"id": "R_AT_PRICE", "layer": "operation", "operation": "COST_PINGGU.save", "category": "approvalTrigger",
-     "flow": "COST_TO_GOODS", "order": 300, "when": "PRICE != old.PRICE"},
 ]
 
 

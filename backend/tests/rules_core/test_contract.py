@@ -23,9 +23,6 @@ class CostRulesCoreHarness:
     def operation_request(self) -> str:
         return request_text(case("E02-包材批量-preview")["request"])
 
-    def entry_request(self) -> str:
-        return request_text(case("审批入口-以后实现")["request"])
-
     def invalid_pack(self) -> bytes:
         return pack_bytes("packs/cycle.json")
 

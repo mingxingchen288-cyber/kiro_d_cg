@@ -79,12 +79,13 @@ def ct_role(key: str, page: str, name: str) -> t.ConfigDraft:
     return _draft("role", key, name, {"name": name, "admin": False, "pages": {page: {"buttons": ["system:save"]}}})
 
 
-def ct_flow(key: str, source_operation: str, entry_name: str) -> t.ConfigDraft:
-    """审批流：`createdSeq` 由 config 在第一次保存时分配（CF-07），这里给出的值不作数，测试也不比较它。"""
+def ct_flow(key: str, page: str, node_name: str, order: int = 1, enabled: bool = True) -> t.ConfigDraft:
+    """审批流（C06 第 7 节）：所属页面为 page，第 1 级一个节点，单价改了才进入。"""
     return _draft("approvalFlow", key, key, {
-        "createdSeq": 1, "sourceOperation": source_operation,
-        "trigger": {"operations": ["modify"], "changedFields": {CT_ENTITY: ["PRICE"]}},
-        "levels": [{"level": 1, "entries": [{"name": entry_name, "mode": "or", "approvers": [{"type": "role", "role": CT_ROLE_B}]}]}],
+        "page": page, "order": order, "enabled": enabled, "operations": {CT_ENTITY: ["modify"]},
+        "levels": [{"level": 1, "nodes": [{"name": node_name, "conditionType": "sql",
+                                           "condition": "DECODE(:new_PRICE, :old_PRICE, 0, 1) = 1",
+                                           "approvers": [{"type": "role", "role": CT_ROLE_B}], "mode": "or"}]}],
     })
 
 
@@ -92,11 +93,6 @@ def ct_base_items(role_a_name: str = "契约测试角色甲") -> list[t.ConfigDr
     """实体、两个页面和它们的保存操作、两个角色：角色甲只能访问页面 A，角色乙只能访问页面 B。"""
     return [ct_entity(), ct_save_operation(CT_SAVE_A), ct_save_operation(CT_SAVE_B), ct_page(CT_PAGE_A, CT_SAVE_A),
             ct_page(CT_PAGE_B, CT_SAVE_B), ct_role(CT_ROLE_A, CT_PAGE_A, role_a_name), ct_role(CT_ROLE_B, CT_PAGE_B, "契约测试角色乙")]
-
-
-def without_created_seq(content: Any) -> Any:
-    """比较审批流内容时去掉 config 分配的 createdSeq。"""
-    return content.model_copy(update={"created_seq": 0}) if isinstance(content, t.ApprovalFlowConfig) else content
 
 
 def snapshot(role_code: str = "COST_ACCOUNTANT", version: int = 13) -> FakeConfigSnapshot:

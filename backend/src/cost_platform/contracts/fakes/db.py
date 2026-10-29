@@ -85,18 +85,21 @@ class FakeUnitOfWorkFactory(Scripted):
 
 
 class FakeSchemaInspector(Scripted):
-    """`SchemaInspector`：表和视图的结构由 `add_table`、`add_view` 预设。"""
+    """`SchemaInspector`：表和视图的结构由 `add_table`、`add_view` 预设；表的主键由 `add_table` 的 `primary_key` 给出。"""
 
-    scriptable = ('columns', 'object_type')
+    scriptable = ('columns', 'object_type', 'primary_key')
 
     def __init__(self) -> None:
         super().__init__()
         self._tables: dict[str, dict[str, ColumnInfo]] = {}
         self._types: dict[str, Literal["table", "view"]] = {}
+        self._keys: dict[str, str] = {}
 
-    def add_table(self, table: str, columns: Sequence[ColumnInfo]) -> None:
+    def add_table(self, table: str, columns: Sequence[ColumnInfo], primary_key: str | None = None) -> None:
         self._tables[table] = {c.name: c for c in columns}
         self._types[table] = "table"
+        if primary_key is not None:
+            self._keys[table] = primary_key
 
     def add_view(self, view: str, columns: Sequence[ColumnInfo]) -> None:
         self._tables[view] = {c.name: c for c in columns}
@@ -110,6 +113,10 @@ class FakeSchemaInspector(Scripted):
     def object_type(self, name: str) -> Literal["table", "view"] | None:
         self._record("object_type", name)
         return self._types.get(name)
+
+    def primary_key(self, table: str) -> str | None:
+        self._record("primary_key", table)
+        return self._keys.get(table) if self._types.get(table) == "table" else None
 
 
 class FakeConnectionFactory(Scripted):

@@ -25,8 +25,8 @@ COLUMNS = [
 class SchemaInspectorHarness(Protocol):
     inspector: SchemaInspector
 
-    def create_table(self, table: str, columns: Sequence[ColumnInfo]) -> None:
-        """建一张有这些列的表。"""
+    def create_table(self, table: str, columns: Sequence[ColumnInfo], primary_key: str | None = None) -> None:
+        """建一张有这些列的表；给出 primary_key 时以这一列为主键。"""
         ...
 
     def create_view(self, view: str, table: str) -> None:
@@ -52,20 +52,27 @@ class SchemaInspectorContract:
         assert harness.inspector.columns("CT_SCHEMA_PROBE") == {c.name: c for c in COLUMNS}
 
     def test_table_and_view_are_told_apart(self, harness: SchemaInspectorHarness) -> None:
-        """审批的锁定对象只能是表（C06 第 10 节）：表为 table，视图为 view，视图也能读出列。"""
+        """审批的冻结表、修改表只能是表（C06 第 10 节）：表为 table，视图为 view，视图也能读出列。"""
         harness.create_table("CT_SCHEMA_PROBE", COLUMNS)
         harness.create_view("CT_SCHEMA_PROBE_V", "CT_SCHEMA_PROBE")
         assert harness.inspector.object_type("CT_SCHEMA_PROBE") == "table"
         assert harness.inspector.object_type("CT_SCHEMA_PROBE_V") == "view"
         assert set(harness.inspector.columns("CT_SCHEMA_PROBE_V") or {}) == {c.name for c in COLUMNS}
 
+    def test_primary_key(self, harness: SchemaInspectorHarness) -> None:
+        """展示数据的 `keyColumn` 省略时取表的主键（C06 7.5）；视图没有主键。"""
+        harness.create_table("CT_SCHEMA_PROBE", COLUMNS, primary_key="GOODSNAME")
+        harness.create_view("CT_SCHEMA_PROBE_V", "CT_SCHEMA_PROBE")
+        assert harness.inspector.primary_key("CT_SCHEMA_PROBE") == "GOODSNAME"
+        assert harness.inspector.primary_key("CT_SCHEMA_PROBE_V") is None
+
 
 class FakeSchemaInspectorHarness:
     def __init__(self) -> None:
         self.inspector = FakeSchemaInspector()
 
-    def create_table(self, table: str, columns: Sequence[ColumnInfo]) -> None:
-        self.inspector.add_table(table, columns)
+    def create_table(self, table: str, columns: Sequence[ColumnInfo], primary_key: str | None = None) -> None:
+        self.inspector.add_table(table, columns, primary_key)
 
     def create_view(self, view: str, table: str) -> None:
         self.inspector.add_view(view, list((self.inspector.columns(table) or {}).values()))

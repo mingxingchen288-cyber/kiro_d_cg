@@ -437,19 +437,8 @@
       "order": 200,
       "serverOnly": false,
       "jdm": "R_UI_ERP"
-    },
-    {
-      "id": "R_AT_PRICE",
-      "layer": "operation",
-      "operation": "COST_PINGGU.save",
-      "category": "approvalTrigger",
-      "order": 300,
-      "serverOnly": false,
-      "jdm": "R_AT_PRICE",
-      "flow": "COST_TO_GOODS"
     }
   ],
-  "approvalEntries": [],
   "jdm": {
     "R_MASTER_Y_SALE": {
       "nodes": [
@@ -1225,48 +1214,6 @@
                 "id": "e1",
                 "key": "matched",
                 "value": "DTL_USEFLAG == '原料'"
-              }
-            ]
-          }
-        },
-        {
-          "id": "out",
-          "name": "输出",
-          "type": "outputNode",
-          "content": {}
-        }
-      ],
-      "edges": [
-        {
-          "id": "e-in",
-          "sourceId": "in",
-          "targetId": "expr"
-        },
-        {
-          "id": "e-out",
-          "sourceId": "expr",
-          "targetId": "out"
-        }
-      ]
-    },
-    "R_AT_PRICE": {
-      "nodes": [
-        {
-          "id": "in",
-          "name": "输入",
-          "type": "inputNode",
-          "content": {}
-        },
-        {
-          "id": "expr",
-          "name": "R_AT_PRICE",
-          "type": "expressionNode",
-          "content": {
-            "expressions": [
-              {
-                "id": "e1",
-                "key": "matched",
-                "value": "PRICE != old.PRICE"
               }
             ]
           }

@@ -13,29 +13,24 @@ use zen_expression::Isolate;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Request {
+    /// C07 第 2 节：固定为 `operation`，只用来校验请求。
+    #[allow(dead_code)]
     purpose: Purpose,
     #[serde(default)]
     operation: Option<String>,
     #[serde(default)]
     page: Option<String>,
     phase: Phase,
-    #[serde(default)]
-    #[allow(dead_code)]
-    flow: Option<String>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    level: Option<i64>,
     context: Context,
     document: Document,
     changed: Vec<Changed>,
     data: Map<String, Value>,
 }
 
-#[derive(Deserialize, PartialEq, Eq, Clone, Copy)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum Purpose {
     Operation,
-    ApprovalEntry,
 }
 
 #[derive(Deserialize, PartialEq, Eq, Clone, Copy)]
@@ -186,11 +181,6 @@ pub fn evaluate(pack: &Pack, request_text: &str) -> Result<Value, Failure> {
             }
         }
         details.push((entity, parsed));
-    }
-
-    if request.purpose == Purpose::ApprovalEntry {
-        // 审批入口以后实现（T-RC-2 的后续部分）；现在按 C07 返回合法的结果：不满足。
-        return Ok(json!({"ok": true, "satisfied": false}));
     }
 
     let context = context_variable(&request.context);

@@ -74,7 +74,7 @@ class FileConfigSnapshot:
     def operation(self, code: str) -> OperationConfig:
         return self._get("operation", code)
 
-    def approval_flows(self, operation: str) -> list[ApprovalFlowConfig]:
+    def approval_flows(self, page: str) -> list[ApprovalFlowConfig]:
         return []
 
     def approval_flow(self, code: str) -> ApprovalFlowConfig:

@@ -17,7 +17,6 @@ struct PackJson {
     core_version: String,
     fields: BTreeMap<String, BTreeMap<String, PackFieldJson>>,
     rules: Vec<PackRuleJson>,
-    approval_entries: Vec<PackEntryJson>,
     jdm: BTreeMap<String, Value>,
 }
 
@@ -73,7 +72,6 @@ pub enum Layer {
 enum Category {
     Calc,
     Validate,
-    ApprovalTrigger,
     Ui,
 }
 
@@ -89,23 +87,8 @@ struct PackRuleJson {
     #[serde(default)]
     page: Option<String>,
     category: Category,
-    #[serde(default)]
-    #[allow(dead_code)]
-    flow: Option<String>,
     order: i64,
     server_only: bool,
-    jdm: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PackEntryJson {
-    #[allow(dead_code)]
-    flow: String,
-    #[allow(dead_code)]
-    level: i64,
-    #[allow(dead_code)]
-    entry: String,
     jdm: String,
 }
 
@@ -148,10 +131,9 @@ pub fn load(bytes: &[u8]) -> Result<Pack, String> {
     for (key, value) in &pack.jdm {
         graphs.insert(key.clone(), parse_graph(key, value)?);
     }
-    let referenced = pack.rules.iter().map(|r| (&r.id, &r.jdm)).chain(pack.approval_entries.iter().map(|e| (&e.jdm, &e.jdm)));
-    for (owner, key) in referenced {
-        if !graphs.contains_key(key) {
-            return Err(format!("{owner} 引用的 JDM \"{key}\" 不在规则包的 jdm 中"));
+    for rule in &pack.rules {
+        if !graphs.contains_key(&rule.jdm) {
+            return Err(format!("{} 引用的 JDM \"{}\" 不在规则包的 jdm 中", rule.id, rule.jdm));
         }
     }
 

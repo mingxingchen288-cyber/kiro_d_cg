@@ -10,7 +10,6 @@ from pydantic import ValidationError
 
 from ..types import (
     EvalComputed,
-    EvalEntry,
     EvalError,
     EvalFailure,
     EvaluationRequest,
@@ -33,19 +32,10 @@ class FakePack:
 @dataclass(frozen=True)
 class _Preset:
     result: Any
-    purpose: str | None
     operation: str | None
-    flow: str | None
-    level: int | None
 
     def matches(self, request: EvaluationRequest) -> bool:
-        # 计算结果只用于计算请求，入口结果只用于审批入口请求；失败结果两种都可以
-        if isinstance(self.result, EvalComputed) and request.purpose != "operation":
-            return False
-        if isinstance(self.result, EvalEntry) and request.purpose != "approvalEntry":
-            return False
-        return all(want is None or want == got for want, got in (
-            (self.purpose, request.purpose), (self.operation, request.operation), (self.flow, request.flow), (self.level, request.level)))
+        return self.operation is None or self.operation == request.operation
 
 
 def _failure(code: str, message: str) -> str:
@@ -57,8 +47,7 @@ class FakeRulesEngine(Scripted):
 
     - `load_pack` 按 C07 第 1 节解析规则包，返回 `FakePack`；不符合时抛 `PackInvalidError`（不检查依赖成环）。
     - `evaluate` 按 C07 第 2 节解析请求；请求不合法时返回 INPUT_INVALID，句柄不是本实例加载的时返回 PACK_INVALID。
-      否则返回最近一条条件匹配的预设结果；没有匹配时，计算结果为空（`{"ok": true, "rows": [], "effects": []}`），
-      审批入口为满足（`{"ok": true, "satisfied": true}`）。
+      否则返回最近一条条件匹配的预设结果；没有匹配时，计算结果为空（`{"ok": true, "rows": [], "effects": []}`）。
     - `requests` 按顺序记录解析后的求值请求。
     """
 
@@ -71,11 +60,9 @@ class FakeRulesEngine(Scripted):
         self.packs: list[FakePack] = []
         self.requests: list[EvaluationRequest] = []
 
-    def respond(self, result: EvalComputed | EvalEntry | EvalFailure, *, purpose: str | None = None, operation: str | None = None,
-                flow: str | None = None, level: int | None = None) -> None:
-        """预设结果：只对 purpose、operation、flow、level 都匹配（没给出的不限）的请求生效；
-        计算结果只用于 `operation` 请求，入口结果只用于 `approvalEntry` 请求。"""
-        self._presets.append(_Preset(result, purpose, operation, flow, level))
+    def respond(self, result: EvalComputed | EvalFailure, *, operation: str | None = None) -> None:
+        """预设结果：只对 operation 匹配（没给出的不限）的请求生效。"""
+        self._presets.append(_Preset(result, operation))
 
     def load_pack(self, pack_json: bytes) -> FakePack:
         self._record("load_pack", pack_json)
@@ -98,8 +85,7 @@ class FakeRulesEngine(Scripted):
         for preset in reversed(self._presets):
             if preset.matches(request):
                 return json.dumps(dump_wire(EvaluationResult, preset.result), ensure_ascii=False)
-        default: EvalComputed | EvalEntry = (EvalEntry(ok=True, satisfied=True) if request.purpose == "approvalEntry"
-                                             else EvalComputed(ok=True, rows=[], effects=[]))
+        default = EvalComputed(ok=True, rows=[], effects=[])
         return json.dumps(dump_wire(EvaluationResult, default), ensure_ascii=False)
 
     def core_version(self) -> str:

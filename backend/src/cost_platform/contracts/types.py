@@ -169,7 +169,7 @@ Value: TypeAlias = str | Decimal | bool | date | datetime | None
 """业务字段在后端内部的值（C08 第 1 节）：精确数值为 Decimal。"""
 
 RowOp: TypeAlias = Literal["add", "modify", "delete"]
-"""行操作，对应命令中各行的 `op` 和审批流 `trigger.operations`。"""
+"""行操作，对应命令中各行的 `op` 和审批流的审核操作 `operations`。"""
 
 FieldType: TypeAlias = Literal["text", "number", "date", "datetime", "boolean"]
 ColumnSource: TypeAlias = Literal["erp", "own"]
@@ -633,7 +633,7 @@ Condition: TypeAlias = str | VisualCondition
 
 
 class DataItem(Wire):
-    """规则或审批条件需要的数据库数据，表达式中写作 `data.名称`。"""
+    """规则需要的数据库数据，表达式中写作 `data.名称`。"""
 
     name: str
     sql: str
@@ -784,7 +784,7 @@ class PageConfig(Wire):
     details: list[PageDetailConfig] = []
 
 
-# ---- 7.2 查找方式（锁定范围、影响对象和按钮的 updateRecords 都使用）
+# ---- 6.1 查找方式（按钮的 updateRecords 使用）
 
 class RelationKeyFinder(Wire):
     kind: Literal["relationKey"]
@@ -848,7 +848,7 @@ ActionStep = Annotated[
     Recalculate | UpdateTargets | UpdateRecords | EscapeHatch,
     Field(discriminator="action"),
 ]
-"""按钮操作的通用动作（C06 第 6 节）。审批流的动作见 `BlockAction`。"""
+"""按钮操作的通用动作（C06 第 6 节）。审批流通过后的操作见 `BlockAction`。"""
 
 
 # ---- 4. operation
@@ -896,15 +896,6 @@ class RuleConfig(Wire):
 
 # ---- 7. approvalFlow
 
-class Trigger(Wire):
-    operations: Annotated[list[RowOp], Field(min_length=1)] = ["modify"]
-    """省略时为 ["modify"]；写出空数组时拒绝（C06 7.1、第 10 节）。"""
-    changed_fields: dict[str, list[str]]
-    """必须写；是否列出了来源单据的实体、含 modify 时是否列出了字段，由 config 按 C06 第 10 节检查。"""
-    when: Condition | None = None
-    data_items: list[DataItem] = []
-
-
 class UserApprover(Wire):
     type: Literal["user"]
     user_id: DecimalText
@@ -924,85 +915,92 @@ class SqlApprover(Wire):
 Approver = Annotated[UserApprover | RoleApprover | SqlApprover, Field(discriminator="type")]
 
 
-class LevelEntry(Wire):
+class FlowNode(Wire):
+    """审批节点（C06 7.3）：`condition` 为带参数的 SQL 条件片段（C06 7.2），`condition_type` 为 sql 时必须写。"""
+
     name: str
-    when: Condition | None = None
-    mode: Literal["or", "and"]
+    condition_type: Literal["always", "sql"]
+    condition: str | None = None
+    department: Key | None = None
+    """发起部门限制：部门编号，为空表示不限。"""
     approvers: list[Approver]
+    mode: Literal["or", "and"]
+    enabled: Bool = True
 
 
 class FlowLevel(Wire):
     level: Int
-    entries: list[LevelEntry]
+    nodes: list[FlowNode]
 
 
-FreezeSpec = TargetFinder
-"""锁定范围中的一项（C06 7.3）：触发审批的单据总是锁定，这里配还要锁定的目标。"""
+class FreezeItem(Wire):
+    """冻结节点的一项（C06 7.4）：冻结表可以不在平台注册，只能是表；关联条件每个触发本审批的行执行一次。"""
+
+    table: str
+    condition: str
+    enabled: Bool = True
+
 
 _IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 
 
 class DisplayColumn(Wire):
+    """展示数据的一列（C06 7.5）：`field` 为展示表或视图的列，修改表注册过时也可以写 `master.字段`。"""
+
+    field: Annotated[str, StringConstraints(pattern=rf"^(master\.)?{_IDENT}$")]
     label: str
-    field: Annotated[str, StringConstraints(pattern=rf"^{_IDENT}(\.{_IDENT})?$")]
-    """字段名；影响对象找的是明细时，也可以写 `主表实体.字段`，取这一行所属单据的字段（C06 7.6）。"""
+    precision: Int | None = None
+    width: Int | None = None
+    target_column: str | None = None
+    """对应修改表的哪一列，省略时按同名对应；只用于受影响单据的块。"""
+
+
+class FieldWrite(Wire):
+    """写入一列：`column` 为修改表的列，`value` 为取值（SQL 表达式片段，C06 7.2）。"""
+
+    column: str
+    value: str
 
 
 class UpdateFields(Wire):
-    """把值写到这一行的字段（C06 7.6）：`from` 为来源字段或 `params.名称`，`to` 为这一行的字段。"""
+    """按主键修改修改表的这一行（C06 7.5）。"""
 
     action: Literal["updateFields"]
-    field_mapping: list[FieldMap]
+    fields: list[FieldWrite]
 
 
 class InsertRows(Wire):
-    """每个勾选的行在 `entity` 中新增一行（C06 7.6）：`from` 为来源字段、`row.字段`（这一行的字段）或 `params.名称`。"""
+    """每个勾选的行在 `table` 中新增一行（C06 7.5）；主键取序列 `<表名>_SEQ`。"""
 
     action: Literal["insertRows"]
-    entity: Code
-    field_mapping: list[FieldMap]
+    table: str
+    fields: list[FieldWrite]
 
 
 class DeleteRows(Wire):
-    """删除勾选的行（C06 7.6）：主表的行连同明细删除整张单据，明细行只删这一行。"""
+    """按主键删除修改表的这一行（C06 7.5）。"""
 
     action: Literal["deleteRows"]
 
 
 BlockAction = Annotated[UpdateFields | InsertRows | DeleteRows | EscapeHatch, Field(discriminator="action")]
-"""审批流展示与动作中的公共方法（C06 7.6）。"""
+"""审批流全部级别通过后，对受影响单据勾选的行执行的操作（C06 7.5）。"""
 
 
-class SourceDetailDisplay(Wire):
-    title: str
-    entity: Code
-    rows: Literal["changed", "all"] = "changed"
-    columns: list[DisplayColumn]
-
-
-class SourceDisplay(Wire):
-    """来源单据显示的列（C06 7.6）；来源单据的动作固定为应用修改。"""
-
-    master: list[DisplayColumn] = []
-    details: list[SourceDetailDisplay] = []
-
-
-class AffectedBlock(Wire):
-    """影响对象的一块（C06 7.6）：找哪些行、显示哪些列、怎么勾选、通过后对勾选的行做什么。"""
+class DisplayBlock(Wire):
+    """展示数据的一块（C06 7.5）：修改内容的主表、明细，或受影响单据。"""
 
     key: Code
     title: str
-    find: TargetFinder
+    region: Literal["master", "detail", "affected"]
+    source: str
+    """`master`、`detail` 为本页面的表格（实体编码）；`affected` 为表名或视图名。"""
+    condition: str | None = None
+    target_table: str | None = None
+    key_column: str | None = None
     columns: list[DisplayColumn]
-    selection: Literal["checked", "all", "hidden"]
+    selection: Literal["checked", "all", "hidden"] | None = None
     actions: list[BlockAction] = []
-
-
-class ApprovalDisplay(Wire):
-    """审批流的展示与动作（C06 7.6）。"""
-
-    source: SourceDisplay | None = None
-    affected: list[AffectedBlock] = []
 
 
 class FlowParam(Wire):
@@ -1029,13 +1027,16 @@ class NotifyRule(Wire):
 
 
 class ApprovalFlowConfig(Wire):
-    created_seq: Int
-    source_operation: Code
-    trigger: Trigger
+    """审批流（C06 第 7 节）：配在所属页面下，第 1 级节点的入口条件逐行判断触发本审批的行。"""
+
+    page: Code
+    order: Int
+    enabled: Bool = True
+    operations: dict[str, list[RowOp]]
+    """审核操作：键为本页面的表格（实体编码），值为选中的操作。"""
     levels: list[FlowLevel]
-    freeze: list[FreezeSpec] = []
-    display: ApprovalDisplay | None = None
-    """动作在全部审批节点都通过后才执行（approval AP-20）；中途某一级通过不执行任何动作。"""
+    freeze: list[FreezeItem] = []
+    display: list[DisplayBlock] = []
     params: list[FlowParam] = []
     propagation: Literal["end"] = "end"
     notify: list[NotifyRule] = []
@@ -1191,17 +1192,9 @@ class PackRule(Wire):
     entity: Code | None = None
     operation: Code | None = None
     page: Code | None = None
-    category: Literal["calc", "validate", "approvalTrigger", "ui"]
-    flow: Code | None = None
+    category: Literal["calc", "validate", "ui"]
     order: Int
     server_only: Bool
-    jdm: Code
-
-
-class PackApprovalEntry(Wire):
-    flow: Code
-    level: Int
-    entry: str
     jdm: Code
 
 
@@ -1218,7 +1211,6 @@ class RulesPack(Wire):
     core_version: str
     fields: dict[str, dict[str, PackField]]
     rules: list[PackRule]
-    approval_entries: list[PackApprovalEntry]
     jdm: dict[str, JdmGraph]
 
 
@@ -1256,12 +1248,10 @@ class ChangedRow(Wire):
 
 
 class EvaluationRequest(Wire):
-    purpose: Literal["operation", "approvalEntry"]
+    purpose: Literal["operation"]
     operation: Code | None = None
     page: Code | None = None
     phase: Literal["preview", "commit"]
-    flow: Code | None = None
-    level: Int | None = None
     context: EvalContext
     document: EvalDocument
     changed: list[ChangedRow]
@@ -1315,13 +1305,7 @@ class RejectEffect(Wire):
     check_row_identity = model_validator(mode="after")(_at_most_one_row_identity)
 
 
-class ApproveEffect(Wire):
-    kind: Literal["approve"]
-    rule: Code
-    flow: Code
-
-
-RuleEffect = Annotated[PromptEffect | RejectEffect | ApproveEffect, Field(discriminator="kind")]
+RuleEffect = Annotated[PromptEffect | RejectEffect, Field(discriminator="kind")]
 
 
 class EvalError(Wire):
@@ -1330,18 +1314,11 @@ class EvalError(Wire):
 
 
 class EvalComputed(Wire):
-    """计算和规则的结果（`purpose` 为 `operation`）：`rows`、`effects` 总会出现，没有时为空数组。"""
+    """计算和规则的结果：`rows`、`effects` 总会出现，没有时为空数组。"""
 
     ok: TrueValue
     rows: list[EvalRowResult]
     effects: list[RuleEffect]
-
-
-class EvalEntry(Wire):
-    """判断审批入口的结果（`purpose` 为 `approvalEntry`）。"""
-
-    ok: TrueValue
-    satisfied: Bool
 
 
 class EvalFailure(Wire):
@@ -1353,15 +1330,15 @@ class EvalFailure(Wire):
 
 def _evaluation_tag(value: Any) -> str | None:
     if isinstance(value, dict):
-        return "failure" if "error" in value else "entry" if "satisfied" in value else "computed"
-    return {EvalComputed: "computed", EvalEntry: "entry", EvalFailure: "failure"}.get(type(value))
+        return "failure" if "error" in value else "computed"
+    return {EvalComputed: "computed", EvalFailure: "failure"}.get(type(value))
 
 
 EvaluationResult = Annotated[
-    Annotated[EvalComputed, Tag("computed")] | Annotated[EvalEntry, Tag("entry")] | Annotated[EvalFailure, Tag("failure")],
+    Annotated[EvalComputed, Tag("computed")] | Annotated[EvalFailure, Tag("failure")],
     Discriminator(_evaluation_tag),
 ]
-"""C07 第 3 节的求值结果，三种形状之一。"""
+"""C07 第 3 节的求值结果，两种形状之一。"""
 
 
 # ============================================================ C09 HTTP 接口
@@ -1514,6 +1491,23 @@ class WizardColumnsResponse(Wire):
     primary_key: str
     sequence: WizardSequence
     columns: list[WizardColumn]
+
+
+class SchemaColumnsRequest(Wire):
+    """审批流配置中按表名或视图名读出列（C09 第 3 节）。"""
+
+    name: str
+
+
+class SchemaColumn(Wire):
+    name: str
+    type: FieldType
+
+
+class SchemaColumnsResponse(Wire):
+    object_type: Literal["table", "view"] | None
+    primary_key: str | None
+    columns: list[SchemaColumn]
 
 
 class WizardGenerateRequest(Wire):
@@ -1700,7 +1694,7 @@ class ApprovalStep(Wire):
     level: Int
     flow: Code
     flow_name: str
-    entry: str
+    node: str
     mode: Literal["or", "and"]
     status: Literal["passed", "pending", "rejected", "upcoming"]
     members: list[StepMember]
@@ -1711,54 +1705,40 @@ class ViewCell(Wire):
     after: BusinessValue
 
 
-class MissingRecord(Wire):
-    """影响对象中记录已不存在的行（approval AP-21）：能取到的单据主键和 `labelColumn` 的值，取不到的为 null。"""
+class RowRef(Wire):
+    """受影响单据的一行：修改表的主键值（C06 7.5）。"""
 
-    record_key: Key | None
-    label: str | None
-
-
-class AffectedRowRef(Wire):
-    """影响对象的一行：实体、所属单据的主键和明细主键（C08 第 9 节的 `TargetObject`）。"""
-
-    entity: Code
-    record_key: Key
-    row_keys: list[Key]
+    key: Key
 
 
 class ViewRow(Wire):
-    """"修改内容"的一行：来源单据的明细行带 `flows`；影响对象的行带 `ref` 和 `checked`；记录已不存在的行只带 `missing`。"""
+    """"修改内容"的一行：来源单据的行带 `flows`；受影响单据的行带 `ref` 和 `checked`（主键相同的后续行省略），
+    记录已不存在的行带 `missing`。"""
 
     op: Literal["modify", "add", "delete", "none"]
     cells: list[ViewCell]
     flows: list[Code] | None = None
-    ref: AffectedRowRef | None = None
+    ref: RowRef | None = None
     checked: Bool | None = None
-    missing: MissingRecord | None = None
-
-    @model_validator(mode="after")
-    def _missing_row_has_no_values(self) -> ViewRow:
-        """C09 第 6 节：带 `missing` 的行 `op` 为 none，没有 `ref`、`checked`、`flows`，每格的修改前后都为 null。"""
-        if self.missing is not None and (self.op != "none" or self.ref is not None or self.checked is not None
-                                         or self.flows is not None
-                                         or any(c.before is not None or c.after is not None for c in self.cells)):
-            raise ValueError("记录已不存在的行 op 为 none，没有 ref、checked 和 flows，每格的 before、after 都为 null")
-        return self
+    missing: TrueValue | None = None
 
 
 class ViewMasterTable(Wire):
+    key: Code
+    title: str
     columns: list[str]
     rows: list[ViewRow]
 
 
 class ViewDetailTable(Wire):
+    key: Code
     title: str
     columns: list[str]
     rows: list[ViewRow]
 
 
 class ViewAffectedTable(Wire):
-    """影响对象的一块（C06 7.6）；`selection` 为 hidden 的块不返回。"""
+    """受影响单据的一块（C06 7.5）；`selection` 为 hidden 的块不返回。"""
 
     flow: Code
     key: Code
@@ -1802,13 +1782,22 @@ class ApprovalDetail(Wire):
 
 
 class CheckedRow(Wire):
-    """审批人这次通过时勾选的一行：哪个审批流的哪一块，以及这一行（C06 7.6）。"""
+    """审批人勾选的一行：哪个审批流的哪一块，以及这一行修改表的主键值（C06 7.5）。"""
 
     flow: Code
     block: Code
-    entity: Code
-    record_key: Key
-    row_keys: list[Key]
+    key: Key
+
+
+class PreviewRequest(Wire):
+    """审批人改了勾选后，按这些勾选重新计算详情（C09 第 6 节）。"""
+
+    checked_rows: list[CheckedRow] = []
+
+
+class PreviewResponse(Wire):
+    view: ApprovalView
+    fingerprint: str
 
 
 class PassRequest(Wire):
@@ -2046,10 +2035,11 @@ class DocumentData:
 
 @dataclass(frozen=True)
 class FreezeEntry:
-    """一张被冻结的单据：冻结主表和全部明细，单表页为这一行。"""
+    """一条冻结记录（C08 第 1 节）：`table` 为根表，注册过的表为所属单据主表实体的表，冻结整张单据；
+    单表页和没注册的表为这一行。"""
 
     approval_id: str
-    entity: str
+    table: str
     record_key: str
 
 

@@ -206,9 +206,6 @@ def main() -> None:
         demo_fixture("精度和old-commit", "同上，commit 阶段执行操作层的 serverOnly 规则，用 data", {"QTY": "1", "PRICE": "3.50"}, {"PRICE": "3.20"},
                      "commit", {"discountRate": "0.1"}),
     ]
-    entry = request("COST_PINGGU", row(cost_master("900001"), key="900001"), {"COST_MATERIAL": [], "COST_PACKAGE": []})
-    entry |= {"purpose": "approvalEntry", "flow": "COST_TO_GOODS", "level": 1}
-    items.append(fixture("审批入口-以后实现", "C07 第 3 节：审批入口先返回不满足", "packs/cost-pinggu.json", entry, {"ok": True, "satisfied": False}))
     broken = request("COST_PINGGU", row(cost_master("900001"), key="900001"), {})
     del broken["phase"]
     items.append(fixture("请求缺phase", "C07 第 3 节：请求不合法返回 INPUT_INVALID", "packs/cost-pinggu.json", broken,

@@ -33,7 +33,7 @@ def _lines(prefix: str, index: int) -> list[Any]:
     return [json.loads(line) for line in _blocks(prefix)[index].splitlines() if line.strip()]
 
 
-# C06 第 7.4、7.5、7.7 节的三个审批流样例：块 6、7、8。
+# C06 第 7.8、7.9、7.10 节的三个审批流样例：块 6、7、8。
 FLOW_1 = _json("C06", 6)
 FLOW_2 = _json("C06", 7)
 FLOW_3 = _json("C06", 8)
@@ -91,7 +91,7 @@ SAMPLES: list[tuple[str, Any, Any]] = [
     ("C03 错误", _json("C03", 0), t.ErrorResponse),
     ("C03 配置校验错误", {"code": "VALIDATION_FAILED", "message": "配置校验不通过", "details": [
         {"message": "入口至少要有一个审批人", "entity": None, "rowKey": None, "clientRowId": None, "field": None, "approvalId": None,
-         "configType": "approvalFlow", "configKey": "GOODS_TO_COST", "path": "levels[0].entries[0].approvers"}]}, t.ErrorResponse),
+         "configType": "approvalFlow", "configKey": "GOODS_TO_COST", "path": "levels[0].nodes[0].approvers"}]}, t.ErrorResponse),
     ("C05 页面视图", _json("C05", 0), t.PageView),
     ("C05 带筛选的多选 Lookup", _broken(["details", 0, "fields", 0, "lookup"],
                                    {"code": "GOODS", "fill": {"GOODSID": "GOODSID"}, "multiple": True,
@@ -104,7 +104,6 @@ SAMPLES: list[tuple[str, Any, Any]] = [
     ("C07 规则包", _json("C07", 0), t.RulesPack),
     ("C07 求值请求", _json("C07", 1), t.EvaluationRequest),
     ("C07 求值结果", _json("C07", 2), t.EvaluationResult),
-    ("C07 审批入口结果", {"ok": True, "satisfied": True}, t.EvaluationResult),
     ("C07 新增行的结果", {"ok": True, "rows": [{"entity": "COST_MATERIAL", "clientRowId": _TMP, "computed": {"AMOUNT": "1.20"},
                                                 "fields": {}, "style": {"row": None, "cells": {}}}],
                        "effects": [{"kind": "prompt", "rule": "R_PRICE_LOW", "message": "单价偏低", "entity": "COST_MATERIAL",
@@ -146,9 +145,13 @@ INLINE: list[tuple[str, Any, Any]] = [
     ("C09 按配置导出", {"mode": "config", "exportCode": "cost-pinggu-export", "scope": "current", "request": _json("C09", 0)},
      t.ExportRequest),
     ("C09 通过请求", {"requestKey": _UUID, "fingerprint": _FP,
-                    "checkedRows": [{"flow": "GOODS_TO_COST", "block": "costs", "entity": "COST_MATERIAL", "recordKey": "2550",
-                                     "rowKeys": ["6101"]}],
+                    "checkedRows": [{"flow": "GOODS_TO_COST", "block": "costMaterial", "key": "206323"}],
                     "comment": "价格已核对", "params": {"effectiveDate": "2026-11-01"}}, t.PassRequest),
+    ("C09 预览请求", {"checkedRows": [{"flow": "GOODS_TO_COST", "block": "costMaterial", "key": "206323"}]}, t.PreviewRequest),
+    ("C09 预览响应", {"view": _json("C09", 3)["view"], "fingerprint": _FP}, t.PreviewResponse),
+    ("C09 读表结构请求", {"name": "V_COST_PINGGU_MATERIAL"}, t.SchemaColumnsRequest),
+    ("C09 读表结构响应", {"objectType": "view", "primaryKey": None, "columns": [{"name": "DTLID", "type": "number"}]},
+     t.SchemaColumnsResponse),
     ("C09 驳回请求", {"requestKey": _UUID, "comment": "价格偏高"}, t.RejectRequest),
     ("C09 撤回请求", {"requestKey": _UUID, "comment": "录入有误"}, t.WithdrawRequest),
     ("C09 通知列表", {"rows": [{"deliveryId": _UUID, "title": "您有来自于物料清单及成本页面，业务单据为115的审批", "body": "",
@@ -170,7 +173,7 @@ INLINE: list[tuple[str, Any, Any]] = [
     ("C09 配置校验请求", {"items": [FLOW_1]}, t.ConfigValidateRequest),
     ("C09 配置校验响应", {"ok": False, "errors": [{"message": "入口至少要有一个审批人", "entity": None, "rowKey": None, "clientRowId": None,
                                                  "field": None, "approvalId": None, "configType": "approvalFlow",
-                                                 "configKey": "GOODS_TO_COST", "path": "levels[0].entries[0].approvers"}]},
+                                                 "configKey": "GOODS_TO_COST", "path": "levels[0].nodes[0].approvers"}]},
      t.ConfigValidateResponse),
     ("C09 按主键读行响应", {"rows": [_ROW, {**_ROW, "rowKey": "1002", "frozen": {"approvalId": "203"},
                                        "compare": {"PRICE": {"value": "3.50", "diff": "0.30", "percent": "8.57"}}}]}, t.RowsResponse),
@@ -213,28 +216,30 @@ _ENTITY_EXAMPLES = {
 }
 _FLOW_EXAMPLES = {
     **FLOW_1["content"],
-    "trigger": {"operations": ["modify", "add"], "changedFields": {"COST_MATERIAL": ["PRICE"]}, "when": "PRICE > old.PRICE",
-                "dataItems": [{"name": "usage", "sql": "SELECT USAGE FROM T_COST_GOODS WHERE GOODSID = :goodsId", "binds": {"goodsId": "GOODSID"}}]},
+    "enabled": False,
+    "operations": {"COST_MATERIAL": ["add", "modify", "delete"]},
     "levels": [
-        {"level": 1, "entries": [{"name": "主管审核", "when": None, "mode": "and", "approvers": [
-            {"type": "role", "role": "COST_MANAGER"},
-            {"type": "sql", "sql": "SELECT USER_ID FROM T_COST_DEPT_LEADER WHERE DEPT_ID = :deptId", "binds": {"deptId": "DEPT_ID"}}]}]},
+        {"level": 1, "nodes": [{"name": "主管审核", "conditionType": "always", "department": "1069", "mode": "and", "enabled": True,
+                                "approvers": [
+                                    {"type": "user", "userId": "111"},
+                                    {"type": "role", "role": "COST_MANAGER"},
+                                    {"type": "sql", "sql": "SELECT USER_ID FROM T_COST_DEPT_LEADER WHERE DEPT_ID = :deptId",
+                                     "binds": {"deptId": "DEPT_ID"}}]}]},
     ],
-    "freeze": [{"kind": "sql", "entity": "COST_PINGGU", "sql": "SELECT DOCID FROM T_COST_PINGGU_DTL WHERE GOODSID = :g",
-                "binds": {"g": "COST_MATERIAL.GOODSID"}, "recordKeyColumn": "DOCID"}],
-    # C06 7.6：写回来源单据（E27）、新增记录、删除行都配成影响对象的一块，调用公共方法
-    "display": {**FLOW_1["content"]["display"], "affected": [
-        *FLOW_1["content"]["display"]["affected"],
-        {"key": "self", "title": "来源单据", "selection": "hidden",
-         "find": {"kind": "relationKey", "entity": "COST_PINGGU", "targetKey": "DOCID", "sourceKey": "COST_PINGGU.DOCID", "rows": "all"},
-         "columns": [],
-         "actions": [{"action": "updateFields", "fieldMapping": [{"from": "params.effectiveDate", "to": "EFFECTIVE_DATE"}]},
-                     {"action": "insertRows", "entity": "COST_PRICE_LOG",
-                      "fieldMapping": [{"from": "row.DOCID", "to": "DOCID"}, {"from": "params.reason", "to": "REASON"}]}]},
-        {"key": "old", "title": "要删除的明细", "selection": "checked",
-         "find": {"kind": "relationKey", "entity": "COST_MATERIAL", "targetKey": "GOODSID", "sourceKey": "COST_MATERIAL.GOODSID",
-                  "rows": "changed"},
-         "columns": [{"label": "物料", "field": "GOODSNAME"}], "actions": [{"action": "deleteRows"}]}]},
+    "freeze": [{"table": "T_COST_PINGGU_DTL", "condition": "GOODSID = :new_GOODSID AND DOCID <> :billId", "enabled": False}],
+    # C06 7.5：写回来源单据（E27）、新增记录、删除明细、逃生舱都配成受影响单据的一块
+    "display": [
+        *FLOW_1["content"]["display"],
+        {"key": "self", "title": "来源单据", "region": "affected", "source": "T_COST_PINGGU", "condition": "DOCID = :billId",
+         "columns": [], "selection": "hidden",
+         "actions": [{"action": "updateFields", "fields": [{"column": "EFFECTIVE_DATE", "value": ":params_effectiveDate"}]},
+                     {"action": "insertRows", "table": "T_COST_PRICE_LOG",
+                      "fields": [{"column": "DOCID", "value": ":row_DOCID"}, {"column": "REASON", "value": ":params_reason"}]},
+                     {"action": "escapeHatch", "operation": "COST_PINGGU.recalc_proc"}]},
+        {"key": "old", "title": "要删除的明细", "region": "affected", "source": "V_COST_PINGGU_MATERIAL",
+         "condition": "GOODSID = :old_GOODSID", "targetTable": "T_COST_PINGGU_DTL", "keyColumn": "DTLID",
+         "columns": [{"field": "GOODSNAME", "label": "物料", "width": 160, "targetColumn": "GOODSNAME"}],
+         "selection": "checked", "actions": [{"action": "deleteRows"}]}],
     "params": [{"name": "effectiveDate", "label": "生效日期", "type": "date", "source": "manual", "required": True, "level": 1},
                {"name": "reason", "label": "原因", "type": "string", "source": "constant", "required": False, "value": "调价"}],
     "notify": [{"event": "submitted", "to": "levelApprovers"}, {"event": "passed", "to": {"users": ["111"]}},
@@ -267,8 +272,6 @@ CONFIG_CONTENTS: list[tuple[str, Any, Any]] = [
     ("C06 dict", _json("C06", 11), t.DictConfig),
     ("C06 lookup", _json("C06", 12), t.LookupConfig),
     ("C06 正文例子：不按关键字搜索的 Lookup", _broken(["keywordColumns"], [], _json("C06", 12)), t.LookupConfig),
-    ("C06 正文例子：只监听新增、删除的审批流", _broken(["trigger"], {"operations": ["add", "delete"], "changedFields": {"COST_MATERIAL": []}},
-                                         FLOW_1["content"]), t.ApprovalFlowConfig),
     ("C06 export", _json("C06", 13), t.ExportConfig),
 ]
 
@@ -322,12 +325,8 @@ def test_constructed_values_dump_in_sample_shape() -> None:
         t.ResultRow(entity="COST_PINGGU", row_key="1001", values={})  # type: ignore[call-arg]  # 未冻结时也必须给出 frozen=None
     assert t.dump_wire(t.ViewRow, t.ViewRow(op="modify", cells=[], flows=[])) == {"op": "modify", "cells": [], "flows": []}
     assert t.dump_wire(t.ViewRow, t.ViewRow(op="modify", cells=[])) == {"op": "modify", "cells": []}
-    lost = t.ViewRow(op="none", cells=[t.ViewCell(before=None, after=None)], missing=t.MissingRecord(record_key=None, label=None))
-    assert t.dump_wire(t.ViewRow, lost) == {"op": "none", "cells": [{"before": None, "after": None}],
-                                            "missing": {"recordKey": None, "label": None}}
-    # 单据还在、明细主键为空时（C08 第 9 节），missing 带单据号和名称
-    partly = {"op": "none", "cells": [{"before": None, "after": None}], "missing": {"recordKey": "2552", "label": "250mg乙酰唑胺片"}}
-    assert t.dump_wire(t.ViewRow, t.parse_wire(t.ViewRow, partly)) == partly
+    lost = t.ViewRow(op="none", cells=[t.ViewCell(before="2601", after="2601")], missing=True)
+    assert t.dump_wire(t.ViewRow, lost) == {"op": "none", "cells": [{"before": "2601", "after": "2601"}], "missing": True}
     table = t.ViewAffectedTable(flow="GOODS_TO_COST", key="costs", title="受影响的成本单", selection="checked", editable=False,
                                 columns=[], rows=[])
     assert t.dump_wire(t.ViewAffectedTable, table) == {"flow": "GOODS_TO_COST", "key": "costs", "title": "受影响的成本单",
@@ -351,21 +350,16 @@ def test_error_detail_keeps_one_key_style() -> None:
 
 
 def test_c06_documented_defaults() -> None:
-    """C06 写明的默认值：保存操作省略时只有修改（写出空数组被拒绝）、从表默认只列有变化的行、Lookup 默认单选并回填且不筛选、
-    导出默认 Calibri 和每张主单一张明细表、要修改的行已删除时默认跳过、审批流的传播边界固定为 end、冻结省略时为空。"""
-    watched = {"changedFields": {"COST_MATERIAL": ["PRICE"]}}
-    assert t.parse_wire(t.Trigger, watched).operations == ["modify"]
-    with pytest.raises(ValidationError):
-        t.parse_wire(t.Trigger, {**watched, "operations": []})
-    assert t.parse_wire(t.SourceDetailDisplay, {"title": "原辅料", "entity": "COST_MATERIAL", "columns": []}).rows == "changed"
+    """C06 写明的默认值：Lookup 默认单选并回填且不筛选、导出默认 Calibri 和每张主单一张明细表、要修改的行已删除时默认跳过、
+    审批流默认启用、传播边界固定为 end、冻结和展示数据省略时为空。"""
     lookup = t.parse_wire(t.LookupSetting, {"code": "GOODS", "fill": {}})
     assert (lookup.multiple, lookup.fill_back, lookup.filter) == (False, True, None)
     export = t.parse_wire(t.ExportConfig, {k: v for k, v in _json("C06", 13).items() if k not in ("font", "detailLayout")})
     assert (export.font, export.detail_layout) == ("Calibri", "perMaster")
     assert t.parse_wire(t.OperationConfig, {"label": "保存", "kind": "save", "propagation": "continue"}).row_not_found == "skip"
-    flow = {k: v for k, v in FLOW_1["content"].items() if k not in ("propagation", "freeze")}
+    flow = {k: v for k, v in FLOW_1["content"].items() if k not in ("enabled", "propagation", "freeze", "display")}
     parsed = t.parse_wire(t.ApprovalFlowConfig, flow)
-    assert (parsed.propagation, parsed.freeze) == ("end", [])
+    assert (parsed.enabled, parsed.propagation, parsed.freeze, parsed.display) == (True, "end", [], [])
     with pytest.raises(ValidationError):
         t.parse_wire(t.ApprovalFlowConfig, {**FLOW_1["content"], "propagation": "continue"})
     button = t.parse_wire(t.ButtonConfig, {"action": "copyRow", "label": "复制"})
@@ -412,21 +406,19 @@ _SECTION_1_1_MODELS: dict[str, tuple[Any, ...]] = {
     "page 区域的 `buttons[]`": (t.ButtonConfig,),
     "`operation` 的内容": (t.OperationConfig,),
     "`updateTargets` 的 `targets[]`": (t.TargetUpdate,),
-    "关联 SQL（7.2，用于 `freeze`、`display.affected[].find` 和 `updateRecords`）": (t.SqlFinder,),
+    "关联 SQL（6.1，用于 `updateRecords`）": (t.SqlFinder,),
     "`rule` 的内容": (t.RuleConfig,),
     "可视化条件的 `conditions[]`（第 5 节）": (t.RuleConditionItem,),
     "rule 的 `branches[]`": (t.Branch,),
     "rule 的 `effect`": (t.UiEffect,),
     "`dataItems[]`": (t.DataItem,),
-    "approvalFlow 的 `trigger`": (t.Trigger,),
-    "approvalFlow 的 `levels[].entries[]`": (t.LevelEntry,),
-    "SQL 审批人": (t.SqlApprover,),
     "`approvalFlow` 的内容": (t.ApprovalFlowConfig,),
+    "approvalFlow 的 `levels[].nodes[]`": (t.FlowNode,),
+    "SQL 审批人": (t.SqlApprover,),
+    "approvalFlow 的 `freeze[]`": (t.FreezeItem,),
+    "approvalFlow 的 `display[]`": (t.DisplayBlock,),
+    "`display[].columns[]`": (t.DisplayColumn,),
     "approvalFlow 的 `params[]`": (t.FlowParam,),
-    "approvalFlow 的 `display`": (t.ApprovalDisplay,),
-    "`display.source`": (t.SourceDisplay,),
-    "`display.source.details[]`": (t.SourceDetailDisplay,),
-    "`display.affected[]`": (t.AffectedBlock,),
     "`role` 的内容": (t.RoleConfig,),
     "role `pages` 中的每个页面": (t.RolePage,),
     "行权限可视化条件的 `conditions[]`（第 8 节）": (t.RowConditionItem,),
@@ -560,14 +552,6 @@ INVALID = [
     ("配置时间用空格分隔", t.ConfigItem, _broken(["updatedAt"], "2026-10-24 10:00:00", _json("C06", 0))),
     ("配置时间是时间戳", t.ConfigItem, _broken(["updatedAt"], 1792800000, _json("C06", 0))),
     ("配置类型未知", t.ConfigItem, _broken(["type"], "widget", _json("C06", 0))),
-    ("冻结方式未知", t.ApprovalFlowConfig, _broken(["freeze", 0, "kind"], "rows", _FLOW_EXAMPLES)),
-    ("冻结方式写成 targets", t.ApprovalFlowConfig, _broken(["freeze"], [{"kind": "targets"}], _FLOW_EXAMPLES)),
-    ("审批流写了节点动作（中途某一级通过不执行动作）", t.ApprovalFlowConfig,
-     _broken(["levelActions"], [{"level": 1, "steps": [{"action": "applyPendingChanges"}]}], _FLOW_EXAMPLES)),
-    ("审批流的动作未知", t.ApprovalFlowConfig, _broken(["display", "affected", 0, "actions", 0, "action"], "sync", FLOW_1["content"])),
-    ("触发操作未知", t.ApprovalFlowConfig, _broken(["trigger", "operations"], ["upsert"], FLOW_1["content"])),
-    ("触发操作写成空数组", t.ApprovalFlowConfig, _broken(["trigger", "operations"], [], FLOW_1["content"])),
-    ("审批流缺少 changedFields", t.ApprovalFlowConfig, _broken(["trigger", "changedFields"], _DELETE, FLOW_1["content"])),
     ("向导请求缺少 audit", t.WizardGenerateRequest,
      {"parentMenu": "cost", "pageCode": "P", "title": "T", "layout": "single", "detailMode": "tabs", "master": {}, "details": []}),
     ("向导请求缺少 detailMode", t.WizardGenerateRequest,
@@ -580,8 +564,6 @@ INVALID = [
     ("向导请求的 detailMode 写成 null", t.WizardGenerateRequest,
      {"parentMenu": "cost", "pageCode": "P", "title": "T", "layout": "single", "detailMode": None, "audit": True,
       "master": {}, "details": []}),
-    ("触发实体的字段数组写成 null", t.ApprovalFlowConfig,
-     _broken(["trigger"], {"operations": ["add"], "changedFields": {"COST_MATERIAL": None}}, FLOW_1["content"])),
     # C06 第 1.1 节中决定行为、必须写出的字段
     ("页面缺少 audit", t.PageConfig, _broken(["audit"], _DELETE, _json("C06", 2))),
     ("页面缺少 detailMode", t.PageConfig, _broken(["detailMode"], _DELETE, _json("C06", 2))),
@@ -592,8 +574,6 @@ INVALID = [
     ("字典项缺少 order", t.DictConfig, _broken(["items", 0, "order"], _DELETE, _json("C06", 11))),
     ("Lookup 缺少 keywordColumns", t.LookupConfig, _broken(["keywordColumns"], _DELETE, _json("C06", 12))),
     ("Lookup 筛选写成空对象", t.PageConfig, _broken(["master", "fields", "GOODSID", "lookup", "filter"], {}, _PAGE_FIELD_EXAMPLES)),
-    ("展示列的字段写法不对", t.ApprovalFlowConfig,
-     _broken(["display", "source", "details", 0, "columns", 0, "field"], "source.COST_MATERIAL.GOODSID", FLOW_1["content"])),
     ("求值阶段未知", t.EvaluationRequest, _broken(["phase"], "draft", _json("C07", 1))),
     ("求值日期带时间", t.EvaluationRequest, _broken(["context", "today"], "2026-10-24T00:00:00", _json("C07", 1))),
     ("求值日期是时间戳", t.EvaluationRequest, _broken(["context", "today"], 1792800000, _json("C07", 1))),
@@ -621,13 +601,6 @@ INVALID = [
                                                      {"ok": True, "rows": [{"entity": "E", "computed": {}, "fields": {},
                                                                             "style": {"row": None, "cells": {}}}]})),
     ("勾选写成字符串", t.ApprovalDetail, _broken(["view", "affected", 0, "rows", 0, "checked"], "true", _json("C09", 3))),
-    ("记录已不存在的行缺少 label", t.ApprovalDetail, _broken(["view", "affected", 0, "rows", 2, "missing", "label"], _DELETE, _json("C09", 3))),
-    ("记录已不存在的行带 ref", t.ApprovalDetail,
-     _broken(["view", "affected", 0, "rows", 2, "ref"], {"entity": "COST_MATERIAL", "recordKey": "2552", "rowKeys": ["6201"]},
-             _json("C09", 3))),
-    ("记录已不存在的行 op 不是 none", t.ApprovalDetail, _broken(["view", "affected", 0, "rows", 2, "op"], "modify", _json("C09", 3))),
-    ("记录已不存在的行有值", t.ApprovalDetail,
-     _broken(["view", "affected", 0, "rows", 2, "cells", 0], {"before": "2552", "after": "2552"}, _json("C09", 3))),
     ("对比值不是十进制文本", t.DataRow,
      {**_ROW, "compare": {"PRICE": {"value": "3.5", "diff": "0.3", "percent": "8.57%"}}}),
     ("事件主题未知", t.ChannelEvent, _broken(["topic"], "other", _json("C10", 0))),

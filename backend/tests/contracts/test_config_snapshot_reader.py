@@ -22,25 +22,21 @@ from .support import (
     CT_ROLE_A,
     CT_ROLE_B,
     CT_SAVE_A,
-    CT_SAVE_B,
     ct_base_items,
     ct_flow,
     ct_role,
     doc_json,
-    without_created_seq,
 )
 
-# 同一个操作的三条审批流按 FIRST、SECOND、THIRD 的先后创建；编码正序为 THIRD、FIRST、SECOND，倒序为 SECOND、FIRST、THIRD，
-# 都与创建先后不同，按编码排列的实现不能通过；test_created_order_survives_resave 再保存一次 FIRST，
-# 按最后一次保存的先后排列（例如 ORDER BY 更新时间）的实现也不能通过
-FIRST = ct_flow("CT_FLOW_M", CT_SAVE_A, "第一个建的审批流")
-SECOND = ct_flow("CT_FLOW_Z", CT_SAVE_A, "第二个建的审批流")
-THIRD = ct_flow("CT_FLOW_A", CT_SAVE_A, "第三个建的审批流")
-OTHER = ct_flow("CT_FLOW_OTHER", CT_SAVE_B, "另一个操作的审批流")
+# 页面 A 的三条审批流，顺序 order 为 1、2、3；OTHER 属于页面 B
+FIRST = ct_flow("CT_FLOW_M", CT_PAGE_A, "顺序 1 的审批流", order=1)
+SECOND = ct_flow("CT_FLOW_Z", CT_PAGE_A, "顺序 2 的审批流", order=2)
+THIRD = ct_flow("CT_FLOW_A", CT_PAGE_A, "顺序 3 的审批流", order=3)
+OTHER = ct_flow("CT_FLOW_OTHER", CT_PAGE_B, "另一个页面的审批流")
 
 
 def _parsed(item: ConfigDraft) -> Any:
-    return without_created_seq(parse_config_content(item.type, item.content))
+    return parse_config_content(item.type, item.content)
 
 
 def _code(call: Any, *args: Any) -> ErrorCode:
@@ -66,7 +62,7 @@ class ConfigSnapshotReaderHarness(Protocol):
 
 
 def save_all(harness: ConfigSnapshotReaderHarness) -> None:
-    """依次保存基础配置和四条审批流，审批流的创建先后为 FIRST、SECOND、OTHER、THIRD。"""
+    """依次保存基础配置和四条审批流。"""
     harness.save(ct_base_items())
     for flow in (FIRST, SECOND, OTHER, THIRD):
         harness.save([flow])
@@ -99,23 +95,13 @@ class ConfigSnapshotReaderContract:
         base = {(i.type, i.key): i for i in ct_base_items()}
         assert snapshot.entity(CT_ENTITY) == _parsed(base[("entity", CT_ENTITY)])
         assert snapshot.operation(CT_SAVE_A) == _parsed(base[("operation", CT_SAVE_A)])
-        assert without_created_seq(snapshot.approval_flow("CT_FLOW_OTHER")) == _parsed(OTHER)
+        assert snapshot.approval_flow("CT_FLOW_OTHER") == _parsed(OTHER)
 
-    def test_approval_flows_by_operation_in_created_order(self, snapshot: ConfigSnapshot) -> None:
-        flows = snapshot.approval_flows(CT_SAVE_A)
-        assert [f.levels[0].entries[0].name for f in flows] == ["第一个建的审批流", "第二个建的审批流", "第三个建的审批流"]
-        assert {f.source_operation for f in flows} == {CT_SAVE_A}
-        assert flows[0].created_seq < flows[1].created_seq < flows[2].created_seq
-
-    def test_created_order_survives_resave(self, harness: ConfigSnapshotReaderHarness) -> None:
-        """重新保存先建的审批流后，先后仍按创建：`createdSeq` 第一次保存时分配，之后不变（C06 7.1）。"""
-        save_all(harness)
-        changed = ct_flow("CT_FLOW_M", CT_SAVE_A, "第一个建的审批流（改）")
-        # 提交的内容里带一个很大的 createdSeq：config 不采用提交的值，先后照旧
-        changed = changed.model_copy(update={"content": {**changed.content, "createdSeq": 999999}})
-        harness.save([changed])
-        flows = harness.reader.read(CT_ROLE_A).approval_flows(CT_SAVE_A)
-        assert [f.levels[0].entries[0].name for f in flows] == ["第一个建的审批流（改）", "第二个建的审批流", "第三个建的审批流"]
+    def test_approval_flows_by_page_in_order(self, snapshot: ConfigSnapshot) -> None:
+        """所属页面为 A 的启用审批流，按 order 排列（C06 7.1、C08 第 4 节）。"""
+        flows = snapshot.approval_flows(CT_PAGE_A)
+        assert [f.levels[0].nodes[0].name for f in flows] == ["顺序 1 的审批流", "顺序 2 的审批流", "顺序 3 的审批流"]
+        assert {f.page for f in flows} == {CT_PAGE_A}
 
     def test_page_view(self, snapshot: ConfigSnapshot) -> None:
         view = snapshot.page_view(CT_PAGE_A)
@@ -160,18 +146,15 @@ class ConfigSnapshotReaderContract:
 
 
 class FakeConfigSnapshotReaderHarness:
-    """模拟 config 的保存：按 CF-07 给第一次保存的审批流分配递增的 createdSeq，每次保存或删除后为每个角色重建快照；
-    角色配置中有的页面给出 C05 样例形状的页面视图。"""
+    """模拟 config 的保存：每次保存或删除后为每个角色重建快照；角色配置中有的页面给出 C05 样例形状的页面视图。"""
 
     def __init__(self) -> None:
         self.reader = FakeConfigSnapshotReader()
         self._items: dict[tuple[str, str], ConfigDraft] = {}
-        self._seq = 0
         self._version = 0
 
     def _publish(self) -> None:
         self._version += 1
-        # 按编码倒序交给快照：审批流的先后只能来自 createdSeq，不能来自保存的先后
         items = sorted(self._items.values(), key=lambda i: (i.type, i.key), reverse=True)
         roles = {i.key: parse_config_content("role", i.content) for i in items if i.type == "role"}
         for code in [c for c in ("CT_ROLE_A", "CT_ROLE_B") if c not in roles]:
@@ -183,14 +166,6 @@ class FakeConfigSnapshotReaderHarness:
 
     def save(self, items: list[ConfigDraft]) -> None:
         for item in items:
-            old = self._items.get((item.type, item.key))
-            if item.type == "approvalFlow":
-                if old is None:
-                    self._seq += 1
-                    seq = self._seq
-                else:
-                    seq = old.content["createdSeq"]
-                item = item.model_copy(update={"content": {**item.content, "createdSeq": seq}})
             self._items[(item.type, item.key)] = item
         self._publish()
 

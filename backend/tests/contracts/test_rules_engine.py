@@ -13,7 +13,7 @@ import pytest
 
 from cost_platform.contracts.fakes import FakeRulesEngine
 from cost_platform.contracts.ports import RulesEngine
-from cost_platform.contracts.types import EvalComputed, EvalEntry, EvalFailure, EvaluationResult, PackInvalidError, parse_wire
+from cost_platform.contracts.types import EvalComputed, EvalFailure, EvaluationResult, PackInvalidError, parse_wire
 
 from .support import doc_json
 
@@ -29,16 +29,12 @@ class RulesEngineHarness(Protocol):
         """对这个规则包的一个计算请求（`purpose` 为 `operation`）。"""
         ...
 
-    def entry_request(self) -> str:
-        """对这个规则包的一个审批入口请求（`purpose` 为 `approvalEntry`）。"""
-        ...
-
     def invalid_pack(self) -> bytes:
         """一个不合法的规则包（真实实现用依赖成环的规则包）。"""
         ...
 
 
-def _result(text: str) -> EvalComputed | EvalEntry | EvalFailure:
+def _result(text: str) -> EvalComputed | EvalFailure:
     return parse_wire(EvaluationResult, json.loads(text))
 
 
@@ -61,10 +57,6 @@ class RulesEngineContract:
     def test_operation_result_shape(self, harness: RulesEngineHarness) -> None:
         handle = harness.engine.load_pack(harness.pack())
         assert isinstance(_result(harness.engine.evaluate(handle, harness.operation_request())), EvalComputed)
-
-    def test_entry_result_shape(self, harness: RulesEngineHarness) -> None:
-        handle = harness.engine.load_pack(harness.pack())
-        assert isinstance(_result(harness.engine.evaluate(handle, harness.entry_request())), EvalEntry)
 
     @pytest.mark.parametrize("broken", ["not json", "{}", "[]"], ids=["not-json", "empty-object", "array"])
     def test_invalid_request(self, harness: RulesEngineHarness, broken: str) -> None:
@@ -101,9 +93,6 @@ class FakeRulesEngineHarness:
     def operation_request(self) -> str:
         return json.dumps(doc_json("C07", 1), ensure_ascii=False)
 
-    def entry_request(self) -> str:
-        return json.dumps({**doc_json("C07", 1), "purpose": "approvalEntry", "flow": "COST_TO_GOODS", "level": 1}, ensure_ascii=False)
-
     def invalid_pack(self) -> bytes:
         broken = doc_json("C07", 0)
         del broken["rules"]
@@ -121,9 +110,7 @@ def test_fake_presets_and_requests() -> None:
     harness = FakeRulesEngineHarness()
     engine = harness.engine
     handle = engine.load_pack(harness.pack())
-    engine.respond(EvalEntry(ok=True, satisfied=False), purpose="approvalEntry", flow="COST_TO_GOODS")
     computed = parse_wire(EvaluationResult, doc_json("C07", 2))
     engine.respond(computed, operation="COST_PINGGU.save")
-    assert _result(engine.evaluate(handle, harness.entry_request())) == EvalEntry(ok=True, satisfied=False)
     assert _result(engine.evaluate(handle, harness.operation_request())) == computed
-    assert [r.purpose for r in engine.requests] == ["approvalEntry", "operation"]
+    assert [r.operation for r in engine.requests] == ["COST_PINGGU.save"]

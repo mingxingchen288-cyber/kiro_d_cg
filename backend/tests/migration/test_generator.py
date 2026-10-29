@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -145,34 +146,84 @@ def test_menu_has_the_migrated_pages(out: Path) -> None:
     assert items[2]["children"][0]["pageCode"] == "GOODS_PRICE_MANAGE"
 
 
-# ---------------------------------------------------------------- 审批流（MG-03，C06 7.4、7.5）
+# ---------------------------------------------------------------- 审批流（MG-03，C06 7.8～7.10）
 
-def test_cost_to_goods_flow(out: Path) -> None:
-    flow = item(out, "approvalFlow", "COST_TO_GOODS")
-    assert flow["sourceOperation"] == "COST_PINGGU.save"
-    assert flow["trigger"] == {"operations": ["modify"], "changedFields": {"COST_MATERIAL": ["PRICE"], "COST_PACKAGE": ["PRICE"]}}
-    assert flow["levels"][0]["entries"][0]["approvers"] == [{"type": "role", "role": "ADMIN"}]
-    assert flow["freeze"][0] == {"kind": "relationKey", "entity": "COST_GOODS_PRICE", "targetKey": "GOODSID",
-                                 "sourceKey": "COST_MATERIAL.GOODSID", "rows": "changed"}
-    block = flow["display"]["affected"][0]
-    assert block["find"]["entity"] == "COST_GOODS_PRICE"
-    assert block["actions"] == [{"action": "updateFields", "fieldMapping": [{"from": "COST_MATERIAL.PRICE", "to": "ZX_PRICE"}]}]
+_DOCS = Path(__file__).resolve().parents[3] / "docs" / "契约"
+_FLOW_IDS = {"COST_TO_GOODS": 81, "TECH_CUSTOMER_MATERIAL": 71, "GOODS_TO_COST": 82}
 
 
-def test_goods_to_cost_flow(out: Path) -> None:
-    flow = item(out, "approvalFlow", "GOODS_TO_COST")
-    assert flow["sourceOperation"] == "GOODS_PRICE_MANAGE.save"
-    assert flow["trigger"]["changedFields"] == {"COST_GOODS_PRICE": ["ZX_PRICE"]}
-    assert flow["freeze"] == [{"kind": "sql", "entity": "COST_PINGGU",
-                               "sql": "SELECT DISTINCT DOCID AS DOC_ID FROM T_COST_PINGGU_DTL WHERE GOODSID = :goodsid",
-                               "binds": {"goodsid": "COST_GOODS_PRICE.GOODSID"}, "recordKeyColumn": "DOC_ID"}]
-    blocks = flow["display"]["affected"]
-    assert [(b["find"]["entity"], b["selection"]) for b in blocks] == [("COST_MATERIAL", "checked"), ("COST_PACKAGE", "checked")]
-    assert blocks[0]["actions"][0]["fieldMapping"] == [{"from": "COST_GOODS_PRICE.ZX_PRICE", "to": "PRICE"}]
-    assert {"label": "每盒成本", "field": "COST_PINGGU.COST_PERBOX"} in blocks[0]["columns"]
-    goods = item(out, "entity", "COST_GOODS_PRICE")
+def _flow_samples() -> dict[str, dict[str, Any]]:
+    text = next(_DOCS.glob("C06-*.md")).read_text(encoding="utf-8")
+    blocks = [json.loads(b) for b in re.findall(r"```json\n(.*?)```", text, flags=re.S)]
+    return {b["key"]: b["content"] for b in blocks if b.get("type") == "approvalFlow"}
+
+
+def _confirmed_flows() -> dict[str, str]:
+    """用户确认的审核操作和第 1 级入口条件（《审批流配置定稿》，2026-10-28），取自 C06 7.8～7.10 的样例。"""
+    out = {}
+    for key, content in _flow_samples().items():
+        node = content["levels"][0]["nodes"][0]
+        confirmed: dict[str, Any] = {"operations": content["operations"], "condition": node["condition"]}
+        if node.get("department"):
+            confirmed["department"] = node["department"]
+        if key == "TECH_CUSTOMER_MATERIAL":
+            confirmed["key"] = key
+        out[f"MR-FLOW-{_FLOW_IDS[key]}-入口条件"] = json.dumps(confirmed, ensure_ascii=False)
+    return out
+
+
+@pytest.fixture(scope="module")
+def flows_out(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    path = tmp_path_factory.mktemp("migration-flows")
+    generate_from_snapshot(SNAPSHOT, path, _confirmed_flows())
+    return path
+
+
+def test_flows_wait_for_confirmed_entry_conditions(out: Path) -> None:
+    assert not list((out / "config").glob("approvalFlow.*.json"))
+    assert {f"MR-FLOW-{i}-入口条件" for i in _FLOW_IDS.values()} <= set(entries(out))
+
+
+def test_cost_to_goods_flow(flows_out: Path) -> None:
+    sample = _flow_samples()["COST_TO_GOODS"]
+    flow = item(flows_out, "approvalFlow", "COST_TO_GOODS")
+    parse_config_content("approvalFlow", flow)
+    assert (flow["page"], flow["operations"]) == ("COST_PINGGU", sample["operations"])
+    assert flow["levels"][0]["nodes"][0] == {"name": "管理员审批", "conditionType": "sql",
+                                             "condition": sample["levels"][0]["nodes"][0]["condition"],
+                                             "approvers": [{"type": "role", "role": "ADMIN"}], "mode": "or"}
+    assert flow["freeze"] == [{"table": "T_COST_GOODS", "condition": "GOODSID = :new_GOODSID"}]
+    goods = [b for b in flow["display"] if b["region"] == "affected"]
+    assert [(b["source"], b["targetTable"], b["keyColumn"], b["condition"]) for b in goods] == [
+        ("T_COST_GOODS_PRICE_V", "T_COST_GOODS", "GOODSID", "GOODSID = :new_GOODSID")]
+    assert goods[0]["actions"] == [{"action": "updateFields", "fields": [{"column": "ZX_PRICE", "value": ":new_PRICE"}]}]
+
+
+def test_goods_to_cost_flow(flows_out: Path) -> None:
+    flow = item(flows_out, "approvalFlow", "GOODS_TO_COST")
+    parse_config_content("approvalFlow", flow)
+    assert flow["page"] == "GOODS_PRICE_MANAGE"
+    assert flow["operations"] == {"COST_GOODS_PRICE": ["modify"]}
+    assert flow["freeze"] == [{"table": "T_COST_PINGGU_DTL", "condition": "GOODSID = :new_GOODSID"}]
+    blocks = [b for b in flow["display"] if b["region"] == "affected"]
+    assert [(b["source"], b["targetTable"], b["keyColumn"], b["selection"]) for b in blocks] == [
+        ("V_COST_PINGGU_MATERIAL", "T_COST_PINGGU_DTL", "DTLID", "checked"),
+        ("V_COST_PINGGU_PACKAGE", "T_COST_PINGGU_DTL", "DTLID", "checked")]
+    assert blocks[0]["actions"] == [{"action": "updateFields", "fields": [{"column": "PRICE", "value": "NVL(:new_ZX_PRICE, :old_PRICE)"}]}]
+    assert ("master.COST_PERBOX", "每盒成本") in [(c["field"], c["label"]) for c in blocks[0]["columns"]]
+    goods = item(flows_out, "entity", "COST_GOODS_PRICE")
     assert goods["erpRow"] == {"column": "ISERP", "value": "1", "localValue": "0"}
     assert goods["approvalRequired"][0]["fields"] == ["ZX_PRICE"]
+
+
+def test_tech_customer_flow(flows_out: Path) -> None:
+    sample = _flow_samples()["TECH_CUSTOMER_MATERIAL"]
+    flow = item(flows_out, "approvalFlow", "TECH_CUSTOMER_MATERIAL")
+    parse_config_content("approvalFlow", flow)
+    assert (flow["page"], flow["operations"]) == ("COST_PINGGU", sample["operations"])
+    node = flow["levels"][0]["nodes"][0]
+    assert (node["department"], node["condition"]) == ("1069", sample["levels"][0]["nodes"][0]["condition"])
+    assert "freeze" not in flow
 
 
 # ---------------------------------------------------------------- 清单（MG-02、MG-13）
@@ -203,10 +254,10 @@ def test_confirmed_rewrites_generate_the_withheld_items(tmp_path: Path) -> None:
     assert "export:cost-pinggu-export" in item(confirmed, "role", "001")["pages"]["COST_PINGGU"]["buttons"]
 
 
-def test_lists_cover_procedures_and_unconverted_flow(out: Path) -> None:
+def test_lists_cover_procedures_and_unconfirmed_flows(out: Path) -> None:
     found = entries(out)
     assert {e["id"] for e in found.values() if e["list"] == "escape"} == {
         "EH-COST_PINGGU-master:generateFromBom", "EH-COST_PINGGU-master:syncPrice",
         "EH-COST_PINGGU_LQ-master:generateFromBom", "EH-COST_PINGGU_LQ-master:syncPrice"}
-    assert "MR-FLOW-71-入口条件" in found and "AC-FLOW-71" in found
+    assert "MR-FLOW-71-入口条件" in found
     assert "MR-COST_PINGGU-masterGrid-SUMMARY_CONFIG" in found
