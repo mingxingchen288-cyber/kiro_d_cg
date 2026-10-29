@@ -318,12 +318,12 @@ class MemoryStore:
 PF_COMMAND_DDL = (
     "CREATE TABLE pf_command (user_id VARCHAR(64) NOT NULL, request_key VARCHAR(36) NOT NULL, operation VARCHAR(128) NOT NULL, "
     "page VARCHAR(64), digest VARCHAR(64) NOT NULL, status VARCHAR(16) NOT NULL, result TEXT, audit_diff TEXT, "
-    "created_at TIMESTAMP NOT NULL, finished_at TIMESTAMP, PRIMARY KEY (user_id, request_key))"
+    "created_at TIMESTAMP NOT NULL, finished_at TIMESTAMP, escape_hatch_calls TEXT, PRIMARY KEY (user_id, request_key))"
 )
 
 
 def command_factory() -> FakeUnitOfWorkFactory:
-    """带 PF_COMMAND 表（与迁移 wp_0001 相同的列）的事务工厂。"""
+    """带 PF_COMMAND 表（与迁移 wp_0001、wp_0002 相同的列）的事务工厂。"""
     factory = FakeUnitOfWorkFactory()
     with factory.engine.connect() as connection:
         connection.execute(text(PF_COMMAND_DDL))

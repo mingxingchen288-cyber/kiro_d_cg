@@ -46,7 +46,8 @@ def written_changes(state: CommandState) -> list[RowChange]:
 def build_result(state: CommandState, ctx: ExecutionContext) -> CommandResult:
     """`outcome`（C02 第 2 节）：触发审批阶段给出的 approvalSubmitted 优先；否则本命令处理了审批（"审批处理"阶段写了
     `approvals`，C08 第 6 节）为 approvalProcessed，审批中途通过、驳回、撤回不写业务表也要提交；否则有写入为 saved，
-    没有为 unchanged。"""
+    没有为 unchanged。调用过逃生舱也算有写入（它在命令事务里直接写库，OP-04）：结果为 saved，命令提交，调用记录随命令
+    记录写入；否则 unchanged 不提交，逃生舱的写入会一起回滚。"""
     frozen = {DocumentRef(a.document.entity, a.document.record_key): FrozenMark(approval_id=a.approval_id)
               for a in state.approvals}
     rows: list[ResultRow | DeletedRow] = []
@@ -66,7 +67,8 @@ def build_result(state: CommandState, ctx: ExecutionContext) -> CommandResult:
             rows.append(_result_row(ctx, row, change, frozen.get(change.document)))
     id_map = {c.client_row_id: c.row_key for c in state.changes.rows
               if c.op == "add" and c.client_row_id and c.row_key is not None}
-    outcome = state.outcome or ("approvalProcessed" if state.approvals else "saved" if written else "unchanged")
+    outcome = state.outcome or ("approvalProcessed" if state.approvals
+                                else "saved" if written or state.escape_hatch_calls else "unchanged")
     return CommandResult(request_key=state.command.request_key, outcome=outcome, rows=rows, id_map=id_map,
                          prompts=list(state.prompts), skipped=list(state.skipped), approvals=list(state.approvals))
 

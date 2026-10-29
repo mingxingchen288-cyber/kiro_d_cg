@@ -57,6 +57,15 @@ def _find(rows: Iterable[Row], key: str | None) -> Row | None:
     return next((r for r in rows if key is not None and key in (r.row_key, r.client_row_id)), None)
 
 
+def _located_in(doc: DocumentData, item: Prompt | PromptEffect | RejectEffect) -> bool:
+    """提示或效果定位到这张单据的行（主表行或它的明细行，按 entity 和 rowKey、clientRowId）。没有 entity 或行的
+    （例如逃生舱的提示，rule 为操作编码）不属于任何单据。"""
+    key = item.client_row_id or item.row_key
+    if item.entity is None or key is None:
+        return False
+    return any(row.entity == item.entity and key in (row.row_key, row.client_row_id) for row in _rows(doc))
+
+
 def _master_deleted(state: CommandState, ref: DocumentRef) -> bool:
     change = find_change(state.changes, ref.entity, ref.record_key)
     return change is not None and change.op == "delete"
@@ -110,7 +119,7 @@ class Recalculator:
 
     def run(self, state: CommandState, ctx: ExecutionContext, refs: Iterable[DocumentRef] | None = None) -> FieldStates:
         """对有变化的单据（或 `refs`）按 commit 阶段求值；删除的单据不算。规则拒绝时 422 RULE_REJECTED，
-        提示写入 `prompts`，效果写入 `effects`。"""
+        提示写入 `prompts`，效果写入 `effects`；每张求值的单据只保留这一次给出的提示和效果（C08 第 6 节）。"""
         if refs is None:
             touched = {c.document for c in state.changes.rows}
             refs = [r for r in state.candidate if r in touched]
@@ -121,8 +130,12 @@ class Recalculator:
                 continue
             result = self._evaluate(state, ctx, ref, state.candidate[ref])
             self._apply(state, ctx, ref, result, states)
+            # 按钮的每个动作一轮，每轮都对有变化的单据重新求值（C08 第 6 节）：这张单据只保留这一次给出的效果和提示，
+            # 前几轮的去掉（例如第一个动作把单价改成 80 触发的提示，第二个动作改回 12 后不再出现）
+            doc = state.candidate[ref]
+            state.effects[:] = [e for e in state.effects if not _located_in(doc, e)]
+            state.prompts[:] = [p for p in state.prompts if not _located_in(doc, p)]
             for effect in result.effects:
-                # 按钮的每个动作一轮，每轮都对有变化的单据重新求值（C08 第 6 节）：同一效果、同一提示只记一次
                 if effect not in state.effects:
                     state.effects.append(effect)
                 if isinstance(effect, RejectEffect):

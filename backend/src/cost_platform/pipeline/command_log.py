@@ -1,11 +1,11 @@
-"""命令记录与判重（WP-01、WP-02、WP-11、WP-13），表 PF_COMMAND（迁移 wp_0001）。
+"""命令记录与判重（WP-01、WP-02、WP-11、WP-13），表 PF_COMMAND（迁移 wp_0001；wp_0002 加逃生舱调用记录列，OP-04）。
 
 - 事务的第一条语句插入命令记录，唯一键为（用户、请求键）。同一请求键的命令仍在处理时，Oracle 让这条 INSERT 等待对方
   提交或回滚；等待最多 `wait_seconds` 秒（`.env` 的 `PLATFORM_REQUEST_WAIT_SECONDS`），用连接的调用超时实现，超时返回
   409 REQUEST_IN_PROGRESS。对方提交后这条 INSERT 违反唯一键，读出原记录判重；对方回滚后这条 INSERT 成功，照常执行。
 - 命令失败时整个事务回滚，命令记录一起撤销（WP-02），同一请求键可以重新提交；写入管道不自动重试（WP-13）。
-- 完成时用一条 UPDATE 写入状态、命令结果和审计差异（WP-11）。`complete` 由编排在各阶段之后调用：按 `CommandState`
-  生成命令结果（WP-12），不是 unchanged 时调用 `finish`。
+- 完成时用一条 UPDATE 写入状态、命令结果、审计差异（WP-11）和逃生舱的调用记录（OP-04）。`complete` 由编排在各阶段
+  之后调用：按 `CommandState` 生成命令结果（WP-12），不是 unchanged 时执行这条 UPDATE。
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Protocol
+from typing import Any, Protocol
 
 from sqlalchemy import Text, bindparam, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -43,9 +43,10 @@ _INSERT = text(
     "VALUES (:b_user, :b_key, :b_operation, :b_page, :b_digest, 'running', :b_time)")
 _EXISTING = text("SELECT digest, status, result FROM pf_command WHERE user_id = :b_user AND request_key = :b_key")
 _FINISH = text(
-    "UPDATE pf_command SET status = 'done', result = :b_result, audit_diff = :b_audit, finished_at = :b_time "
+    "UPDATE pf_command SET status = 'done', result = :b_result, audit_diff = :b_audit, "
+    "escape_hatch_calls = :b_calls, finished_at = :b_time "
     "WHERE user_id = :b_user AND request_key = :b_key").bindparams(
-    bindparam("b_result", type_=Text), bindparam("b_audit", type_=Text))
+    bindparam("b_result", type_=Text), bindparam("b_audit", type_=Text), bindparam("b_calls", type_=Text))
 
 _CALL_TIMEOUT = ("DPY-4024", "DPI-1067")
 """python-oracledb 的调用超时（Thin、Thick 模式），连接仍可用。"""
@@ -127,18 +128,25 @@ class OracleCommandRecorder:
 
     def finish(self, uow: UnitOfWork, user_id: str, command: Command, result: CommandResult,
                audit: list[RowChange] | None, now: datetime) -> None:
+        self._finish(uow, user_id, command, result, audit, [], now)
+
+    def _finish(self, uow: UnitOfWork, user_id: str, command: Command, result: CommandResult,
+                audit: list[RowChange] | None, escape_hatch_calls: list[dict[str, Any]], now: datetime) -> None:
+        """`finish` 的那一条 UPDATE，另写逃生舱的调用记录（OP-04，没有调用时为 NULL）。"""
         uow.connection.execute(_FINISH, {
             "b_user": user_id, "b_key": command.request_key, "b_time": now,
             "b_result": json.dumps(dump_wire(CommandResult, result), ensure_ascii=False),
             "b_audit": None if audit is None else json.dumps(audit_rows(audit), ensure_ascii=False),
+            "b_calls": json.dumps(escape_hatch_calls, ensure_ascii=False) if escape_hatch_calls else None,
         })
 
     def complete(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> CommandResult:
-        """各阶段执行完后生成命令结果（WP-12）；不是 unchanged 时用 `finish` 的同一条语句写入结果和审计差异（WP-11，
-        含写没注册的表的改动，WP-19）。unchanged 时不写：调用方不提交，命令记录随事务回滚（WP-10）。
-        完成时间取执行上下文的请求时间。"""
+        """各阶段执行完后生成命令结果（WP-12）；不是 unchanged 时用 `finish` 的同一条语句写入结果、审计差异（WP-11，
+        含写没注册的表的改动，WP-19）和逃生舱的调用记录（`state.escape_hatch_calls`，OP-04）。unchanged 时不写：调用方
+        不提交，命令记录随事务回滚（WP-10）。完成时间取执行上下文的请求时间。"""
         result = build_result(state, ctx)
         if result.outcome != "unchanged":
             extra = self._tables.changes(uow) if self._tables is not None else []
-            self.finish(uow, ctx.identity.user_id, state.command, result, audit_changes(state, ctx, extra), ctx.now)
+            self._finish(uow, ctx.identity.user_id, state.command, result, audit_changes(state, ctx, extra),
+                         state.escape_hatch_calls, ctx.now)
         return result

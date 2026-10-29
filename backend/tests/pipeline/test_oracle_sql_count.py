@@ -43,7 +43,6 @@ pytestmark = pytest.mark.oracle
 def run(engine: Engine, documents: list[dict[str, Any]], page: str = PAGE, operation: str = SAVE,
         computed: list[t.EvalRowResult] | None = None) -> tuple[t.CommandResult, list[str]]:
     tracer = SqlTracer()
-    tracer.install(engine)
     p = Pipeline(setup=WpSetup(), store=OracleDocumentStore(5), factory=OracleUnitOfWorkFactory(engine),  # type: ignore[arg-type]
                  inspector=inspector())
     if computed:

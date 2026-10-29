@@ -1,18 +1,25 @@
 """write-pipeline 的插件（架构 6.1，`.reports/modules/plugin-spec.md` 第 1、2 节）。
 
 提供：`CommandRecorder`（判重、命令结果、命令记录）、`TableWriter`（审批通过后写没注册的表，交给 approval）、
-管道阶段"确定涉及的单据"（页面保存）、"加锁读取"、"合并修改"、"合并意图"、"计算与规则"、"写入变更"（`stages.py`）。
+`CommandMonitor`（命令审查 WP-17，orchestration 包在整个命令事务外面）、管道阶段"确定涉及的单据"（页面保存）、
+"加锁读取"、"合并修改"、"合并意图"、"计算与规则"、"写入变更"（`stages.py`），以及 C09 第 7a 节的路由
+`/api/admin/command-review`（执行上下文取 assembly 的 `ContextProvider`）。
 
-没有接的：命令审查（WP-17）的 `review.ReviewedCommandExecutor` 要包在编排的 `CommandExecutor` 外面，还要 Redis 和请求上下文，
-这次不注册（plugin-spec 第 4 节）。
+命令审查的开关和记录在 Redis（`{ns}:cmdlog`、`{ns}:cmdlog:enabled`）；Redis 客户端在第一次读写时才连接，setup 不连 Redis。
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import redis
+from fastapi import APIRouter
+
 from cost_platform.contracts.ports import (
+    Clock,
+    CommandMonitor,
     CommandRecorder,
+    ContextProvider,
     PermissionChecker,
     PipelineStage,
     RulesEngine,
@@ -27,25 +34,33 @@ from .command_log import OracleCommandRecorder
 from .document_store import OracleDocumentStore
 from .loader import DocumentLoader, PageSaveInvolved
 from .merge import DocumentMerger, IntentMerger
+from .review import RedisCommandMonitor, RedisCommandReview, command_review_router
 from .stages import LockStage, MergeIntentsStage, MergePatchesStage, RecalculateStage, WriteChangesStage
 from .table_writer import OracleTableWriter
+from .tracing import SqlTracer
 from .values import ColumnScales
 from .writer import ChangeWriter
 
 MIGRATIONS = Path(migrations.__file__).parent
 """PF_COMMAND 的迁移脚本目录（assembly 的 `platform db` 用）。"""
 
+REDIS_TIMEOUT_SECONDS = 5
+"""命令审查读写 Redis 的超时：每个命令都要读开关，Redis 不可用时最多等这么久，之后照常执行命令。"""
+
 
 class PipelinePlugin:
     name = "pipeline"
-    provides = (CommandRecorder, TableWriter, PipelineStage)
-    requires = (PermissionChecker, RulesEngine, SchemaInspector)
+    provides = (CommandRecorder, TableWriter, CommandMonitor, PipelineStage, APIRouter)
+    requires = (PermissionChecker, RulesEngine, SchemaInspector, Clock, ContextProvider)
 
-    def __init__(self, lock_wait_seconds: int, request_wait_seconds: int) -> None:
+    def __init__(self, lock_wait_seconds: int, request_wait_seconds: int, redis_url: str, redis_namespace: str) -> None:
         """`lock_wait_seconds`：加锁读取等锁的秒数（`FOR UPDATE WAIT n`）；`request_wait_seconds`：同一请求键仍在处理时
-        等待的秒数（WP-01）。"""
+        等待的秒数（WP-01）；`redis_url`、`redis_namespace`：命令审查用的 Redis（`.env` 的 `PLATFORM_REDIS_URL`、
+        `PLATFORM_REDIS_NAMESPACE`）。"""
         self._lock_wait = lock_wait_seconds
         self._request_wait = request_wait_seconds
+        self._redis_url = redis_url
+        self._redis_namespace = redis_namespace
 
     def setup(self, reg: PluginView) -> None:
         permission = reg.get(PermissionChecker)
@@ -57,6 +72,10 @@ class PipelinePlugin:
         tables = OracleTableWriter(self._lock_wait, inspector)
         reg.provide(TableWriter, tables)
         reg.provide(CommandRecorder, OracleCommandRecorder(self._request_wait, tables))
+        client = redis.Redis.from_url(self._redis_url, socket_timeout=REDIS_TIMEOUT_SECONDS)
+        review = RedisCommandReview(client, self._redis_namespace)
+        reg.provide(CommandMonitor, RedisCommandMonitor(review, SqlTracer(), reg.get(Clock)))
+        reg.add(APIRouter, command_review_router(review, reg.get(ContextProvider).context))
         stages: list[PipelineStage] = [
             PageSaveInvolved(),
             LockStage(loader),

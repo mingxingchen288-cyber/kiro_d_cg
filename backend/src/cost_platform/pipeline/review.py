@@ -3,7 +3,8 @@
 - 记录写入 Redis 列表 `{ns}:cmdlog`（最新的在前），最多保留最近 10000 条，不写数据库；开关为 Redis 键
   `{ns}:cmdlog:enabled`，所有进程共用。关闭时删除这个列表和开关。
 - 写入失败只记应用日志，不影响命令。
-- `ReviewedCommandExecutor` 包在 `CommandExecutor` 外面（由 assembly 组装），用 `SqlTracer` 记下命令执行期间的每条 SQL。
+- `RedisCommandMonitor`（端口 `CommandMonitor`）由 orchestration 包在整个命令事务外面（判重 → 各阶段 → 完成 → 提交或
+  回滚），用 `SqlTracer` 记下期间的每条 SQL；投递在它之后，不算在命令里。
 """
 
 from __future__ import annotations
@@ -11,17 +12,17 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any, Protocol
 
 from fastapi import APIRouter, Query, Request, Response
 from pydantic import ValidationError
 
-from cost_platform.contracts.ports import Clock, CommandExecutor
+from cost_platform.contracts.ports import Clock
 from cost_platform.contracts.types import (
     Command,
     CommandLog,
-    CommandResult,
     CommandReviewList,
     CommandReviewToggle,
     ErrorCode,
@@ -90,11 +91,11 @@ def _outcome(error: BaseException | None) -> tuple[str, ErrorCode | None, str | 
     return "failed", ErrorCode.INTERNAL_ERROR, str(error).splitlines()[0][:2000] if str(error) else type(error).__name__
 
 
-class ReviewedCommandExecutor:
-    """`CommandExecutor`：开关打开时记录每个命令；关闭时直接执行，不追踪 SQL。"""
+class RedisCommandMonitor:
+    """`CommandMonitor`（C08 第 5a 节）：开关打开时记下 `watch` 期间的每条 SQL，退出时（命令已提交或回滚）写一条记录；
+    关闭时什么都不做，不追踪 SQL。异常照常抛出。"""
 
-    def __init__(self, inner: CommandExecutor, review: RedisCommandReview, tracer: SqlTracer, clock: Clock) -> None:
-        self._inner = inner
+    def __init__(self, review: RedisCommandReview, tracer: SqlTracer, clock: Clock) -> None:
         self._review = review
         self._tracer = tracer
         self._clock = clock
@@ -106,15 +107,17 @@ class ReviewedCommandExecutor:
             _log.warning("读取命令审查开关失败：%s", exc)
             return False
 
-    def execute(self, command: Command, ctx: ExecutionContext) -> CommandResult:
+    @contextmanager
+    def watch(self, command: Command, ctx: ExecutionContext) -> Iterator[None]:
         if not self._enabled():
-            return self._inner.execute(command, ctx)
+            yield
+            return
         started_at = self._clock.now()
         started = time.perf_counter()
         error: BaseException | None = None
         with self._tracer.capture() as trace:
             try:
-                return self._inner.execute(command, ctx)
+                yield
             except BaseException as exc:
                 error = exc
                 raise

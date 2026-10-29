@@ -1,7 +1,9 @@
 """SQL 追踪（T-WP-4 的 SQL 条数、WP-17 的命令审查）。
 
-挂在 SQLAlchemy 引擎的游标事件上，只记录 `capture()` 期间、同一上下文（线程或协程）中经 SQLAlchemy 执行的语句：
-每条语句的文本、绑定值、耗时、影响行数和错误，与旧系统的操作日志（`OperationLogContext.SqlDetail`）对应。
+创建时挂在 SQLAlchemy `Engine` 类的游标事件上，对所有引擎（包括 db-core 创建的、之后创建的）生效，所以不需要拿到
+引擎。只记录 `capture()` 期间、同一上下文（线程或协程，`contextvars`）中经 SQLAlchemy 执行的语句：每条语句的文本、
+绑定值、耗时、影响行数和错误，与旧系统的操作日志（`OperationLogContext.SqlDetail`）对应。命令在线程池中执行时，
+`capture()` 和执行在同一个线程里，照样记得到；别的线程、协程同时执行的语句不记。
 
 计数口径：一次 `execute` 或 `executemany` 计 1 条；提交、回滚和连接池探活（不经过游标事件）不计。
 影响行数取驱动的 `rowcount`，只对 INSERT、UPDATE、DELETE、MERGE 给出；查询为空：游标事件发生时查询结果还没有取完，
@@ -94,17 +96,11 @@ class Trace:
 
 class SqlTracer:
     def __init__(self) -> None:
+        """在 `Engine` 类上挂事件（每个实例挂一次，进程中通常只有命令审查的一个）。"""
         self._current: ContextVar[Trace | None] = ContextVar(f"sql_trace_{id(self)}", default=None)
-        self._engines: set[int] = set()
-
-    def install(self, engine: Engine) -> None:
-        """在引擎上挂事件；同一引擎只挂一次。"""
-        if id(engine) in self._engines:
-            return
-        self._engines.add(id(engine))
-        event.listen(engine, "before_cursor_execute", self._before)
-        event.listen(engine, "after_cursor_execute", self._after)
-        event.listen(engine, "handle_error", self._error)
+        event.listen(Engine, "before_cursor_execute", self._before)
+        event.listen(Engine, "after_cursor_execute", self._after)
+        event.listen(Engine, "handle_error", self._error)
 
     @contextmanager
     def capture(self) -> Iterator[Trace]:

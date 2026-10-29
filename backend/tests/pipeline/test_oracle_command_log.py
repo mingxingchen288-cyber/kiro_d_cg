@@ -1,8 +1,10 @@
 """T-WP-1 的真实验证（d_cg）：两个连接用同一请求键并发提交，只执行一次；仍在处理时等待，超时返回 REQUEST_IN_PROGRESS；
-先提交的那个回滚后，等待的这个照常执行。前提：已执行 `platform db upgrade`（PF_COMMAND）。"""
+先提交的那个回滚后，等待的这个照常执行。逃生舱的调用记录随命令记录写入 ESCAPE_HATCH_CALLS 并能读回（OP-04）。
+前提：已执行 `platform db upgrade`（PF_COMMAND，wp_0001、wp_0002）。命令记录由 fixture 在结束时删除。"""
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 import uuid
@@ -13,9 +15,10 @@ from sqlalchemy import Engine
 from cost_platform.contracts import types as t
 from cost_platform.db_core.engine import OracleUnitOfWorkFactory
 from cost_platform.pipeline.command_log import OracleCommandRecorder
+from cost_platform.pipeline.document_store import OracleDocumentStore
 
-from .oracle_support import NOW, USERS, engine, fetch, rows  # noqa: F401  fixtures
-from .support import command, master_modify
+from .oracle_support import NOW, PAGE, USERS, WpSetup, engine, fetch, inspector, rows  # noqa: F401  fixtures
+from .support import Pipeline, command, master_modify
 
 pytestmark = pytest.mark.oracle
 
@@ -83,3 +86,22 @@ def test_first_rolled_back_second_executes(rows: Engine) -> None:
     inserted.wait(10)
     assert second(factory, recorder, cmd) is None  # 第一个回滚，命令记录撤销，这个照常执行
     first.join(30)
+
+
+def test_escape_hatch_calls_written_with_the_command_record(rows: Engine) -> None:
+    """按钮"由BOM生成明细"只调用了逃生舱（operations 的展开动作写 `state.escape_hatch_calls`，这里用替代展开）：
+    命令结果为 saved 并提交，ESCAPE_HATCH_CALLS 读回的就是这条调用记录。"""
+    code = f"{PAGE}.generateFromBom"
+    pipeline = Pipeline(setup=WpSetup(), store=OracleDocumentStore(5), factory=OracleUnitOfWorkFactory(rows),  # type: ignore[arg-type]
+                        inspector=inspector())
+    cmd = command([], request_key=str(uuid.uuid4()), page=PAGE, operation=code,
+                  params={"selectedRows": [{"entity": "WP_DOC", "rowKey": "1001"}]})
+    call = {"operation": code, "kind": "procedure", "target": "P_COST_BOM_INSERT", "params": {"P_DOCID": "1001"},
+            "outputs": {"P_MESSAGE": "已按 BOM 生成 12 行明细"}, "writes": {"WP_DOC": ["TOTAL_COST"]}, "userId": USERS[0],
+            "userName": "张三", "at": "2026-10-29T10:00:00", "requestKey": cmd.request_key, "approvalId": None}
+    pipeline.actions = [lambda state, ctx: state.escape_hatch_calls.append(call)]
+    result = pipeline.execute(cmd, pipeline.setup.context())
+    assert result.outcome == "saved"
+    [row] = fetch(rows, "SELECT status, escape_hatch_calls FROM pf_command WHERE user_id = :u AND request_key = :k",
+                  u=USERS[0], k=cmd.request_key)
+    assert row["status"] == "done" and json.loads(row["escape_hatch_calls"]) == [call]

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from decimal import Decimal
 
 import pytest
@@ -14,6 +15,7 @@ from cost_platform.contracts import types as t
 from cost_platform.contracts.fakes import FakeStage
 
 from .support import (
+    BUTTON,
     GOODS,
     KEY_1,
     KEY_2,
@@ -155,6 +157,33 @@ def test_rule_prompt_in_result() -> None:
     result = pipeline.execute(price_change(), pipeline.setup.context())
     assert result.prompts == [t.Prompt(rule="R_MARGIN_LOW", message="毛利率低于 5%", entity=MASTER, row_key="1001",
                                        field="TOTAL_COST")]
+
+
+def test_button_two_actions_keep_only_the_last_prompt_of_the_document() -> None:
+    """按钮两个动作，每个动作一轮、各求值一次（C08 第 6 节：每张单据的提示只保留这张单据最后一次计算给出的）。第一个动作
+    把成本单 1001 原辅料 5001 的单价改成 80，规则提示"单价高于清单价"；第二个动作改成 12，规则不再提示。命令结果中没有
+    这条提示，写入的单价为 12。"""
+    source = t.DocumentRef(MASTER, "1001")
+    high = t.PromptEffect(kind="prompt", rule="R_PRICE_ABOVE_LIST", message="单价高于清单价", entity=MATERIAL, row_key="5001",
+                          field="PRICE")
+    pipeline = Pipeline(extra=[FakeStage("确定涉及的单据", effect=lambda _uow, state, _ctx: state.involved.append(source))])
+    seen: list[list[str]] = []
+
+    def set_price(price: str, effects: list[t.RuleEffect]) -> Callable[[t.CommandState, t.ExecutionContext], None]:
+        def expand(state: t.CommandState, ctx: t.ExecutionContext) -> None:
+            seen.append([p.message for p in state.prompts])
+            respond(pipeline, effects=effects)  # 这一轮求值时规则给出的结果
+            state.intents.append(t.RowIntent(document=source, entity=MATERIAL, op="modify", row_key="5001",
+                                             client_row_id=None, values={"PRICE": D(price)}))
+        return expand
+
+    pipeline.actions = [set_price("80", [high]), set_price("12", [])]
+    cmd = command([], operation=BUTTON, params={"selectedRows": [{"entity": MATERIAL, "rowKey": "5001"}]})
+    result = pipeline.execute(cmd, pipeline.setup.context())
+    assert seen == [[], ["单价高于清单价"]]  # 第一个动作之后有这条提示
+    assert len(pipeline.setup.engine.requests) == 2
+    assert result.prompts == []
+    assert pipeline.store.rows[MATERIAL]["5001"]["PRICE"] == D("12")
 
 
 def test_required_checked_on_added_and_modified_rows() -> None:

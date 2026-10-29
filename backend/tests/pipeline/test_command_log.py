@@ -1,6 +1,6 @@
 """判重与命令记录（WP-01、WP-02、WP-11），工程约定第 5 节：先写失败的测试。业务例子 E06。
 
-用 contracts 的事务替代实现（内存 SQLite，表结构与迁移 wp_0001 相同）验证判重的判断；同一请求键并发提交、
+用 contracts 的事务替代实现（内存 SQLite，表结构与迁移 wp_0001、wp_0002 相同）验证判重的判断；同一请求键并发提交、
 处理中等待在 `test_oracle_command_log.py` 中于 d_cg 上验证。
 """
 
@@ -122,6 +122,30 @@ def test_complete_records_approval_processed_with_table_writer_audit() -> None:
     assert row["status"] == "done" and json.loads(row["result"])["outcome"] == "approvalProcessed"
     assert json.loads(row["audit_diff"]) == [{"entity": "T_COST_GOODS", "rowKey": "25", "op": "modify",
                                               "fields": {"ZX_PRICE": {"old": "75", "new": "90.1235"}}}]
+    assert row["escape_hatch_calls"] is None  # 没有调用逃生舱
+
+
+BOM_CALL = {"operation": "COST_PINGGU.generateFromBom", "kind": "procedure", "target": "P_COST_BOM_INSERT",
+            "params": {"P_DOCID": "1001"}, "outputs": {"P_MESSAGE": "已按 BOM 生成 12 行明细"},
+            "writes": {MASTER: ["TOTAL_COST"], MATERIAL: ["GOODSID", "PRICE"]}, "userId": "112", "userName": "张三",
+            "at": "2026-10-29T10:00:00", "requestKey": KEY_1, "approvalId": None}
+"""`EscapeHatchCall.to_record()` 的形状（operations）：成本单 1001 点"由BOM生成明细"。"""
+
+
+def test_complete_writes_escape_hatch_calls_with_the_record() -> None:
+    """OP-04：成本单 1001 点"由BOM生成明细"，逃生舱 P_COST_BOM_INSERT 直接写库，管道没有写业务表：结果为 saved（命令要提交），
+    调用记录随完成命令记录的同一条 UPDATE 写入 ESCAPE_HATCH_CALLS。"""
+    factory, recorder = command_factory(), OracleCommandRecorder()
+    cmd = command([], operation="COST_PINGGU.generateFromBom", params={"selectedRows": [{"entity": MASTER, "rowKey": "1001"}]})
+    state = t.CommandState(command=cmd)
+    state.escape_hatch_calls.append(BOM_CALL)
+    with factory.begin() as uow:
+        recorder.begin(uow, "112", cmd, NOW)
+        result = recorder.complete(uow, state, Setup().context())
+        uow.commit()
+    assert result.outcome == "saved"
+    [row] = command_rows(factory)
+    assert row["status"] == "done" and json.loads(row["escape_hatch_calls"]) == [BOM_CALL]
 
 
 def test_complete_unchanged_writes_no_record() -> None:

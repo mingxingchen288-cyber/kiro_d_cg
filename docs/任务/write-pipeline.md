@@ -66,7 +66,7 @@
 - 接入责任：T-AS-5 挂载接口；frontend-admin 使用（T-AS-7）。
 - 验收标准：业务例子 E28；模拟验证：不可编辑字段的 builtin 默认值不采用前端传来的值；关闭命令审查时不记录，Redis 中没有记录；真实验证：开启后一条失败的命令也有记录，SQL 条数与 T-WP-4 的追踪一致；关闭后 `{ns}:cmdlog` 被删除。
 - 状态与证据：进行中（2026-10-29），模拟验证通过，真实验证的测试已写好、还没有运行（本机 6379 没有 Redis）。
-  - 已实现：WP-16（`entity_rules`：static、options 取第一个、builtin 按执行上下文；没有配置时数值 0、其他为空；不可编辑字段的 builtin 不用前端的值）；WP-17（`review.ReviewedCommandExecutor`、`RedisCommandReview`：`{ns}:cmdlog` 最多 10000 条、开关 `{ns}:cmdlog:enabled`、关闭时删除两者、写入失败只记日志）；C09 第 7a 节的 GET、PUT 接口（`review.command_review_router`，只给管理员）。
+  - 已实现：WP-16（`entity_rules`：static、options 取第一个、builtin 按执行上下文；没有配置时数值 0、其他为空；不可编辑字段的 builtin 不用前端的值）；WP-17（`review.RedisCommandMonitor`，即端口 `CommandMonitor`，2026-10-29 起由 orchestration 包住整个命令事务；`RedisCommandReview`：`{ns}:cmdlog` 最多 10000 条、开关 `{ns}:cmdlog:enabled`、关闭时删除两者、写入失败只记日志）；C09 第 7a 节的 GET、PUT 接口（`review.command_review_router`，只给管理员）。
   - 模拟验证：`test_merge.py`、`test_flow.py` 的 E28；`test_review.py`（关闭时 Redis 中没有记录、开启后成功和失败的命令都有记录且含每条 SQL、关闭时删除、接口）。
   - 真实验证（待运行，标 redis 和 oracle）：`test_redis_review.py` 1 个。
   - 缺口：builtin `currentDeptName` 取不到（C04 没有部门名称），见 contract-gaps.md 第 3 条。
