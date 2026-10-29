@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from ..ports import Clock
-from ..types import AccountBatch, AccountRef, ErrorCode, Identity, ImportReport, PlatformError
+from ..types import AccountBatch, AccountRef, Department, ErrorCode, Identity, ImportReport, PlatformError
 from ._script import Scripted
 
 
@@ -82,7 +82,7 @@ class FakeDirectory(Scripted):
     `ImportReport.imported` 为导入的账号数。
     """
 
-    scriptable = ('enabled_accounts_with_role', 'account', 'import_batch')
+    scriptable = ('enabled_accounts_with_role', 'account', 'department', 'import_batch')
 
     def __init__(self) -> None:
         super().__init__()
@@ -103,6 +103,12 @@ class FakeDirectory(Scripted):
     def account(self, user_id: str) -> AccountRef | None:
         self._record("account", user_id)
         return self._accounts.get(user_id)
+
+    def department(self, department_id: str) -> Department | None:
+        """`departments` 中的部门（可以直接放入，也由 `import_batch` 写入）。"""
+        self._record("department", department_id)
+        found = self.departments.get(department_id)
+        return None if found is None else Department(department_id=department_id, name=found[0], parent_id=found[1])
 
     def import_batch(self, batch: AccountBatch) -> ImportReport:
         self._record("import_batch", batch)

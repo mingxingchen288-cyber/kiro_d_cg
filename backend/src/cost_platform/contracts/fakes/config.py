@@ -9,13 +9,17 @@ from pydantic import ValidationError
 
 from ..types import (
     ApprovalFlowConfig,
+    ApprovalFlowEntry,
     ConfigDraft,
+    DictConfig,
     EntityConfig,
     ErrorCode,
     ErrorDetail,
     EscapeHatch,
+    ExportConfig,
     ImportReport,
     InsertRows,
+    LookupConfig,
     MenuItem,
     OperationConfig,
     PackHandle,
@@ -23,6 +27,7 @@ from ..types import (
     PlatformError,
     RoleApprover,
     RoleConfig,
+    TableEntity,
     UpdateRecords,
     UpdateTargets,
     parse_config_content,
@@ -118,7 +123,7 @@ class FakeConfigSnapshot(Scripted):
     """
 
     scriptable = ('page_view', 'entity', 'operation', 'approval_flows', 'approval_flow', 'role', 'menus', 'rules_pack',
-                  'rule_fields')
+                  'rule_fields', 'lookup', 'dict_config', 'exports', 'approval_flow_entries')
 
     def __init__(
         self,
@@ -134,8 +139,16 @@ class FakeConfigSnapshot(Scripted):
         menus: Sequence[MenuItem] = (),
         packs: Mapping[str, PackHandle] | None = None,
         rule_fields: Mapping[str, Mapping[str, Iterable[str]]] | None = None,
+        lookups: Mapping[str, LookupConfig] | None = None,
+        dicts: Mapping[str, DictConfig] | None = None,
+        exports: Mapping[str, ExportConfig] | None = None,
+        flow_names: Mapping[str, str] | None = None,
     ) -> None:
         super().__init__()
+        self._lookups = dict(lookups or {})
+        self._dicts = dict(dicts or {})
+        self._exports = dict(exports or {})
+        self._flow_names = dict(flow_names or {})
         self._rule_fields = {pack: {entity: frozenset(names) for entity, names in by_entity.items()}
                              for pack, by_entity in (rule_fields or {}).items()}
         self.version = version
@@ -214,6 +227,25 @@ class FakeConfigSnapshot(Scripted):
             return dict(self._rule_fields[pack_id])
         return {code: frozenset(f.name for f in entity.fields) for code, entity in self._entities.items()}
 
+    def lookup(self, code: str) -> LookupConfig | None:
+        self._record("lookup", code)
+        return self._lookups.get(code)
+
+    def dict_config(self, dict_type: str) -> DictConfig | None:
+        self._record("dict_config", dict_type)
+        return self._dicts.get(dict_type)
+
+    def exports(self, page: str) -> dict[str, ExportConfig]:
+        self._record("exports", page)
+        return {code: cfg for code, cfg in self._exports.items() if cfg.page == page}
+
+    def approval_flow_entries(self, page: str) -> list[ApprovalFlowEntry]:
+        """同 `approval_flows`；名称取构造时的 `flow_names`，没有给出时为编码。"""
+        self._record("approval_flow_entries", page)
+        flows = [(code, f) for code, f in self._flows.items() if f.page == page and f.enabled]
+        return [ApprovalFlowEntry(code=code, name=self._flow_names.get(code, code), flow=f)
+                for code, f in sorted(flows, key=lambda item: (item[1].order, item[0]))]
+
 
 class FakeConfigSnapshotReader(Scripted):
     """`ConfigSnapshotReader`：按角色返回 `put` 放入的快照。
@@ -223,7 +255,7 @@ class FakeConfigSnapshotReader(Scripted):
     - 放入新快照或删除角色，不改变已经返回的快照。
     """
 
-    scriptable = ('read',)
+    scriptable = ('read', 'current_version')
 
     def __init__(self, snapshots: Iterable[FakeConfigSnapshot] = ()) -> None:
         super().__init__()
@@ -242,6 +274,42 @@ class FakeConfigSnapshotReader(Scripted):
         if role_code not in self._snapshots:
             raise PlatformError(ErrorCode.SESSION_ROLE_REVOKED, f"角色 {role_code} 已被删除，请重新选择角色")
         return self._snapshots[role_code]
+
+    def current_version(self) -> int:
+        """已放入的快照中最大的版本；没有快照时为 0。"""
+        self._record("current_version")
+        return max((s.version for s in self._snapshots.values()), default=0)
+
+
+class FakeEntityDirectory(Scripted):
+    """`EntityDirectory`：实体由构造参数给出；明细所属的主表和按表找实体由实体的 `details` 和 `table` 推出。"""
+
+    scriptable = ('entity', 'master_of', 'entities_on_table')
+
+    def __init__(self, entities: Mapping[str, EntityConfig] | None = None) -> None:
+        super().__init__()
+        self._entities = dict(entities or {})
+        self._masters = {d.entity: (code, d.parent_key) for code, e in self._entities.items() for d in e.details}
+
+    def entity(self, code: str) -> EntityConfig:
+        self._record("entity", code)
+        if code not in self._entities:
+            raise PlatformError(ErrorCode.INTERNAL_ERROR, f"已发布的配置中没有实体 {code}")
+        return self._entities[code]
+
+    def master_of(self, code: str) -> tuple[str, str] | None:
+        self._record("master_of", code)
+        return self._masters.get(code)
+
+    def entities_on_table(self, table: str) -> list[TableEntity]:
+        self._record("entities_on_table", table)
+        found = []
+        for code, entity in sorted(self._entities.items()):
+            if entity.table == table:
+                master = self._masters.get(code)
+                found.append(TableEntity(entity=code, master=master[0] if master else code,
+                                         parent_key=master[1] if master else None))
+        return found
 
 
 class FakeConfigImporter(Scripted):

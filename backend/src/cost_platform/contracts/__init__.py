@@ -4,5 +4,6 @@ types.py、ports.py 只依赖标准库和 pydantic；替代实现（fakes/）中
 各模块这样导入：
     from cost_platform.contracts.types import Command, CommandResult
     from cost_platform.contracts.ports import UnitOfWorkFactory
-    from cost_platform.contracts.fakes import FakeUnitOfWorkFactory   # 只在测试和 PLATFORM_BACKEND=memory 时使用
+    from cost_platform.contracts.fakes import FakeUnitOfWorkFactory   # 只在测试和内存插件清单中使用
+    from cost_platform.contracts.registry import PluginView            # 只在各模块的 plugin.py 和 assembly 中使用
 """

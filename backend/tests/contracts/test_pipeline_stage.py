@@ -160,6 +160,7 @@ _WRITERS = {
     "intents": lambda s: s.intents.append(RowIntent(document=_REF, entity="COST_PINGGU", op="modify", row_key="1001",
                                                     client_row_id=None, values={"QTY": "12"})),
     "candidate": lambda s: s.candidate.__setitem__(_REF, copy.deepcopy(_DOC)),
+    "current": lambda s: s.current.__setitem__(_REF, copy.deepcopy(_DOC)) if _REF not in s.current else s.current.pop(_REF),
     "effects": lambda s: s.effects.append(PromptEffect(kind="prompt", rule="R1", message="提示")),
     "changes": lambda s: s.changes.rows.append(RowChange(document=_REF, entity="COST_PINGGU", op="modify", row_key="1001",
                                                          client_row_id=None, values={"QTY": "12"}, old={"QTY": "10"})),
@@ -226,13 +227,15 @@ class TestFakeStage(PipelineStageContract):
 
 def test_table_covers_every_stage_and_known_fields() -> None:
     """C08 第 6 节的表读出 8 个阶段，写入的字段都是 CommandState 的字段，替代实现能写每个字段。"""
-    assert set(STAGE_WRITES) == {"操作权限", "确定涉及的单据", "冻结检查", "审批处理", "动作执行", "触发审批", "登记通知", "投递"}
+    assert set(STAGE_WRITES) == {"操作权限", "确定涉及的单据", "加锁读取", "冻结检查", "审批处理", "合并修改", "展开动作", "合并意图",
+                                 "计算与规则", "触发审批", "强制审批检查", "写入变更", "登记通知", "投递"}
     written = set().union(*STAGE_WRITES.values())
     assert written <= STATE_FIELDS
     assert written <= set(_WRITERS)
     assert STAGE_WRITES["冻结检查"] == frozenset()
     assert STAGE_WRITES["触发审批"] == frozenset({"approvals", "pending_documents", "outcome", "notifications"})
-    assert STAGE_ERRORS == {"操作权限": ErrorCode.PERMISSION_DENIED, "冻结检查": ErrorCode.FROZEN_BY_APPROVAL}
+    assert STAGE_ERRORS == {"操作权限": ErrorCode.PERMISSION_DENIED, "冻结检查": ErrorCode.FROZEN_BY_APPROVAL,
+                            "强制审批检查": ErrorCode.APPROVAL_REQUIRED}
 
 
 def test_detects_stage_writing_foreign_field() -> None:

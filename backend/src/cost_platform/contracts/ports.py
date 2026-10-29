@@ -8,25 +8,29 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 from datetime import datetime
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from .types import (
     AccountBatch,
     AccountRef,
     ApprovalFlowConfig,
+    ApprovalFlowEntry,
     ColumnInfo,
     Command,
     CommandResult,
     CommandState,
     ConfigDraft,
+    Department,
+    DictConfig,
     DocumentData,
-    DocumentPatch,
     DocumentRef,
     EntityConfig,
     ExecutionContext,
+    ExportConfig,
     FreezeEntry,
     Identity,
     ImportReport,
+    LookupConfig,
     MenuItem,
     OperationConfig,
     PackHandle,
@@ -34,9 +38,9 @@ from .types import (
     PersonalConfigBatch,
     RealtimeEvent,
     RoleConfig,
-    Row,
     RowChange,
     SqlCondition,
+    TableEntity,
     TargetFinderConfig,
     TargetObject,
     Value,
@@ -99,6 +103,11 @@ class DirectoryReader(Protocol):
 
     def account(self, user_id: str) -> AccountRef | None: ...
 
+    def department(self, department_id: str) -> Department | None:
+        """部门；不存在时为 None。使用方 config：审批节点的 `department` 必须是已有部门（C06 第 10 节）。
+        部门和账号同归 identity，所以放在这个读取端口里，不另设端口。"""
+        ...
+
 
 class AccountImporter(Protocol):
     def import_batch(self, batch: AccountBatch) -> ImportReport:
@@ -144,11 +153,52 @@ class ConfigSnapshot(Protocol):
         规则包不存在或没有规则时为空。"""
         ...
 
+    # 以下四个方法 2026-10-29 接线时由使用方提出：要的是与本次请求同一版本的配置，所以放在快照里，不另设端口。
+
+    def lookup(self, code: str) -> LookupConfig | None:
+        """Lookup 配置（C06 第 9 节）；不存在时为 None。使用方 queries-export（QE-09、QE-11）。"""
+        ...
+
+    def dict_config(self, dict_type: str) -> DictConfig | None:
+        """字典配置；不存在时为 None。使用方 queries-export（C09 第 4 节字典接口）。"""
+        ...
+
+    def exports(self, page: str) -> dict[str, ExportConfig]:
+        """所属页面为 page 的导出配置，键为导出编码，按配置的顺序。使用方 queries-export（QE-06）。"""
+        ...
+
+    def approval_flow_entries(self, page: str) -> list[ApprovalFlowEntry]:
+        """同 `approval_flows`，另带配置项的编码和名称（审批实例记命中的审批流编码，详情显示名称）。使用方 approval。"""
+        ...
+
 
 class ConfigSnapshotReader(Protocol):
     def read(self, role_code: str) -> ConfigSnapshot:
         """一次 Redis 读取（含当前代号和待生效登记）；只有待生效登记涉及本次要用的配置项、缺项或
         Redis 不可用时才查 Oracle；Oracle 也不可用时抛 CONFIG_UNAVAILABLE。"""
+        ...
+
+    def current_version(self) -> int:
+        """当前配置代号。使用方 identity（还没选角色时 `/api/me` 的 `configVersion`）和 assembly（响应头
+        `X-Config-Version`）：这两处没有角色，取不了快照，所以单列这个方法。"""
+        ...
+
+
+class EntityDirectory(Protocol):
+    """最新已发布的实体配置，不按角色。2026-10-29 接线时由使用方提出：queries-export 的 `RelatedQuery`、`DocumentReader`
+    和 approval 按表找实体时手里没有执行上下文（端口的方法不带 ctx），要的是实体层面的配置，不是某个角色的快照，
+    所以不放进 `ConfigSnapshot`。"""
+
+    def entity(self, code: str) -> EntityConfig:
+        """不存在时抛 500 INTERNAL_ERROR（已发布配置的引用断了）。"""
+        ...
+
+    def master_of(self, code: str) -> tuple[str, str] | None:
+        """明细实体所属的主表实体和明细中关联主表的字段；不是明细时为 None。"""
+        ...
+
+    def entities_on_table(self, table: str) -> list[TableEntity]:
+        """`table` 上注册的实体（审批的冻结表、修改表注册与否，C06 7.4、7.5）；没有注册时为空。"""
         ...
 
 
@@ -169,7 +219,7 @@ class CommandExecutor(Protocol):
 # ============================================================ 5a. write-pipeline 提供的写入能力
 #
 # 由 orchestration 按命令的流程调用（2026-10-28 用户："模块是用来提供能力的，最终消费这些能力的是另外一个东西"）。
-# 这四个端口直接用真实实现在 d_cg 上验证，没有替代实现。
+# 这两个端口直接用真实实现在 d_cg 上验证，没有替代实现。加锁读取、合并、计算、写入是 write-pipeline 的管道阶段（第 6 节）。
 
 class CommandRecorder(Protocol):
     def begin(self, uow: UnitOfWork, user_id: str, command: Command, now: datetime) -> CommandResult | None:
@@ -182,31 +232,14 @@ class CommandRecorder(Protocol):
         """用一条语句把命令记录标为完成，写入命令结果和审计差异（WP-11；audit 为 None 时不记）。"""
         ...
 
-
-class DocumentStore(Protocol):
-    def lock_load(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, row_keys: list[str]) -> dict[str, Row]:
-        """按主键排序，用一条 `SELECT … FOR UPDATE WAIT n` 加锁读取（WP-03）；有 readView 时经视图读取。
-        读出实体的全部字段；不存在的主键不在结果中。"""
+    def complete(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> CommandResult:
+        """各阶段执行完后：按 `state` 生成命令结果（WP-12）；结果不是 unchanged 时连同审计差异（WP-11）写入命令记录。
+        使用方 orchestration：结果和审计的写法属于 write-pipeline，编排层只决定何时调用、何时提交；这一步与 `finish`
+        写的是同一条命令记录，所以放在这个端口里，不另设端口。"""
         ...
 
-    def load_details(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, parent_key: str,
-                     record_key: str) -> dict[str, Row]:
-        """读取一张单据在这个明细实体中的全部行，不加锁：调用方已用 lock_load 锁住所属的主表行（单据锁，WP-03）。
-        有 readView 时经视图读取；多表视图加 FOR UPDATE 会把关联表（例如物料表）的行也锁住，所以这里不加锁。
-        parent_key 为明细中关联主表的字段，record_key 为主单主键；读出实体的全部字段。"""
-        ...
-
-    def write(self, uow: UnitOfWork, entity: EntityConfig, changes: list[RowChange]) -> None:
-        """按变更计划写入，只写有变化的列（WP-09）。"""
-        ...
-
-
-class ChangeMerger(Protocol):
-    def merge(self, entity: EntityConfig, current: dict[str, Row], patch: DocumentPatch,
-              writable: frozenset[str]) -> list[RowChange]:
-        """把 Patch 合并到当前数据（WP-04）：只改出现的字段，与当前值相同不算变化；返回有变化的行，
-        并把新值写进 `current` 中对应的行，作为候选数据。字段不在 writable 中时抛 FIELD_NOT_WRITABLE。"""
-        ...
+# 2026-10-29：原第 5a 节的 `DocumentStore`、`ChangeMerger` 只剩 write-pipeline 自己使用（加锁读取、合并改由它的管道阶段完成），
+# 不再是端口，移到 write-pipeline 内部（pipeline/document_store.py 的 `RowStore`、pipeline/merge.py）。
 
 
 class TableWriter(Protocol):
@@ -319,4 +352,16 @@ class IdGenerator(Protocol):
 class FreezeReader(Protocol):
     def find(self, uow: UnitOfWork, table: str, record_keys: list[str]) -> dict[str, FreezeEntry]:
         """table 为根表（见 FreezeEntry）；按根表主键返回冻结记录，每个主键最多一条，未冻结的不在结果中；只读，不加锁。"""
+        ...
+
+
+# ============================================================ 15. assembly 提供
+
+class ContextProvider(Protocol):
+    """2026-10-29 接线时由使用方（config、queries-export、delivery、approval 的 HTTP 路由）提出：路由要把请求变成执行上下文
+    （校验会话、写请求校验来源和 CSRF、取配置快照）。这件事要组合 identity 的 `Authenticator`、config 的
+    `ConfigSnapshotReader` 和时间、编号，又只跟 HTTP 请求有关，不属于其中任何一个，所以单设端口，由 assembly 提供。"""
+
+    def context(self, request: Any, is_write: bool) -> ExecutionContext:
+        """`request` 为 FastAPI 的 Request。失败时抛 PlatformError（SESSION_REQUIRED、ORIGIN_REJECTED、CSRF_FAILED 等）。"""
         ...

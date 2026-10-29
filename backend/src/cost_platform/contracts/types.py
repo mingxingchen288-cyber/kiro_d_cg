@@ -2153,6 +2153,25 @@ class SqlCondition:
     binds: dict[str, Value] = dc_field(hash=False)
 
 
+@dataclass(frozen=True)
+class ApprovalFlowEntry:
+    """一个审批流配置项：编码、名称和内容（C08 第 4 节 `ConfigSnapshot.approval_flow_entries`）。"""
+
+    code: str
+    name: str
+    flow: ApprovalFlowConfig = dc_field(hash=False)
+
+
+@dataclass(frozen=True)
+class TableEntity:
+    """表上注册的一个实体（C08 第 4 节 `EntityDirectory.entities_on_table`）：实体编码、所属主表实体和明细中关联主表的字段；
+    实体本身是主表时 `master` 为它自己、`parent_key` 为 None。"""
+
+    entity: str
+    master: str
+    parent_key: str | None
+
+
 PackHandle: TypeAlias = object
 """rules-core 的 load_pack 返回的句柄，对调用方不透明。"""
 

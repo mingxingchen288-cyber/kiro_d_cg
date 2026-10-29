@@ -13,9 +13,9 @@ from cost_platform.contracts import fakes, ports
 from cost_platform.contracts.fakes import PORT_FAKES, Call, FakeClock, FakeDocumentReader, Scripted
 from cost_platform.contracts.types import DocumentRef, ErrorCode, PlatformError
 
-REAL_ONLY = {"CommandRecorder", "DocumentStore", "ChangeMerger", "TableWriter"}
-"""2026-10-28 起新增的写入能力端口（ports.py 第 5a 节）：不写替代实现和契约测试，直接用真实实现在 d_cg 上验证
-（用户："按这个做"，按纵向切片先跑通最小真实链路）。"""
+REAL_ONLY = {"CommandRecorder", "TableWriter", "ContextProvider"}
+"""不写替代实现和契约测试、直接用真实实现验证的端口：第 5a 节的写入能力（2026-10-28，用户："按这个做"，在 d_cg 上验证），
+以及 assembly 提供的 `ContextProvider`（2026-10-29，把 HTTP 请求变成执行上下文，由浏览器联调验证）。"""
 
 PORTS = {name: obj for name, obj in vars(ports).items()
          if inspect.isclass(obj) and getattr(obj, "_is_protocol", False) and obj.__module__ == ports.__name__
@@ -33,6 +33,7 @@ PORT_CONTRACTS = {
     "ConfigSnapshot": "test_config_snapshot_reader.ConfigSnapshotReaderContract",
     "ConfigSnapshotReader": "test_config_snapshot_reader.ConfigSnapshotReaderContract",
     "ConfigImporter": "test_config_importer.ConfigImporterContract",
+    "EntityDirectory": "test_entity_directory.EntityDirectoryContract",
     "CommandExecutor": "test_command_executor.CommandExecutorContract",
     "PipelineStage": "test_pipeline_stage.PipelineStageContract",
     "PermissionChecker": "test_permission_checker.PermissionCheckerContract",
@@ -55,7 +56,7 @@ def _protocol_members(protocol: type) -> tuple[dict[str, inspect.Signature], set
 
 
 def test_every_port_has_fake_and_contract() -> None:
-    assert len(PORTS) == 22
+    assert len(PORTS) == 23
     assert set(PORT_FAKES) == set(PORTS)
     assert set(PORT_CONTRACTS) == set(PORTS)
     for name, target in PORT_CONTRACTS.items():

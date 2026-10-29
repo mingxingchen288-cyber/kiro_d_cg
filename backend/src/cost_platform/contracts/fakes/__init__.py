@@ -11,7 +11,7 @@
 from ._script import Call, Scripted
 from .approval import FakeFreezeReader
 from .authz import FakePermissionChecker
-from .config import FakeConfigImporter, FakeConfigSnapshot, FakeConfigSnapshotReader
+from .config import FakeConfigImporter, FakeConfigSnapshot, FakeConfigSnapshotReader, FakeEntityDirectory
 from .db import FakeConnectionFactory, FakeSchemaInspector, FakeUnitOfWork, FakeUnitOfWorkFactory
 from .delivery import FakeDeliveryDispatcher
 from .identity import FakeAuthenticator, FakeDirectory
@@ -32,6 +32,7 @@ PORT_FAKES = {
     "ConfigSnapshot": FakeConfigSnapshot,
     "ConfigSnapshotReader": FakeConfigSnapshotReader,
     "ConfigImporter": FakeConfigImporter,
+    "EntityDirectory": FakeEntityDirectory,
     "CommandExecutor": FakeCommandExecutor,
     "PipelineStage": FakeStage,
     "PermissionChecker": FakePermissionChecker,
@@ -60,6 +61,7 @@ __all__ = [
     "FakeDeliveryDispatcher",
     "FakeDirectory",
     "FakeDocumentReader",
+    "FakeEntityDirectory",
     "FakeFreezeReader",
     "FakeIdGenerator",
     "FakePack",
