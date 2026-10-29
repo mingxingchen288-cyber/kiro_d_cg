@@ -156,6 +156,8 @@ class Setup:
     audit: bool = True
     row_not_found: str = "skip"
     required: dict[str, list[str]] = field(default_factory=dict)
+    rule_fields: dict[str, dict[str, frozenset[str]]] | None = None
+    """保存时规则读取的字段（ConfigSnapshot.rule_fields）；不给时按"规则读取全部字段"，每次保存都求值。"""
 
     def __post_init__(self) -> None:
         self.permission.set_writable(PAGE, MASTER, MASTER_WRITABLE)
@@ -171,7 +173,8 @@ class Setup:
         return FakeConfigSnapshot(version=1, role_code="COST_ACCOUNTANT", role=role,
                                   page_views={PAGE: cost_page_view(self.audit, self.required), GOODS_PAGE: goods_page_view()},
                                   entities=ENTITIES, operations=operations,
-                                  packs={PAGE: self.pack, GOODS_PAGE: self.pack, MASTER: self.pack, GOODS: self.pack})
+                                  packs={PAGE: self.pack, GOODS_PAGE: self.pack, MASTER: self.pack, GOODS: self.pack},
+                                  rule_fields=self.rule_fields)
 
     def context(self, user_id: str = "112", display_name: str = "张三", *,
                 origin: t.Origin | None = None) -> t.ExecutionContext:
@@ -240,6 +243,8 @@ class MemoryStore:
         self.rows = rows if rows is not None else initial_rows()
         self.writes: list[Write] = []
         self.locked: list[tuple[str, list[str]]] = []
+        self.detail_loads: list[list[str]] = []
+        """每次读明细时的单据主键（一次读取一条语句）。"""
         self.denied: set[tuple[str, str]] = set()
         self._next = 9001
 
@@ -262,6 +267,7 @@ class MemoryStore:
         return found
 
     def load_details_many(self, uow: UnitOfWork, sources: Sequence[Any], record_keys: Sequence[str]) -> dict[str, dict[str, list[t.Row]]]:
+        self.detail_loads.append(list(record_keys))
         result: dict[str, dict[str, list[t.Row]]] = {}
         for source in sources:
             by_record: dict[str, list[t.Row]] = {k: [] for k in record_keys}
@@ -375,7 +381,7 @@ class Pipeline:
         self.writer = ChangeWriter(self.store)
 
     def execute(self, cmd: t.Command, ctx: t.ExecutionContext) -> t.CommandResult:
-        from cost_platform.pipeline.calc import check_required
+        from cost_platform.pipeline.calc import check_required, patch_needs_details
         from cost_platform.pipeline.loader import PageSaveInvolved
         from cost_platform.pipeline.result import audit_changes, build_result
 
@@ -388,7 +394,7 @@ class Pipeline:
             involved = PageSaveInvolved()
             if involved.applies(state, ctx):
                 involved.run(uow, state, ctx)
-            self.loader.lock(uow, state, ctx)
+            self.loader.lock(uow, state, ctx, needs_details=patch_needs_details(state, ctx))
             if self.freeze is not None and self.freeze.applies(state, ctx):
                 self.freeze.run(uow, state, ctx)
             patched = self.merger.merge_patches(state, ctx)

@@ -117,7 +117,8 @@ class FakeConfigSnapshot(Scripted):
     - `entity`、`operation`、`approval_flow`、`rules_pack`：为 500 INTERNAL_ERROR。
     """
 
-    scriptable = ('page_view', 'entity', 'operation', 'approval_flows', 'approval_flow', 'role', 'menus', 'rules_pack')
+    scriptable = ('page_view', 'entity', 'operation', 'approval_flows', 'approval_flow', 'role', 'menus', 'rules_pack',
+                  'rule_fields')
 
     def __init__(
         self,
@@ -132,8 +133,11 @@ class FakeConfigSnapshot(Scripted):
         approval_flows: Mapping[str, ApprovalFlowConfig] | None = None,
         menus: Sequence[MenuItem] = (),
         packs: Mapping[str, PackHandle] | None = None,
+        rule_fields: Mapping[str, Mapping[str, Iterable[str]]] | None = None,
     ) -> None:
         super().__init__()
+        self._rule_fields = {pack: {entity: frozenset(names) for entity, names in by_entity.items()}
+                             for pack, by_entity in (rule_fields or {}).items()}
         self.version = version
         self.role_code = role_code
         self._role = role
@@ -202,6 +206,13 @@ class FakeConfigSnapshot(Scripted):
 
     def rules_pack(self, pack_id: str) -> PackHandle:
         return self._get("rules_pack", self._packs, pack_id)
+
+    def rule_fields(self, pack_id: str) -> dict[str, frozenset[str]]:
+        """构造时给出的 `rule_fields[pack_id]`；没有给出时按"规则读取全部字段"（每次保存都求值）。"""
+        self._record("rule_fields", pack_id)
+        if pack_id in self._rule_fields:
+            return dict(self._rule_fields[pack_id])
+        return {code: frozenset(f.name for f in entity.fields) for code, entity in self._entities.items()}
 
 
 class FakeConfigSnapshotReader(Scripted):

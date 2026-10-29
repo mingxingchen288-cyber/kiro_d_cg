@@ -94,8 +94,9 @@ def test_e04_rounded_values_equal_database(rows: Engine) -> None:
     p = pipeline(rows)
     p.setup.engine.respond(t.EvalComputed(ok=True, rows=[row_result(MATERIAL, "5001", COST_BATCH="1.234567885"),
                                                          row_result(DOC, "1001", TOTAL_COST="-1.234567885")], effects=[]))
+    # 改规则读取的用量才会求值（WP-08，用户 2026-10-29 选乙）；求值结果由替代的规则引擎给出
     result = p.execute(save([master_none("1001", [
-        {"entity": MATERIAL, "op": "modify", "rowKey": "5001", "changes": {"MEMO": "E04"}}])]), p.setup.context())
+        {"entity": MATERIAL, "op": "modify", "rowKey": "5001", "changes": {"USAGE": "0.5"}}])]), p.setup.context())
     assert dtl(rows, 5001)["cost_batch"] == D("1.23456789")
     assert fetch(rows, "SELECT TOTAL_COST FROM T_WP_DOC WHERE DOCID = 1001")[0]["total_cost"] == D("-1.23456789")
     values = {r.row_key: r.values for r in result.rows if isinstance(r, t.ResultRow)}

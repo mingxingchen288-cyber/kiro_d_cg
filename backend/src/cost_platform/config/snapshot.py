@@ -38,6 +38,7 @@ from cost_platform.contracts.types import (
 from .cache import CacheUnavailable, ConfigCache, PendingEntry, SyncBatch
 from .records import BASE_TYPES, PAGE_VIEW, RULES_PACK, ItemRecord, item_id, pages_of, relevant_to_role, view_key
 from .service import publish_changed
+from .rule_fields import rule_fields
 from .store import ConfigStore
 
 _log = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ class ParsedCache:
         self.engine = engine
         self._models: dict[tuple[str, int, int], Any] = {}
         self._packs: dict[tuple[str, int, int], PackHandle] = {}
+        self._fields: dict[tuple[str, int, int], dict[str, frozenset[str]]] = {}
         self._lock = threading.Lock()
         self.compiled = 0
 
@@ -66,6 +68,16 @@ class ParsedCache:
             with self._lock:
                 self._models[key] = found
         return found
+
+    def rule_fields(self, record: ItemRecord) -> dict[str, frozenset[str]]:
+        """规则包中保存时执行的规则读取的字段（`rule_fields.py`），同一版本只扫描一次。"""
+        key = (record.id, record.version, record.generation)
+        found = self._fields.get(key)
+        if found is None:
+            found = rule_fields(record.content())
+            with self._lock:
+                self._fields[key] = found
+        return dict(found)
 
     def pack(self, record: ItemRecord) -> PackHandle:
         """规则包句柄：同一版本只编译一次（RC-03）。编译失败时抛 `PackInvalidError`。"""
@@ -159,6 +171,10 @@ class Snapshot:
         if record is None:
             raise PlatformError(ErrorCode.INTERNAL_ERROR, f"已发布的配置中没有规则包 {pack_id}")
         return self._parsed.pack(record)
+
+    def rule_fields(self, pack_id: str) -> dict[str, frozenset[str]]:
+        record = self._records.get(item_id(RULES_PACK, pack_id))
+        return {} if record is None else self._parsed.rule_fields(record)
 
     # 供 config 自己使用
     def records(self) -> dict[str, ItemRecord]:

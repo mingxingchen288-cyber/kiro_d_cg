@@ -95,6 +95,12 @@ WRITABLE = {(PAGE, DOC): ("MEMO", "APEX_PL", "USESTATUS"), (PAGE, MATERIAL): ("G
             (PAGE, PACKAGE): ("GOODSID", "USAGE", "PRICE", "MEMO"), (GOODS_PAGE, GOODS): ("NAME", "PRICE", "ZX_PRICE")}
 _GRID = t.GridOptions(side_bar=True, cell_selection=True, group_by=[])
 PACK = json.dumps({"packId": PAGE, "version": 1, "coreVersion": "0.1.0", "fields": {}, "rules": [], "jdm": {}}).encode()
+# 保存时规则读取的字段（ConfigSnapshot.rule_fields）：仿成本核算，明细 COST_BATCH = USAGE * PRICE，主表 TOTAL_COST 汇总
+# 明细的 COST_BATCH。主表的 MEMO、APEX_PL 等不被规则读取：只改它们时不读明细、不求值（WP-08，用户 2026-10-29 选定）。
+DETAIL_RULE_FIELDS = frozenset({"USAGE", "PRICE", "COST_BATCH"})
+RULE_FIELDS = {PAGE: {DOC: frozenset(), MATERIAL: DETAIL_RULE_FIELDS, PACKAGE: DETAIL_RULE_FIELDS},
+               GOODS_PAGE: {}, GOODS: {}}
+RULE_FIELDS[DOC] = RULE_FIELDS[PAGE]
 
 
 def _detail_view(code: str) -> t.ViewDetail:
@@ -136,7 +142,8 @@ class WpSetup:
         snapshot = FakeConfigSnapshot(version=1, role_code="WP_TEST", role=t.RoleConfig(name="测试", admin=False, pages={}),
                                       page_views=page_views(self.audit), entities=ENTITIES,
                                       operations={SAVE: operation, GOODS_SAVE: operation},
-                                      packs={PAGE: self.pack, GOODS_PAGE: self.pack, DOC: self.pack, GOODS: self.pack})
+                                      packs={PAGE: self.pack, GOODS_PAGE: self.pack, DOC: self.pack, GOODS: self.pack},
+                                      rule_fields=RULE_FIELDS)
         identity = t.Identity(user_id=user_id, username=f"user{user_id}", display_name=display_name, department_id="10",
                               role_code="WP_TEST", session_id=f"s-{user_id}")
         return t.ExecutionContext(request_id="00000000-0000-4000-8000-0000000000aa", identity=identity, config=snapshot,

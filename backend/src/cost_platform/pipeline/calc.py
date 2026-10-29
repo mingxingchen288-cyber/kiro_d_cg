@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from cost_platform.contracts.ports import RulesEngine
 from cost_platform.contracts.types import (
@@ -15,6 +15,9 @@ from cost_platform.contracts.types import (
     CommandState,
     DocumentData,
     DocumentRef,
+    MasterAdd,
+    MasterDelete,
+    MasterModify,
     ErrorCode,
     ErrorDetail,
     EvalComputed,
@@ -59,6 +62,47 @@ def _master_deleted(state: CommandState, ref: DocumentRef) -> bool:
     return change is not None and change.op == "delete"
 
 
+def pack_id_of(state: CommandState, ctx: ExecutionContext, ref: DocumentRef) -> str:
+    """单据的规则包：本页面的单据用页面视图的规则包；不是本页面的单据（动作写到的目标）用它主表实体的规则包
+    （C07 第 1 节：packId 是主表实体的编码）。"""
+    page = state.command.page
+    if page is not None:
+        view = ctx.config.page_view(page)
+        if view.master.entity == ref.entity:
+            return view.rules_pack.pack_id
+    return ref.entity
+
+
+def needs_recalculation(state: CommandState, ctx: ExecutionContext, ref: DocumentRef) -> bool:
+    """WP-08（用户 2026-10-29 选定）：这张单据有新增、删除的行，或者改到了保存时执行的规则读取的字段
+    （`ConfigSnapshot.rule_fields`），才求值。只改备注这类字段时不求值，其他列保持原样。"""
+    used = ctx.config.rule_fields(pack_id_of(state, ctx, ref))
+    for change in state.changes.rows:
+        if change.document != ref:
+            continue
+        if change.op in ("add", "delete") or set(change.values) & used.get(change.entity, frozenset()):
+            return True
+    return False
+
+
+def patch_needs_details(state: CommandState, ctx: ExecutionContext) -> Callable[[DocumentRef], bool]:
+    """页面保存加锁读取时，哪些单据要读明细（WP-08、WP-10）：Patch 改了明细、删除整张单据，或者主表改到了规则读取的
+    字段（要按整张单据求值）。其余单据只锁主表行，不读明细，也不会求值（`needs_recalculation` 为 False）。"""
+    wanted: set[DocumentRef] = set()
+    for patch in state.command.documents:
+        master = patch.master
+        if isinstance(master, MasterAdd):
+            continue
+        ref = DocumentRef(entity=patch.entity, record_key=master.row_key)
+        if patch.details or isinstance(master, MasterDelete):
+            wanted.add(ref)
+        elif isinstance(master, MasterModify):
+            used = ctx.config.rule_fields(pack_id_of(state, ctx, ref)).get(patch.entity, frozenset())
+            if set(master.changes) & used:
+                wanted.add(ref)
+    return wanted.__contains__
+
+
 class Recalculator:
     def __init__(self, engine: RulesEngine, scales: Scales | None = None) -> None:
         self._engine = engine
@@ -73,7 +117,7 @@ class Recalculator:
         states: FieldStates = {}
         rejects: list[RejectEffect] = []
         for ref in list(refs):
-            if ref not in state.candidate or _master_deleted(state, ref):
+            if ref not in state.candidate or _master_deleted(state, ref) or not needs_recalculation(state, ctx, ref):
                 continue
             result = self._evaluate(state, ctx, ref, state.candidate[ref])
             self._apply(state, ctx, ref, result, states)
@@ -89,15 +133,6 @@ class Recalculator:
                 ErrorDetail(message=e.message, entity=e.entity, row_key=e.row_key, client_row_id=e.client_row_id, field=e.field)
                 for e in rejects])
         return states
-
-    def _pack_id(self, state: CommandState, ctx: ExecutionContext, ref: DocumentRef) -> str:
-        """页面的规则包；不是本页面的单据（动作写到的目标）用它主表实体的规则包（C07 第 1 节：packId 是主表实体的编码）。"""
-        page = state.command.page
-        if page is not None:
-            view = ctx.config.page_view(page)
-            if view.master.entity == ref.entity:
-                return view.rules_pack.pack_id
-        return ref.entity
 
     def _evaluate(self, state: CommandState, ctx: ExecutionContext, ref: DocumentRef, doc: DocumentData) -> EvalComputed:
         changed: list[ChangedRow] = []
@@ -129,7 +164,7 @@ class Recalculator:
             changed=changed,
             data={},  # 规则需要的数据库数据：配置快照没有给出规则的 dataItems，见 contract-gaps.md
         )
-        handle = ctx.config.rules_pack(self._pack_id(state, ctx, ref))
+        handle = ctx.config.rules_pack(pack_id_of(state, ctx, ref))
         raw = self._engine.evaluate(handle, json.dumps(dump_wire(EvaluationRequest, request), ensure_ascii=False))
         result = parse_wire(EvaluationResult, json.loads(raw))
         if isinstance(result, EvalFailure):

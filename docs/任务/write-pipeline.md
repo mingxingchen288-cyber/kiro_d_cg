@@ -55,7 +55,7 @@
 - 状态与证据：进行中（2026-10-29），测试已写好、还没有运行；有一项待用户决定。
   - SQL 追踪：`pipeline/tracing.py` 的 `SqlTracer`（SQLAlchemy 游标事件，一次 execute 或 executemany 计 1 条，提交、回滚、连接池探活不计），模拟验证 `test_tracing.py`。
   - 真实验证（待运行，标 oracle）：`test_oracle_sql_count.py` 5 个、`test_oracle_concurrency.py` 2 个。
-  - 待用户决定：主从页（成本核算）改主表字段时，WP-08 要求整张单据求值，要多读一次明细，实际 5 条（目标 4）、提交相同的值 3 条（目标 2）；单表页能达到 4 条和 2 条，改一条明细并重算汇总为 6 条。`test_e01_master_detail_master_field`、`test_same_values_master_detail` 按目标写，现在运行会失败。场景、两种做法和建议见 `.reports/modules/write-pipeline/contract-gaps.md` 第 1 条。
+  - 用户 2026-10-29 选乙：只在改到规则读取的字段时才读明细并求值（WP-08、C08 v17 `rule_fields`；`calc.patch_needs_details`、`calc.needs_recalculation`）。真实验证（d_cg）：`uv run --with <wheel> pytest -q -p no:cacheprovider -m "oracle or redis"` 全部 146 passed（`.reports/modules/yi-real-2.txt`），其中 `test_oracle_sql_count.py` 5 个：主从页改主表 MEMO 4 条、提交相同的值 2 条、单表页 4 条和 2 条、改一条明细并重算汇总 6 条。模拟验证：`test_flow.py` 的 `test_e01_master_field_not_used_by_rules_writes_only_it`（不读明细、不求值、其余列不变）和 `test_master_field_used_by_rules_recalculates_whole_document`。
 
 ### T-WP-5 默认值与命令审查
 

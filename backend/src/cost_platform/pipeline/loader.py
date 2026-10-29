@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from cost_platform.contracts.ports import PermissionChecker, UnitOfWork
 from cost_platform.contracts.types import (
@@ -62,8 +62,12 @@ class DocumentLoader:
         self._permission = permission
 
     def lock(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext,
-             refs: Sequence[DocumentRef] | None = None) -> list[DocumentRef]:
+             refs: Sequence[DocumentRef] | None = None,
+             needs_details: Callable[[DocumentRef], bool] | None = None) -> list[DocumentRef]:
         """锁住并读入 `refs`（省略时为 `involved` 中还没有读入的已有单据），按（实体、主键）排序。
+
+        `needs_details` 给出哪些单据要读明细（页面保存用 `calc.patch_needs_details`，WP-08、WP-10）；省略时都读。
+        不读明细的单据 `details` 为空，这张单据不会求值（`calc.needs_recalculation`）。
 
         单据已不存在时按操作的 `rowNotFound`：`skip` 写入 `skipped` 并从 `involved` 去掉，`reject` 返回 409 ROW_NOT_FOUND
         （WP-05）。用户发起的命令带出行权限判断列，超出时 403（WP-03）；来源为审批时不查行权限（C08 第 7 节）。
@@ -91,13 +95,14 @@ class DocumentLoader:
                 state.skipped.append(SkippedRow(entity=code, row_key=key, reason="ROW_NOT_FOUND"))
                 state.involved[:] = [r for r in state.involved if r != DocumentRef(code, key)]
             found = [k for k in keys if k in masters]
+            with_details = [k for k in found if needs_details is None or needs_details(DocumentRef(code, k))]
             sources = [DetailSource(link.entity, ctx.config.entity(link.entity), link.parent_key) for link in entity.details]
-            details = self._store.load_details_many(uow, sources, found) if sources and found else {}
+            details = self._store.load_details_many(uow, sources, with_details) if sources and with_details else {}
             for key in found:
                 ref = DocumentRef(code, key)
                 state.current[ref] = DocumentData(
                     ref=ref, master=masters[key],
-                    details={s.entity_code: details[s.entity_code][key] for s in sources})
+                    details={s.entity_code: details[s.entity_code][key] for s in sources} if key in with_details else {})
                 loaded.append(ref)
         return loaded
 

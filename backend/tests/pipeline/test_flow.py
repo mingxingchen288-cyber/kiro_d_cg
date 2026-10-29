@@ -104,6 +104,34 @@ def test_same_values_write_nothing_and_leave_no_record() -> None:
     assert pipeline.store.writes == [] and command_rows(pipeline.factory) == []
 
 
+# ---------------------------------------------------------------- 只在改到规则读取的字段时求值（WP-08，用户 2026-10-29 选乙）
+
+# 仿成本核算：明细 COST_BATCH = USAGE * PRICE，主表 TOTAL_COST 汇总明细的 COST_BATCH，明细的用量按主表 APEX_PL 算
+COST_RULE_FIELDS = {PAGE: {MASTER: frozenset({"APEX_PL"}), MATERIAL: frozenset({"USAGE", "PRICE", "COST_BATCH"})}}
+
+
+def test_e01_master_field_not_used_by_rules_writes_only_it() -> None:
+    """E01 的形状：成本单 1001 主表的 MEMO 改为"测试"。规则不读 MEMO：不读明细、不求值，只写 MEMO，其余列不变。"""
+    pipeline = Pipeline(setup=Setup(rule_fields=COST_RULE_FIELDS))
+    result = pipeline.execute(command([master_modify("1001", {"MEMO": "测试"})]), pipeline.setup.context())
+    assert result.outcome == "saved"
+    assert writes(pipeline) == [("update", MASTER, [{"rowKey": "1001", "MEMO": "测试"}])]
+    assert pipeline.setup.engine.requests == [] and pipeline.store.detail_loads == []
+    assert pipeline.store.rows[MASTER]["1001"]["TOTAL_COST"] == D("54.00")
+
+
+def test_master_field_used_by_rules_recalculates_whole_document() -> None:
+    """主表的 APEX_PL 改为 120000：规则读这个字段，读出两条明细、按整张单据求值，计算带出的 TOTAL_COST 一起写。"""
+    pipeline = Pipeline(setup=Setup(rule_fields=COST_RULE_FIELDS))
+    respond(pipeline, row_result(MASTER, "1001", TOTAL_COST="64.80"))
+    result = pipeline.execute(command([master_modify("1001", {"APEX_PL": "120000"})]), pipeline.setup.context())
+    assert result.outcome == "saved"
+    assert writes(pipeline) == [("update", MASTER, [{"rowKey": "1001", "APEX_PL": D("120000"), "TOTAL_COST": D("64.80")}])]
+    [request] = pipeline.setup.engine.requests
+    assert [r.row_key for r in request.document.details[MATERIAL]] == ["5001", "5002"]
+    assert pipeline.store.detail_loads == [["1001"]]
+
+
 # ---------------------------------------------------------------- 规则拒绝、提示、必填
 
 def test_rule_reject_writes_nothing() -> None:

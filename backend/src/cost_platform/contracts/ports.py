@@ -138,6 +138,12 @@ class ConfigSnapshot(Protocol):
         """已经 load_pack 的句柄。"""
         ...
 
+    def rule_fields(self, pack_id: str) -> dict[str, frozenset[str]]:
+        """规则包中保存时执行的规则（实体层、操作层的计算和校验规则）读取的字段，键为实体编码（WP-08）。
+        write-pipeline 据此判断一次保存要不要读明细、要不要求值：只改了这里没有的字段时不求值（用户 2026-10-29 选定）。
+        规则包不存在或没有规则时为空。"""
+        ...
+
 
 class ConfigSnapshotReader(Protocol):
     def read(self, role_code: str) -> ConfigSnapshot:

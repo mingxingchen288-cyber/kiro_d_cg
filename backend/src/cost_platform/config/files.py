@@ -90,6 +90,10 @@ class FileConfigSnapshot:
     def rules_pack(self, pack_id: str) -> PackHandle:
         raise PlatformError(ErrorCode.NOT_FOUND, f"规则包不存在：{pack_id}")
 
+    def rule_fields(self, pack_id: str) -> dict[str, frozenset[str]]:
+        """文件配置没有规则（链路 0），保存时不求值。"""
+        return {}
+
 
 class FileConfigSnapshotReader:
     """`ConfigSnapshotReader`：启动时读入目录中的全部配置项，版本号固定为 `version`。"""
