@@ -410,7 +410,8 @@ def test_e24_approved_detail_add_uses_reserved_key_and_delete_applies() -> None:
     pipeline = Pipeline(extra=[FakeStage("确定涉及的单据", effect=resolve), FakeStage("审批处理", effect=process)])
     cmd = command([], page=None, operation="approval.pass", params={"approvalId": "204"})
     result = pipeline.execute(cmd, pipeline.setup.context(origin=t.Origin(kind="approval", approval_id="204")))
-    assert result.outcome == "approvalProcessed" and result.id_map == {TMP_1: "300001"}
+    assert result.outcome == "approvalProcessed" and result.id_map == {TMP_1: "300001"} and result.skipped == []
+    assert pipeline.store.locked == [(MASTER, ["1001"])]  # 主表已有：照常加锁读取；新增的明细不加锁，直接插入
     added = pipeline.store.rows[MATERIAL]["300001"]
     assert (added["DOCID"], added["GOODSID"], added["PRICE"]) == (D(1001), D(116), D("12"))
     assert "5002" not in pipeline.store.rows[MATERIAL]
