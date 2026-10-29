@@ -23,8 +23,12 @@ from typing import Any
 from cost_platform.contracts.ports import IdGenerator, RealtimePublisher, RulesEngine, UnitOfWorkFactory
 from cost_platform.contracts.types import (
     ApprovalFlowConfig,
+    ApprovalFlowEntry,
+    DictConfig,
     EntityConfig,
     ErrorCode,
+    ExportConfig,
+    LookupConfig,
     MenuItem,
     OperationConfig,
     PackHandle,
@@ -145,13 +149,35 @@ class Snapshot:
         return found
 
     def approval_flows(self, page: str) -> list[ApprovalFlowConfig]:
+        return [entry.flow for entry in self.approval_flow_entries(page)]
+
+    def approval_flow_entries(self, page: str) -> list[ApprovalFlowEntry]:
+        """所属页面为 page 的启用审批流，按 order、编码排列；名称为配置项的名称。"""
         flows = []
         for record in self._records.values():
             if record.type == "approvalFlow":
                 flow: ApprovalFlowConfig = self._parsed.model(record)
                 if flow.page == page and flow.enabled:
-                    flows.append((flow.order, record.key, flow))
-        return [f for _, _, f in sorted(flows, key=lambda x: (x[0], x[1]))]
+                    flows.append((flow.order, record.key, ApprovalFlowEntry(code=record.key, name=record.name, flow=flow)))
+        return [entry for _, _, entry in sorted(flows, key=lambda x: (x[0], x[1]))]
+
+    def lookup(self, code: str) -> LookupConfig | None:
+        found: LookupConfig | None = self._model("lookup", code)
+        return found
+
+    def dict_config(self, dict_type: str) -> DictConfig | None:
+        found: DictConfig | None = self._model("dict", dict_type)
+        return found
+
+    def exports(self, page: str) -> dict[str, ExportConfig]:
+        """所属页面为 page 的导出配置，键为导出编码。导出配置没有顺序字段（C06 第 9 节），按编码排列。"""
+        found: dict[str, ExportConfig] = {}
+        for record in sorted(self._records.values(), key=lambda r: r.key):
+            if record.type == "export":
+                config: ExportConfig = self._parsed.model(record)
+                if config.page == page:
+                    found[record.key] = config
+        return found
 
     def approval_flow(self, code: str) -> ApprovalFlowConfig:
         found: ApprovalFlowConfig = self._required("approvalFlow", code)
@@ -225,6 +251,21 @@ class ConfigReader:
         if item_id("role", role_code) not in state.records:
             return self._from_oracle(role_code, pending, found.generation)
         return self._keep(role_code, state)
+
+    def current_version(self) -> int:
+        """当前配置代号，与 `read` 的快照版本同一来源：一次 Redis 读取；Redis 不可用或被清空（代号为 0）时读 Oracle 的
+        代号行；Oracle 也不可用时抛 503 CONFIG_UNAVAILABLE。"""
+        try:
+            generation = self._cache.status()[0]
+        except CacheUnavailable:
+            generation = 0
+        if generation > 0:
+            return generation
+        try:
+            with self._uow.begin() as uow:
+                return self._store.generation(uow)
+        except PlatformError as error:
+            raise PlatformError(ErrorCode.CONFIG_UNAVAILABLE, "读不到配置") from error
 
     # ---------------------------------------------------------------- 进程中的快照
 

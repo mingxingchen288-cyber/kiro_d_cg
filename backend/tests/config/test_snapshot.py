@@ -143,3 +143,40 @@ def test_interleaved_saves_and_reads_never_mix_versions(steps: list[str]) -> Non
         assert snapshot.role().name == expected_role
         assert snapshot.page_view("COST_PINGGU").title == expected_title
         assert snapshot.page_view("COST_PINGGU").version <= snapshot.version
+
+
+# ---------------------------------------------------------------- 2026-10-29 补的快照方法和 current_version
+
+def test_lookup_dict_exports_and_flow_entries() -> None:
+    """快照的 Lookup、字典、导出配置，以及带编码和名称的审批流（C08 第 4 节，使用方 queries-export、approval）。"""
+    from cost_platform.contracts.types import parse_config_content
+
+    from .support import base_world, doc_json, flow_samples
+
+    env = Env()
+    env.save(base_world())
+    lookup = draft("lookup", "GOODS", {"table": "T_COST_GOODS", "columns": ["GOODSID", "GOODSNAME"],
+                                       "keywordColumns": ["GOODSID", "GOODSNAME"], "orderBy": "GOODSID"})
+    status = draft("dict", "USESTATUS", {"items": [{"value": "评估中", "label": "评估中", "order": 1}]})
+    export = draft("export", "cost-pinggu-export", doc_json("C06", 13), "成本核算导出")
+    env.save([lookup, status, export, *flow_samples()])
+    snapshot = env.reader.read("ADMIN")
+    assert snapshot.lookup("GOODS") == parse_config_content("lookup", lookup.content)
+    assert snapshot.lookup("NO_SUCH_LOOKUP") is None
+    assert snapshot.dict_config("USESTATUS") == parse_config_content("dict", status.content)
+    page = export.content["page"]
+    assert snapshot.exports(page) == {"cost-pinggu-export": parse_config_content("export", export.content)}
+    for flow_page in {f.content["page"] for f in flow_samples()}:
+        drafts = sorted((f for f in flow_samples() if f.content["page"] == flow_page and f.content.get("enabled", True)),
+                        key=lambda f: (f.content["order"], f.key))
+        entries = snapshot.approval_flow_entries(flow_page)
+        assert [(e.code, e.name) for e in entries] == [(f.key, f.name) for f in drafts]
+        assert [e.flow for e in entries] == snapshot.approval_flows(flow_page)
+
+
+def test_current_version() -> None:
+    """当前配置代号：从 Redis 读；Redis 不可用时读 Oracle 的代号行（X-Config-Version、还没选角色时的 `/api/me`）。"""
+    env = _saved()
+    assert env.reader.current_version() == env.generation()
+    env.cache.unavailable = True
+    assert env.reader.current_version() == env.generation()

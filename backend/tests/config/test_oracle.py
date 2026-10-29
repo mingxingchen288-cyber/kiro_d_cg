@@ -14,12 +14,15 @@ import pytest
 from sqlalchemy import Engine, text
 
 from cost_platform.config.cache import MemoryConfigCache
+from cost_platform.config.entities import PublishedEntities
 from cost_platform.config.store import ConfigStore
 from cost_platform.contracts.types import ErrorCode, PlatformError, WizardColumnsRequest, WizardGenerateRequest, parse_wire
 from tests.contracts.test_config_snapshot_reader import ConfigSnapshotReaderContract
+from tests.contracts.test_entity_directory import EntityDirectoryContract
 
 from .real_support import OracleEnv, engine  # noqa: F401 - fixture
 from .support import draft, flow_samples, goods_price_items, liquid_items, seed_drafts
+from .test_entities import entity_drafts
 
 pytestmark = pytest.mark.oracle
 
@@ -94,7 +97,7 @@ def test_c06_flow_samples_save_on_d_cg(ora: OracleEnv) -> None:
 def test_wizard_on_d_cg(ora: OracleEnv) -> None:
     """T-CF-6 真实验证：用 T_COST_GOODS_PRICE_V 和 T_COST_GOODS 生成物料清单页，字段与视图列一致，视图独有的列只读；
     配置代号只加一；序列不存在的表返回 422 且什么都不写。"""
-    ora.service.ensure_admin_role()
+    created_admin = ora.service.ensure_admin_role()
     menu = draft("menu", "CT_ORA_MENU", {"items": [{"key": "ct_ora", "title": "测试", "kind": "group"}]})
     ora.service.save([menu], "1")
     admin_before = ora.service.get_item("role", "ADMIN").content
@@ -119,8 +122,11 @@ def test_wizard_on_d_cg(ora: OracleEnv) -> None:
         assert caught.value.code is ErrorCode.VALIDATION_FAILED and ora.generation() == generation
         assert "序列 PF_ALEMBIC_VERSION_SEQ 不存在" in " ".join(d.message or "" for d in caught.value.details)
     finally:
-        admin = ora.service.get_item("role", "ADMIN")
-        ora.service.save([draft("role", "ADMIN", admin_before, admin.name)], "1")
+        if created_admin:  # 测试前没有 ADMIN 角色：删掉，不在 PF_CONFIG_ITEM 中留下正式配置项
+            ora.service.delete("role", "ADMIN", "1")
+        else:
+            admin = ora.service.get_item("role", "ADMIN")
+            ora.service.save([draft("role", "ADMIN", admin_before, admin.name)], "1")
 
 
 def test_concurrent_saves_queue_on_generation_row(ora: OracleEnv) -> None:
@@ -184,3 +190,24 @@ class TestOracleConfigReader(ConfigSnapshotReaderContract):
         yield harness
         harness.env.cache.unavailable = False  # test_unavailable 把 Redis 设成了不可用；清理时恢复
         harness.env.cleanup()
+
+
+# ---------------------------------------------------------------- EntityDirectory 的契约测试（d_cg + 内存 Redis）
+
+class TestOraclePublishedEntities(EntityDirectoryContract):
+    """在 d_cg 上发布契约测试的四个实体（编码由契约测试定，不是 CT_ 开头）。d_cg 中已有的同编码实体（例如启动时导入的 seed）
+    不改也不删；只保存缺少的，测试结束时删掉这些，不在 PF_CONFIG_ITEM 中留下正式配置项。"""
+
+    @pytest.fixture
+    def directory(self, engine: Engine) -> Any:  # noqa: F811
+        env = OracleEnv(engine, MemoryConfigCache())
+        with env.uow.begin() as uow:
+            _, records = ConfigStore().read_all(uow, ["entity"])
+        created = [d for d in entity_drafts() if f"entity/{d.key}" not in records]
+        if created:
+            env.service.save(created, "1")
+        try:
+            yield PublishedEntities(env.uow, env.reader)
+        finally:
+            for item in sorted(created, key=lambda d: not d.content.get("details")):  # 主表先删，明细后删
+                env.service.delete("entity", item.key, "1")
