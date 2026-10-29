@@ -14,7 +14,8 @@
 - 验收标准：模拟验证和真实验证（d_cg）都通过：BCrypt 账号登录成功后哈希改为 Argon2，失败时不改；admin 初始化执行两次，第二次不改任何数据；导入时已存在的账号不覆盖（角色分配也不改），列入报告，报告的计数和标识按 C08 第 1 节；通过 `DirectoryReader`、`AccountImporter` 的契约测试；账号名重复返回 VALIDATION_FAILED。
 - 状态与证据：进行中。2026-10-29，导入账号（ID-08、`AccountImporter`）属于迁移，暂停。
   - 模拟验证：通过。命令为在 `backend` 目录执行 `uv run pytest -q -p no:cacheprovider -m "not oracle and not redis" tests/identity`，identity 全部测试 49 个通过、0 个失败（`.reports/modules/identity/pytest-3.txt`）。本卡对应的测试：`test_accounts.py`（admin 初始化执行两次第二次不改数据、账号名重复、账号列表、`DirectoryReader` 契约测试）、`test_passwords.py`、`test_login.py::test_bcrypt_hash_upgraded_after_successful_login_only`。
-  - 真实验证：测试已写好，没有运行，前提是执行 `platform db upgrade`（含 id_0002）。测试在 `tests/identity/test_oracle.py`，共 9 个（`-m oracle`）。
+  - 真实验证：测试在 `tests/identity/test_oracle.py`（`-m oracle`）。
+  - 2026-10-29：BCrypt 校验改用 `bcrypt==5.0.0` 包（删掉纯 Python 实现 `_bcrypt.py`），校验一次 `$2a$10$` 哈希从 8.478 秒降到约 0.06 秒；密码仍只取前 72 字节（与旧系统一致）。`-m "not oracle and not redis" tests/identity` 52 个通过；`-m "oracle or redis" tests/identity` 14 个通过，含 `test_bcrypt_upgraded_on_oracle`。
   - 上线后再补：两个请求同时新建同名账号时，唯一约束的报错没有转成 422。
   - 契约缺口见 `.reports/modules/identity/contract-gaps.md`。
 

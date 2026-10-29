@@ -4,15 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import bcrypt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-
-from . import _bcrypt
-
-try:  # 有 bcrypt 包时用它；后端依赖里目前没有（contract-gaps.md），没有时用模块内的纯 Python 实现
-    import bcrypt as _bcrypt_lib
-except ImportError:  # pragma: no cover - 取决于环境
-    _bcrypt_lib = None
 
 _BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
 
@@ -51,8 +45,6 @@ def is_bcrypt(stored: str | None) -> bool:
 
 
 def _check_bcrypt(stored: str, password: str) -> bool:
-    # 旧系统用 Spring Security 的 BCryptPasswordEncoder：密码按 UTF-8 编码，只取前 72 字节
-    secret, hashed = password.encode("utf-8"), stored.encode("ascii")
-    if _bcrypt_lib is not None:  # pragma: no cover - 取决于环境
-        return bool(_bcrypt_lib.checkpw(secret[:72], hashed))
-    return _bcrypt.check(secret, hashed)
+    # 旧系统用 Spring Security 的 BCryptPasswordEncoder：密码按 UTF-8 编码，只取前 72 字节。
+    # bcrypt 包 5.0 起对超过 72 字节的密码报错、不再自动截断，所以这里先截断。
+    return bcrypt.checkpw(password.encode("utf-8")[:72], stored.encode("ascii"))

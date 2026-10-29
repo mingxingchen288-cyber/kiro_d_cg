@@ -11,5 +11,7 @@
 | python-oracledb | 26.0.1 | Apache-2.0 或 UPL-1.0 | Oracle 驱动 |
 | Alembic | 1.20.0 | MIT | 平台表迁移 |
 | redis-py | 7.1.0 | MIT | Redis 客户端 |
+| argon2-cffi | 25.1.0 | MIT | 密码哈希（Argon2） |
+| bcrypt | 5.0.0 | Apache-2.0 | 校验旧系统导入的 BCrypt 密码哈希 |
 
 开发和测试用（不随产品分发）：pytest 8.4.2（MIT）、httpx 0.28.1（BSD-3-Clause）、Hypothesis 6.140.2（MPL-2.0）、import-linter 2.15（BSD-2-Clause）。

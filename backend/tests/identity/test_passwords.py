@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from cost_platform.identity import _bcrypt
+import bcrypt
+import pytest
+
 from cost_platform.identity.passwords import Passwords, is_bcrypt
 from cost_platform.identity.rules import check_password_format
 
 from .support import fast_passwords
 
-# jBCrypt（Spring Security BCrypt 的来源）公开的测试向量
-JBCRYPT_ABC = (b"abc", b"$2a$06$If6bvum7DFjUnE9p2uDeDu0YHzrHM6tf.iqN8.yx.jNN1ILEf7h0i")
+# jBCrypt（Spring Security BCrypt 的来源）公开的测试向量；JBCRYPT_ABC 的强度 10 与旧系统导入的哈希相同（`$2a$10$`）
+JBCRYPT_ABC = (b"abc", b"$2a$10$WvvTPHKwdBJ3uk0Z37EMR.hLA2W6N9AEBhEgrAOljy2Ae5MtaSIUi")
 JBCRYPT_SYMBOLS = (b"~!@#$%^&*()      ~!@#$%^&*()PNBFRD", b"$2a$06$fPIsBO8qRqkjj273rfaOI.HtSV9jLDpTbZn782DC6/t7qT67P6FfO")
 
 
@@ -21,21 +23,20 @@ def test_argon2_hash_verifies() -> None:
     assert not passwords.verify(stored, "admin123..").needs_upgrade
 
 
-def test_blowfish_constants_are_pi_digits() -> None:
-    words = _bcrypt.pi_words()
-    assert (words[0], words[17], words[18], words[-1]) == (0x243F6A88, 0x8979FB1B, 0xD1310BA6, 0x3AC372E6)
-
-
-def test_bcrypt_matches_published_vectors() -> None:
-    for password, hashed in (JBCRYPT_ABC, JBCRYPT_SYMBOLS):
-        assert _bcrypt.hash_with_salt(password, hashed) == hashed
-
-
-def test_bcrypt_hash_verifies_and_needs_upgrade() -> None:
-    stored = JBCRYPT_ABC[1].decode()
+@pytest.mark.parametrize(("password", "hashed"), [JBCRYPT_ABC, JBCRYPT_SYMBOLS])
+def test_bcrypt_hash_verifies_and_needs_upgrade(password: bytes, hashed: bytes) -> None:
+    stored = hashed.decode()
     assert is_bcrypt(stored)
-    result = fast_passwords().verify(stored, "abc")
+    result = fast_passwords().verify(stored, password.decode())
     assert result.ok and result.needs_upgrade
+
+
+def test_bcrypt_uses_first_72_bytes() -> None:
+    """与 Spring Security 的 BCryptPasswordEncoder 相同：超过 72 字节的密码只取前 72 字节。"""
+    long_password = "Abc123.." * 10  # 80 字节
+    stored = bcrypt.hashpw(long_password.encode()[:72], bcrypt.gensalt(4, b"2a")).decode()
+    assert fast_passwords().verify(stored, long_password).ok
+    assert fast_passwords().verify(stored, long_password[:72] + "其他字符").ok
 
 
 def test_old_system_password_format() -> None:
