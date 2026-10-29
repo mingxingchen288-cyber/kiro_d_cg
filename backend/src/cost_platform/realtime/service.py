@@ -1,6 +1,6 @@
 """一个后端进程中的 realtime：把频道、连接表、分发、订阅任务、`/ws` 和 `RealtimePublisher` 组合在一起。
 
-assembly 的接法：
+接线见 `plugin.py`（`realtime.publisher`、`realtime` 两个插件）；单独使用时的接法：
 
 ```python
 channel = RedisChannel.from_url(settings.redis_url, settings.redis_namespace)   # 或 MemoryChannel()
