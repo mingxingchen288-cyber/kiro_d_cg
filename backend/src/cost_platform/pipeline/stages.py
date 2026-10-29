@@ -33,7 +33,7 @@ from cost_platform.contracts.types import (
 )
 
 from .calc import Recalculator, check_required, patch_needs_details
-from .loader import DocumentLoader, document_ref, is_new_key, known_missing, sort_key
+from .loader import DocumentLoader, document_ref, is_new_document, known_missing, sort_key
 from .merge import DocumentMerger, IntentMerger, RowRef
 from .plan import find_change
 from .writer import ChangeWriter
@@ -42,7 +42,7 @@ from .writer import ChangeWriter
 def _unread(state: CommandState) -> list[DocumentRef]:
     """`involved` 和 `intents` 所属单据中还没有读入 `current` 的已有单据（新增的单据没有可读的行）。"""
     wanted = dict.fromkeys([*state.involved, *(i.document for i in state.intents)])
-    return [r for r in wanted if not is_new_key(r.record_key) and r not in state.current and not known_missing(state, r)]
+    return [r for r in wanted if not is_new_document(state, r) and r not in state.current and not known_missing(state, r)]
 
 
 def _needs_details(state: CommandState, ctx: ExecutionContext) -> Callable[[DocumentRef], bool]:

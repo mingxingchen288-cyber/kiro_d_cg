@@ -41,7 +41,15 @@ from cost_platform.contracts.types import (
 from cost_platform.contracts.values import from_wire, same_value
 
 from .entity_rules import EntityRules
-from .loader import DocumentLoader, candidate_of, document_ref, is_new_key, known_missing, rejects_missing
+from .loader import (
+    DocumentLoader,
+    candidate_of,
+    document_ref,
+    is_new_document,
+    is_new_key,
+    known_missing,
+    rejects_missing,
+)
 from .plan import find_change, note_modify, row_id
 from .values import NoScales, stored_value
 
@@ -217,7 +225,7 @@ class IntentMerger:
         intents = list(state.intents)
         if not intents:
             return
-        outside = sorted({i.document for i in intents if i.document not in state.involved and not is_new_key(i.document.record_key)
+        outside = sorted({i.document for i in intents if i.document not in state.involved and not is_new_document(state, i.document)
                           and not known_missing(state, i.document)},
                          key=lambda r: (r.entity, r.record_key))
         if outside:

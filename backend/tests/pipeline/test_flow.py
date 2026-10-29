@@ -417,6 +417,31 @@ def test_e24_approved_detail_add_uses_reserved_key_and_delete_applies() -> None:
     assert [r.document.entity for r in pipeline.setup.engine.requests] == [MASTER]  # 1001 已重算
 
 
+def test_new_document_approved_is_inserted_without_skipped() -> None:
+    """新建的成本单整张提交审批，送审时预留了主键 1003、明细 300001（AP-02）。最终批准时 approval 展开为新增主表和新增明细
+    的意图：本模块把它当新增的单据，不加锁读取，直接插入主表和明细；结果里没有"已跳过"。"""
+    source = t.DocumentRef(MASTER, "1003")
+
+    def process(uow, state: t.CommandState, ctx: t.ExecutionContext) -> None:  # type: ignore[no-untyped-def]
+        state.approvals.append(t.ApprovalRef(approval_id="205", document=t.RecordRef(entity=MASTER, record_key="1003"),
+                                             status="approved", level=1, flows=["COST_TO_GOODS"]))
+        state.intents += [
+            t.RowIntent(document=source, entity=MASTER, op="add", row_key="1003", client_row_id=TMP_1, values={"MEMO": "新建"}),
+            t.RowIntent(document=source, entity=MATERIAL, op="add", row_key="300001", client_row_id=TMP_2,
+                        values={"GOODSID": D(116), "PRICE": D("12"), "DOCID": D(1003)})]
+
+    pipeline = Pipeline(extra=[FakeStage("审批处理", effect=process)])
+    cmd = command([], page=None, operation="approval.pass", params={"approvalId": "205"})
+    result = pipeline.execute(cmd, pipeline.setup.context(origin=t.Origin(kind="approval", approval_id="205")))
+    assert result.outcome == "approvalProcessed" and result.skipped == []
+    assert pipeline.store.locked == []
+    assert [(w.op, w.entity) for w in pipeline.store.writes] == [("insert", MASTER), ("insert", MATERIAL)]
+    assert pipeline.store.rows[MASTER]["1003"]["MEMO"] == "新建"
+    added = pipeline.store.rows[MATERIAL]["300001"]
+    assert (added["DOCID"], added["GOODSID"], added["PRICE"]) == (D(1003), D(116), D("12"))
+    assert result.id_map == {TMP_1: "1003", TMP_2: "300001"}
+
+
 def test_second_request_key_independent() -> None:
     pipeline = Pipeline()
     ctx = pipeline.setup.context()

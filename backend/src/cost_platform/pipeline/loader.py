@@ -50,6 +50,15 @@ def rejects_missing(state: CommandState, ctx: ExecutionContext) -> bool:
     return code not in APPROVAL_OPERATIONS and ctx.config.operation(code).row_not_found == "reject"
 
 
+def is_new_document(state: CommandState, ref: DocumentRef) -> bool:
+    """这张单据是本命令新增的，库里还没有，不加锁读取：前端新增、还没有主键的（`tmp-`）；或主表行由意图新增、带着送审时
+    预留的主键（新建的单据整张进入审批，最终批准时插入，AP-02、AP-10）。"""
+    if is_new_key(ref.record_key):
+        return True
+    adds = any(i.op == "add" and i.entity == ref.entity and i.row_key == ref.record_key for i in state.intents)
+    return adds or any(c.op == "add" and c.entity == ref.entity and c.row_key == ref.record_key for c in state.changes.rows)
+
+
 def known_missing(state: CommandState, ref: DocumentRef) -> bool:
     """这张单据在本命令中加锁读取时已不存在、按 `rowNotFound: skip` 记入了 `skipped`（WP-05）：不再加锁读取一次。"""
     return any(s.entity == ref.entity and s.row_key == ref.record_key and s.reason == "ROW_NOT_FOUND" for s in state.skipped)
