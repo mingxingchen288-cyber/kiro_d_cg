@@ -19,6 +19,6 @@ export const views: Record<LastLevelRouteKey, RouteComponent | (() => Promise<Ro
   404: () => import("@/views/_builtin/404/index.vue"),
   500: () => import("@/views/_builtin/500/index.vue"),
   login: () => import("@/views/_builtin/login/index.vue"),
-  "cost-pinggu": () => import("@/views/cost-pinggu/index.vue"),
   home: () => import("@/views/home/index.vue"),
+  page: () => import("@/views/page/[pageCode].vue"),
 };

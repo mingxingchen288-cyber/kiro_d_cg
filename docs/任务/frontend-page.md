@@ -12,7 +12,7 @@
 - 交付物：编辑缓冲（修改、新增、删除、改动标记、撤销重做、生成命令）；视图模型（合并正式数据、修改和预览结果）。
 - 接入责任：T-FP-2、T-FP-3 使用；真实联调在 T-AS-7。
 - 验收标准：基于属性的测试（fast-check）：任意编辑序列全部撤销后回到初始状态，撤销后重做回到撤销前；改回原值时修改和标记消失；删除未保存的新增行不进入命令；生成的命令符合 C02，只含修改的字段。
-- 状态与证据：进行中。链路 1 先交付最小部分：编辑缓冲按（实体、行）记录修改，保存时按单据生成命令（主表没有修改时为 `none`），`frontend/src/views/cost-pinggu/edit-buffer.ts`；先写测试 `frontend/tests/page/edit-buffer.test.ts`，实现前失败（`.reports/chain1/12-vitest-1.txt`），实现后 `pnpm test` 72 passed（`12-vitest-3.txt`）。撤销重做、新增行和删除标记未做。
+- 状态与证据：待联调（模拟验证通过，待独立复核）。2026-10-29 按模块说明一次做完：编辑缓冲移到 `frontend/src/modules/page/edit-buffer.ts`（`views/cost-pinggu` 已删除），记录修改、新增行、删除标记、改动标记，撤销和重做按行记录修改前后的状态，表格和表单共用，`batch` 把 Lookup 回填、复制、粘贴合成一步；生成命令时只带可写字段（不带计算字段、主键、关联字段、`erpRow.column`、只读的 ERP 列），删除主表行时不列出明细；按钮结果中的行可以单独丢弃修改并从历史中去掉。视图模型 `view-model.ts` 合并正式数据、修改和预览结果，给出明细行顺序（新增行插在原位）、冻结、可编辑和标记。先写测试 `frontend/tests/page/edit-buffer.test.ts`（例子取成本单 2550、2551 和 E01 的 200680；fast-check：任意编辑序列全部撤销后回到初始状态、撤销若干步再重做回到撤销前、改回原值时修改和标记消失、删除未保存的新增行不进入命令、命令符合 C02 且只含修改过的可写字段），实现前因缺少模块失败（`.reports/modules/frontend-page/vitest-edit-buffer-red.txt`），实现后 14 个通过（`vitest-edit-buffer-green.txt`）。全部前端测试见 T-FP-2 的结果。
 
 ### T-FP-2 页面渲染与原地表单
 
@@ -22,7 +22,7 @@
 - 交付物：单表页和主从页；原地表单（24 列网格）；表格适配（服务端行模型、客户端行模型、逐行更新）。
 - 接入责任：T-AS-3 注册到外壳；真实联调在 T-AS-7。
 - 验收标准（模拟验证）：点击展开图标后表单在主表区原地显示，返回后滚动位置和选中行不变，明细区不变；双击单元格进入编辑；不可见字段不出现在列、表单和列工具面板中；查询、翻页后列宽、顺序、固定和显隐不变；按钮只按 `systemButtons` 和区域 `buttons` 显示，没有选中行时删除、复制和 `requiresSelection` 为 true 的业务按钮不可用，新增可用，没有 `save` 时整页只读；业务按钮的命令只带选中行的主键，`documents` 为空数组；成本单 D 的明细改了单价没保存、另有一张成本单 E 也改了没保存，选中 D 点"同步价格"：不提示保存，直接执行，命令中没有这些修改；成功后 D 中受影响的行显示后端返回的值，这些行没保存的修改丢弃，E 的修改仍在编辑缓冲中；命令失败时编辑缓冲不变。
-- 状态与证据：进行中。链路 0 已先交付最小部分，见 T-AS-9（[assembly](assembly.md)）；本卡的验收照常进行。链路 1 加明细页签（原料/辅料、包材，客户端行模型）：选中主表的一行后加载这张单据的明细，"客户指定"显示为复选框。真实联调见 T-AS-9（[assembly](assembly.md)）。
+- 状态与证据：进行中（页面运行时的模拟验证通过；界面行为还没有在浏览器中验证）。2026-10-29：通用页面 `frontend/src/modules/page/`，按页面编码打开（路由 `/page/:pageCode`，elegant-router 的 `src/views/page/[pageCode].vue` 是唯一的视图文件，不在菜单中显示；`index.ts` 导出 C11 的 `FrontendModule`），列、明细、按钮、规则都来自页面视图。`page-runtime.ts` 管页面行为、经 GridPort 驱动表格；`grid-adapter/`（`columns.ts`、`PageGrid.vue`、`LookupGrid.vue`）是唯一引用 AG Grid 的部分：主表服务端行模型、明细客户端行模型、逐行事务更新，列宽和固定用 initial 属性，关闭 AG Grid 自带的撤销，改动标记的颜色沿用旧系统 `MasterDetailPageV3.vue`；`renderers/`：`GenericPage.vue`（单表页和主从页，明细 Tab 或堆叠，分隔线可拖动）、`RecordForm.vue`（原地表单，24 列网格，返回、上一条、下一条）、`LookupDialog.vue`、`AdvancedSearchDialog.vue`（运算符与旧系统相同）、`CopyDialog.vue`、`ApprovalProgressDialog.vue`。字典按 `dictType` 读取一次，显示标签。模拟验证（`frontend/tests/page/buttons-config.test.ts` 等，用 contracts 的模拟实现）：按钮只按 `systemButtons` 和区域 `buttons` 显示，没有选中行时删除、复制和 `requiresSelection` 的按钮不可用、新增可用，没有 `save` 时整页只读；成本单 D（2550）和 E（2551）都有没保存的修改时选中 D 点"同步价格"：不提示保存，命令只带 D 的主键、`documents` 为空，成功后 D 受影响的行显示后端的值、这些行的修改丢弃，E 的修改保留；命令失败时编辑缓冲不变；字典。结果：`pnpm test` 8 个文件 401 个通过（`.reports/modules/frontend-page/vitest.txt`），`pnpm typecheck` 通过（`typecheck.txt`），`pnpm build` 通过（`build.txt`）。还没验证（要在浏览器中做）：点击展开图标后表单原地显示、返回后滚动位置和选中行不变；双击单元格进入编辑；不可见字段不在列工具面板中；查询、翻页后列宽、顺序、固定和显隐不变。E01、明细的 Playwright 用例已改为按 `/page/COST_PINGGU` 打开（`frontend/tests/e2e/e01.spec.ts`、`cost-detail.spec.ts`，断言不变，只按区域和列标识限定定位），这次没有运行。
 
 ### T-FP-3 预览、保存与局部刷新
 
@@ -32,7 +32,7 @@
 - 交付物：编辑后经 `ShellApi.calc` 预览；保存、局部刷新、错误定位；审批中和冻结状态的显示；修改被锁定的单据时弹出审批进度。
 - 接入责任：与真实后端和真实 rules-core 的联调在 T-AS-7。
 - 验收标准（模拟验证）：编辑后只刷新受影响的行；保存期间整页只读；成功后只更新有差异的行，新增行换成正式主键且行节点不变；失败或没有响应时保留全部修改并定位到字段，不自动重发；已提交审批时显示审批中，被冻结的单据整张只读（单表页为整行）；成本单 2550 被审批 203 锁定时，双击它的单价、删除它的明细或给它新增明细，都不进入编辑，弹出审批 203 的进度（C09 第 6 节样例：第 1 级系统管理员待处理，第 2 级还没到）；页面加载后 2551 才被锁定，修改 2551 后保存返回 FROZEN_BY_APPROVAL，弹出锁定它的审批的进度，页面上的修改保留；有未保存修改时离开页面前确认。
-- 状态与证据：进行中。链路 0 已先交付最小部分，见 T-AS-9（[assembly](assembly.md)）；本卡的验收照常进行。链路 1 保存时把主表和明细的修改按单据合成一个命令，明细按命令结果用 `applyTransaction` 局部刷新。真实联调见 T-AS-9（[assembly](assembly.md)）。
+- 状态与证据：进行中（页面运行时的模拟验证通过；计算 Worker 只在构建产物中可用，界面上的双击、粘贴没有在浏览器中验证）。2026-10-29：预览 `preview.ts` 按 C07 第 2 节组装一张单据的 preview 请求（`old` 取已提交值），经 `ShellApi.calc` 求值，结果只用于显示；过渡的 ShellApi（`frontend/src/service/shell.ts`）用 rules-core 交付的 `createCalcWorkerClient`（`rules-core/dist/web/`），`pnpm build` 的产物中 Worker 和 WASM 已打包，开发服务器上 `rules-core/dist/web` 在工程之外、返回 403，预览提示不可用、编辑和保存照常（见 `.reports/modules/frontend-page/contract-gaps.md` 的接入事项，归 assembly）。模拟验证（`frontend/tests/page/save.test.ts`、`buttons-config.test.ts`）：E01 改 200680 的备注后保存，命令只含这一格，成功后逐行比对、只更新有差异的行，清空编辑缓冲；保存期间整页只读；新增明细保存后换成正式主键、表格行标识不变；结果中缺的行按主键补查；失败或没有响应时保留全部修改并按错误明细定位到行和字段，不自动重发；E20：D 提交审批、E 写入，D 整张显示正式数据（新增行移除、改价恢复）并冻结，E 按结果刷新；成本单 2550 被审批 203 锁定时改单价、删除明细、新增明细都不进入编辑，弹出审批 203 的进度（C09 第 6 节样例：第 1 级两个节点待处理，第 2 级还没到）；页面加载后 2551 才被锁定，保存返回 FROZEN_BY_APPROVAL 时弹出锁定它的审批，修改保留；编辑后只刷新预览结果中有变化的行；Worker 不可用时照常编辑；有未保存修改时标记页签（`tabs.setDirty`），刷新或关闭窗口前由 `beforeunload` 确认。结果见 T-FP-2。
 
 ### T-FP-4 配置原地替换与个人列配置
 
@@ -42,7 +42,7 @@
 - 交付物：收到 `config.changed` 后重新读取页面视图并原地替换；个人列配置的读写。
 - 接入责任：真实推送的联调在 T-AS-7。
 - 验收标准（模拟验证）：替换后滚动位置、选中行、展开的表单和正在输入的值不变；上层隐藏的列不能被个人配置设为显示；个人配置只保存改变的部分。
-- 状态与证据：未开始。
+- 状态与证据：进行中（页面运行时的模拟验证通过；滚动位置要在浏览器中验证）。2026-10-29：页面运行时订阅本页面的 `config.changed`，收到后以后台请求重新读取页面视图和新版本的规则包，原地替换列、表单布局、按钮和规则（表格不重建，列宽、固定用 initial 属性，`maintainColumnOrder`），编辑缓冲保留；个人列配置 `personal.ts`：打开页面时读取，只应用页面视图中可见的列，"保存列配置"按钮只提交与上次保存（或页面默认）不同的表格，明细显示方式（Tab、堆叠）切换后单独保存，提示文字沿用旧系统 `useUserGridConfig.ts`。模拟验证（`frontend/tests/page/buttons-config.test.ts`）：推送 C10 样例后以后台请求读取页面视图和规则包 `COST_PINGGU/8`，QTY 改为不可编辑立即生效，选中行、展开的表单和正在输入的备注不变；个人配置中页面不可见的 FORM 不应用；只改了主表列宽时只提交主表；明细显示方式。真实推送要等 assembly 接上 `/ws`（开发代理还没转发 WebSocket，见 `.reports/modules/frontend-page/contract-gaps.md` 的接入事项）。结果见 T-FP-2。
 
 ### T-FP-5 复制
 
@@ -52,7 +52,7 @@
 - 交付物：复制对话框（选择主表字段、明细行和明细字段）；主表区和明细区的复制。
 - 接入责任：真实联调在 T-AS-7。
 - 验收标准（模拟验证）：默认全选时，复制结果除主键外与源单据相同（含全部未删除的明细，明细的关联字段指向新主表行）；只勾选部分行或字段时只复制这些行，未勾选的字段为空；源单据有未保存的修改时带上修改后的值；计算字段复制后由预览重新计算，生成的命令中新单据和明细都是 `add` 且不含计算字段；撤销一次撤回整个复制。
-- 状态与证据：未开始。
+- 状态与证据：待联调（模拟验证通过，待独立复核；复制对话框的界面没有在浏览器中验证）。2026-10-29：`frontend/src/modules/page/copy.ts`、`renderers/CopyDialog.vue`，对照旧系统 `useWorkingSetStore.ts` 的 copyMasterRow、copyDetailRow：主表区复制一行时勾选主表字段和每个明细的行、字段，明细区复制时勾选行（默认是选中的行）和字段，默认全选；主键和关联字段留空，`erpRow.column` 设为本地值；复制当前显示的值，标为删除的行不复制，源单据明细没加载时先加载；新主表行在源行下方，明细行在最后一个选中行下方；整个复制是一个撤销步骤，复制后为新单据安排预览。模拟验证（`frontend/tests/page/copy-lookup.test.ts`）：E09 复制有 3 条原辅料明细的成本单 2550，只勾选 2 条、去掉备注：新单据 2 条明细，备注为空，其余与源单据相同（含没保存的改价 72），主键为空；命令中主表和明细都是 `add`，不含计算字段 TOTAL_COST、AMOUNT 和不可编辑的字段；撤销一次撤回整个复制，源单据的改价保留；明细区复制的位置。结果见 T-FP-2。
 
 ### T-FP-6 默认值、Lookup 扩展与对比显示
 
@@ -62,4 +62,4 @@
 - 交付物：上述功能。
 - 接入责任：真实联调在 T-AS-7。
 - 验收标准：业务例子 E28、E29；模拟验证：多选 Lookup 回填为逗号连接的值；`fillBack` 为 false 时只读单元格也能打开且不改数据；按单元格值过滤时请求带 `filter`；查询响应的 `keywordSearch` 为 false 时对话框不显示搜索框；对比上升和下降的箭头、颜色与旧系统相同。
-- 状态与证据：未开始。
+- 状态与证据：待联调（模拟验证通过，待独立复核；Lookup 对话框的界面没有在浏览器中验证）。2026-10-29：默认值（`fields.ts` 的 `newRowValues`，对照旧系统 `useWorkingSetStore.ts` 的 resolveColumnDefaultValue）：`static`、`builtin`（当前用户、部门、角色、时间）、`options`（下拉选第一个值，单元格用下拉选择），没有配置时数值为 0、其他为空；Lookup（`lookup.ts`、`renderers/LookupDialog.vue`，布局沿用旧系统 `LookupDialog.vue`）：打开时先用空关键字查询，`keywordSearch` 为 false 时不显示搜索框，`filter` 取当前行字段或单元格的值，多选用英文逗号连接，`fillBack` 为 false 时只读单元格也能打开、只有"关闭"；对比（`fields.ts` 的 `compareDisplay`，与旧系统 `useMetaColumns.ts` 的 renderCompareValue 相同）：上升红色 `#e53935` ↑、下降绿色 `#43a047` ↓，11px。模拟验证（`frontend/tests/page/copy-lookup.test.ts`）：E28 张三新增一行，CREATE_BY 显示张三且不可编辑，STATUS 默认"草稿"，命令中不带 CREATE_BY；E29 当前 3.80、历史 3.50 显示"↑0.30 (8.57%)"，历史为 0 时只显示差值；Lookup 回填和撤销、多选、单元格值过滤、`keywordSearch` 为 false、只查看。页面视图中还没有字段的 `default` 和对比的显示方式（契约缺口第 1、2 项，`.reports/modules/frontend-page/contract-gaps.md`），前端先按建议的写法实现，后端给出前 E28 的默认值只能按"数值为 0、其他为空"。结果见 T-FP-2。

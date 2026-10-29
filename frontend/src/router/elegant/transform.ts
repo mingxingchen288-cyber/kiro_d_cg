@@ -166,9 +166,9 @@ const routeMap: RouteMap = {
   "403": "/403",
   "404": "/404",
   "500": "/500",
-  "cost-pinggu": "/cost-pinggu",
   "home": "/home",
-  "login": "/login/:module(pwd-login)?"
+  "login": "/login/:module(pwd-login)?",
+  "page": "/page/:pageCode"
 };
 
 /**

@@ -20,9 +20,9 @@ declare module "@elegant-router/types" {
     "403": "/403";
     "404": "/404";
     "500": "/500";
-    "cost-pinggu": "/cost-pinggu";
     "home": "/home";
     "login": "/login/:module(pwd-login)?";
+    "page": "/page/:pageCode";
   };
 
   /**
@@ -57,9 +57,9 @@ declare module "@elegant-router/types" {
     | "403"
     | "404"
     | "500"
-    | "cost-pinggu"
     | "home"
     | "login"
+    | "page"
   >;
 
   /**
@@ -80,8 +80,8 @@ declare module "@elegant-router/types" {
     | "404"
     | "500"
     | "login"
-    | "cost-pinggu"
     | "home"
+    | "page"
   >;
 
   /**

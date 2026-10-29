@@ -1,6 +1,6 @@
 /**
  * 链路 1（真实联调，浏览器 → 后端 → d_cg）：成本核算主从页的明细。
- * admin 打开成本核算，页面下方有"原料/辅料""包材"两个页签；选中成本单 2550，在"原料/辅料"把第一行（DTLID 206323）的
+ * admin 打开成本核算（通用页面 /page/COST_PINGGU），页面下方有"原料/辅料""包材"两个页签；选中成本单 2550，在"原料/辅料"把第一行（DTLID 206323）的
  * 备注改为"测试"并保存；刷新页面再选 2550 显示"测试"；再改回原值保存。"客户指定"复选框勾选、保存，再取消、保存。
  * 200680（E01 的单据）在 cmx 中已经没有明细，改用同为 250mg乙酰唑胺片的 2550。
  * 数据库中的值由 backend/tests/e2e/test_cost_detail.py 和运行后的只读查询核对。
@@ -43,7 +43,7 @@ async function scrollTo(grid: Locator, cell: Locator) {
 
 /** 打开成本核算页，选中成本单 2550（默认按主键升序，是第一行），等原料/辅料明细出现 */
 async function openDocument(page: Page) {
-  await page.goto('/cost-pinggu');
+  await page.goto('/page/COST_PINGGU');
   await expect(page.locator('.n-tabs-tab', { hasText: '原料/辅料' })).toBeVisible();
   await expect(page.locator('.n-tabs-tab', { hasText: '包材' })).toBeVisible();
   await page
@@ -55,7 +55,7 @@ async function openDocument(page: Page) {
 
 async function saveAndWait(page: Page) {
   await expect(page.getByText('1 行未保存')).toBeVisible();
-  await page.getByRole('button', { name: '保存' }).click();
+  await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByText('已保存')).toBeVisible();
   await expect(page.getByText('1 行未保存')).toBeHidden();
 }

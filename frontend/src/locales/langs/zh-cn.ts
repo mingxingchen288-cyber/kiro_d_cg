@@ -217,7 +217,7 @@ const local: App.I18n.Schema = {
     404: '页面不存在',
     500: '服务器错误',
     home: '首页',
-    'cost-pinggu': '成本核算'
+    page: '页面'
   },
   page: {
     login: {

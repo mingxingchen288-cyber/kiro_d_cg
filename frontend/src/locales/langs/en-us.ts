@@ -221,7 +221,7 @@ const local: App.I18n.Schema = {
     404: 'Page Not Found',
     500: 'Server Error',
     home: 'Home',
-    'cost-pinggu': 'Cost Accounting'
+    page: 'Page'
   },
   page: {
     login: {

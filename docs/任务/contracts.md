@@ -42,7 +42,7 @@
 - 交付物：TypeScript 类型；C09 每个接口的模拟实现（返回 C09 的样例）；计算 Worker、`ShellApi` 的模拟实现；实时事件的模拟发送器；C03 错误体的严格解析函数（按 C03 第 1 节"生成和接收的分工"检查，不合法时给出带 HTTP 状态码的通用错误提示），供 T-AS-3 的 HTTP 客户端使用。
 - 接入责任：供全部前端模块开发和测试使用。
 - 验收标准：C02、C05、C07、C09、C10 的每个样例都能被类型无损解析；每个 C09 接口的模拟实现都能调用并返回样例；与 T-CT-1 用同一批样例核对，字段名一致；C03 的样例能被错误体解析函数解析，缺少明细字段、错误码不在 C03 第 2 节中、响应不是 JSON 时，都得到可读的通用错误提示。
-- 状态与证据：未开始。
+- 状态与证据：进行中（模拟验证通过，待独立复核）。2026-10-29：`frontend/src/contracts/` 增加 C02、C03、C05、C07、C09、C10、C11 的类型（`command.ts`、`errors.ts`、`page-view.ts`、`rules.ts`、`http.ts`、`realtime.ts`、`shell.ts`），类型由严格的运行时检查 `schema.ts` 推出：只认 camelCase 字段名，不允许没定义的字段，必须写的字段不能缺，整数和是非必须是 JSON 的数字和布尔，与后端 `parse_wire` 一致；`api.ts` 给出 C09 每个接口的方法和路径；C03 错误体的严格解析 `parseErrorResponse`（供 T-AS-3 的 HTTP 客户端使用，过渡的 `src/service/platform.ts` 已在用）。模拟实现在 `fakes/`：C09 每个接口默认返回样例（`http.ts`，可以预设返回值和错误；样例 `samples.ts` 由 `.reports/modules/frontend-page/gen-samples.mjs` 从 docs 生成），计算 Worker（`calc.ts`），实时事件的模拟发送器（`realtime.ts`，按 eventId 去重），ShellApi（`shell.ts`）。契约测试 `frontend/tests/contracts/samples.test.ts`、`fakes.test.ts`：文档代码块中的 17 个样例与模拟实现返回的样例逐项相同；C02、C05、C07、C09、C10 的样例和 C09 表格中的行内样例（与后端 `test_samples.py` 的 INLINE 相同）共 66 个解析后内容不变；148 个前端对象类型的字段名与 `backend/src/cost_platform/contracts/types.py` 中同名类逐个相同，C05 字段的 `default`、`compare` 是契约缺口，列为已知差异（`.reports/modules/frontend-page/contract-gaps.md` 第 1、2 项）；C09 的 42 个接口经模拟实现调用都返回样例；C03 样例解析出错误码和明细，缺少明细字段、错误码不在 C03 第 2 节中、响应不是 JSON 时都给出带 HTTP 状态码的通用提示，每个错误码的 HTTP 状态与 C03 第 2 节的表相同。C06 的配置类型没有写（T-CT-4 的验收不含 C06，frontend-config 开工时补）。结果：`pnpm test` 8 个文件 401 个通过（`.reports/modules/frontend-page/vitest.txt`），`pnpm typecheck` 通过（`typecheck.txt`），`pnpm build` 通过（`build.txt`）。契约缺口见 `contract-gaps.md`。
 
 ### T-CT-5 审批处理与动作执行之间的交接字段
 
