@@ -33,3 +33,6 @@ package-lock.json
 yarn.lock
 
 .VSCodeCounter
+# 端到端测试 setup 项目存的登录状态（tests/e2e/auth.setup.ts）；`playwright trace open` 解开的 trace
+/playwright/.auth/
+/.playwright-cli/
