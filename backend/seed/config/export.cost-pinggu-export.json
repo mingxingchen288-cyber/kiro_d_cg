@@ -1,0 +1,343 @@
+{
+  "type": "export",
+  "key": "cost-pinggu-export",
+  "name": "物料成本核算表导出",
+  "content": {
+    "page": "COST_PINGGU",
+    "name": "物料成本核算表导出",
+    "fileName": "物料成本核算表导出",
+    "font": "Calibri",
+    "detailLayout": "perMaster",
+    "master": {
+      "sheet": "物料成本核算",
+      "sql": "SELECT m.DOCID AS DOCID, m.DOCID AS \"Summary ID\", m.GOODSID AS \"Product ID\", m.GOODSNAME AS \"Product Name\", m.GOODSNAME_EN AS \"GOODSNAME_EN\", m.STRENGTH AS \"Dosage\", m.MA_NO AS \"PL number\", m.ANNUAL_QTY AS \"Annual Qty (tabs)\", m.APEX_PL AS \"Batch Size\", m.MAH AS \"MAH\", m.P_PERPACK AS \"Pack Size\", m.S_PERBACK AS \"Cartons/shipper\", m.PACKTYPE AS \"Pack Form\", m.X_PERBACK AS \"Shippers/pallet\", m.M_PERPACK AS \"Packs/Display Box\", m.TOTAL_FL AS \"Excipient Cost/batch (Excl Rebate)\", m.TOTAL_BC AS \"Packing Cost/batch (Excl Rebate)\", m.TOTAL_YL AS \"API Cost/batch (Excl Rebate)\", m.USESTATUS AS \"Uses Status\", m.DOSAGE AS \"Dosage Form\", m.YIELD AS \"Yield\", m.TOTAL_COST AS \"Total Mat Costs/batch (Excl Rebate)\", m.COST_PERBOX AS \"Mat. Cost/pack\", m.OUT_PRICE_RMB AS \"EXW Price RMB\", m.OUT_PRICE_F AS \"EXW Price Foreign Currency\", m.SALEMONEY AS \"Turnover/batch\", m.JGF_BATCH AS \"Gross Margin/batch\", m.COST_PERQP AS \"Direct cost/1000 tabs\", m.JGF_PERQP AS \"Gross Margin /1000 tabs\", m.ML_PERQP AS \"Contrib./1000 tabs\", m.Y_JG_RE AS \"Annual Gross Margin\", m.Y_ML AS \"Annual Contrib.\", m.Y_SALE AS \"Annual Turnover\", m.CUSTOMID AS \"Customer ID\", m.CUSTOMNAME AS \"Customer Name\", m.PROJECTNO AS \"Project No.\", m.MEMO AS \"Remark\", m.COUNTRY AS \"Country\", m.FMNAME AS \"Currency\", m.FMRATE AS \"Tax Rate\", m.TRANPOSID AS \"Distributor ID\", m.LIVERY AS \"LIVERY\", m.PINGGU_CLASS AS \"Category\", m.BUSINESS_USER AS \"BD contact\" FROM T_COST_PINGGU m",
+      "keyColumn": "DOCID",
+      "columns": [
+        {
+          "field": "Summary ID",
+          "header": "Summary ID"
+        },
+        {
+          "field": "Product ID",
+          "header": "Product ID"
+        },
+        {
+          "field": "Product Name",
+          "header": "Product Name"
+        },
+        {
+          "field": "GOODSNAME_EN",
+          "header": "GOODSNAME_EN"
+        },
+        {
+          "field": "Dosage",
+          "header": "Dosage"
+        },
+        {
+          "field": "PL number",
+          "header": "PL number"
+        },
+        {
+          "field": "Annual Qty (tabs)",
+          "header": "Annual Qty (tabs)"
+        },
+        {
+          "field": "Batch Size",
+          "header": "Batch Size"
+        },
+        {
+          "field": "MAH",
+          "header": "MAH"
+        },
+        {
+          "field": "Pack Size",
+          "header": "Pack Size"
+        },
+        {
+          "field": "Cartons/shipper",
+          "header": "Cartons/shipper"
+        },
+        {
+          "field": "Pack Form",
+          "header": "Pack Form"
+        },
+        {
+          "field": "Shippers/pallet",
+          "header": "Shippers/pallet"
+        },
+        {
+          "field": "Packs/Display Box",
+          "header": "Packs/Display Box"
+        },
+        {
+          "field": "Excipient Cost/batch (Excl Rebate)",
+          "header": "Excipient Cost/batch (Excl Rebate)"
+        },
+        {
+          "field": "Packing Cost/batch (Excl Rebate)",
+          "header": "Packing Cost/batch (Excl Rebate)"
+        },
+        {
+          "field": "API Cost/batch (Excl Rebate)",
+          "header": "API Cost/batch (Excl Rebate)"
+        },
+        {
+          "field": "Uses Status",
+          "header": "Uses Status"
+        },
+        {
+          "field": "Dosage Form",
+          "header": "Dosage Form"
+        },
+        {
+          "field": "Yield",
+          "header": "Yield"
+        },
+        {
+          "field": "Total Mat Costs/batch (Excl Rebate)",
+          "header": "Total Mat Costs/batch (Excl Rebate)"
+        },
+        {
+          "field": "Mat. Cost/pack",
+          "header": "Mat. Cost/pack"
+        },
+        {
+          "field": "EXW Price RMB",
+          "header": "EXW Price RMB"
+        },
+        {
+          "field": "EXW Price Foreign Currency",
+          "header": "EXW Price Foreign Currency"
+        },
+        {
+          "field": "Turnover/batch",
+          "header": "Turnover/batch"
+        },
+        {
+          "field": "Gross Margin/batch",
+          "header": "Gross Margin/batch"
+        },
+        {
+          "field": "Direct cost/1000 tabs",
+          "header": "Direct cost/1000 tabs"
+        },
+        {
+          "field": "Gross Margin /1000 tabs",
+          "header": "Gross Margin /1000 tabs"
+        },
+        {
+          "field": "Contrib./1000 tabs",
+          "header": "Contrib./1000 tabs"
+        },
+        {
+          "field": "Annual Gross Margin",
+          "header": "Annual Gross Margin"
+        },
+        {
+          "field": "Annual Contrib.",
+          "header": "Annual Contrib."
+        },
+        {
+          "field": "Annual Turnover",
+          "header": "Annual Turnover"
+        },
+        {
+          "field": "Customer ID",
+          "header": "Customer ID"
+        },
+        {
+          "field": "Customer Name",
+          "header": "Customer Name"
+        },
+        {
+          "field": "Project No.",
+          "header": "Project No."
+        },
+        {
+          "field": "Remark",
+          "header": "Remark"
+        },
+        {
+          "field": "Country",
+          "header": "Country"
+        },
+        {
+          "field": "Currency",
+          "header": "Currency"
+        },
+        {
+          "field": "Tax Rate",
+          "header": "Tax Rate"
+        },
+        {
+          "field": "Distributor ID",
+          "header": "Distributor ID"
+        },
+        {
+          "field": "LIVERY",
+          "header": "LIVERY"
+        },
+        {
+          "field": "Category",
+          "header": "Category"
+        },
+        {
+          "field": "BD contact",
+          "header": "BD contact"
+        }
+      ]
+    },
+    "details": [
+      {
+        "sheet": "原辅料明细",
+        "sql": "SELECT m.DOCID AS DOCID, m.DTLID AS \"Details ID\", m.DOCID AS \"Summary ID\", m.DTL_USEFLAG AS \"Manufacturing Category\", m.GOODSID AS \"Material ID\", m.GOODSNAME AS \"Material Name\", m.PER_HL AS \"Qty/tablet (mg)\", m.EXADD_MATER AS \"Additional Qty\", m.BATCH_QTY AS \"Qty/batch\", m.SUQTY AS \"Last Purchase Qty\", m.PRICE AS \"Unit price (VAT included)\", m.BASE_PRICE AS \"Reference Unit Price\", m.COST_BATCH AS \"Cost/batch (VAT included)\", m.FACTORYNAME AS \"Manufacturer Name\", m.STANDARDTYPE AS \"Specification\", m.GOODSTYPE AS \"Strength\", m.MEMO AS \"Remark\", m.GOODSNAME_EN AS \"GOODSNAME_EN\" FROM V_COST_PINGGU_MATERIAL m",
+        "linkColumn": "DOCID",
+        "columns": [
+          {
+            "field": "Details ID",
+            "header": "Details ID"
+          },
+          {
+            "field": "Summary ID",
+            "header": "Summary ID"
+          },
+          {
+            "field": "Manufacturing Category",
+            "header": "Manufacturing Category"
+          },
+          {
+            "field": "Material ID",
+            "header": "Material ID"
+          },
+          {
+            "field": "Material Name",
+            "header": "Material Name"
+          },
+          {
+            "field": "Qty/tablet (mg)",
+            "header": "Qty/tablet (mg)"
+          },
+          {
+            "field": "Additional Qty",
+            "header": "Additional Qty"
+          },
+          {
+            "field": "Qty/batch",
+            "header": "Qty/batch"
+          },
+          {
+            "field": "Last Purchase Qty",
+            "header": "Last Purchase Qty"
+          },
+          {
+            "field": "Unit price (VAT included)",
+            "header": "Unit price (VAT included)"
+          },
+          {
+            "field": "Reference Unit Price",
+            "header": "Reference Unit Price"
+          },
+          {
+            "field": "Cost/batch (VAT included)",
+            "header": "Cost/batch (VAT included)"
+          },
+          {
+            "field": "Manufacturer Name",
+            "header": "Manufacturer Name"
+          },
+          {
+            "field": "Specification",
+            "header": "Specification"
+          },
+          {
+            "field": "Strength",
+            "header": "Strength"
+          },
+          {
+            "field": "Remark",
+            "header": "Remark"
+          },
+          {
+            "field": "GOODSNAME_EN",
+            "header": "GOODSNAME_EN"
+          }
+        ]
+      },
+      {
+        "sheet": "包材明细",
+        "sql": "SELECT m.DOCID AS DOCID, m.DTLID AS \"Details ID\", m.DOCID AS \"Summary ID\", m.DTL_USEFLAG AS \"Manufacturing Category\", m.GOODSID AS \"Material ID\", m.GOODSNAME AS \"Material Name\", m.PER_HL AS \"Qty/tablet (mg)\", m.EXADD_MATER AS \"Additional Qty\", m.BATCH_QTY AS \"Qty/batch\", m.SUQTY AS \"Last Purchase Qty\", m.PRICE AS \"Unit price (VAT included)\", m.BASE_PRICE AS \"Reference Unit Price\", m.COST_BATCH AS \"Cost/batch (VAT included)\", m.FACTORYNAME AS \"Manufacturer Name\", m.STANDARDTYPE AS \"Specification\", m.GOODSTYPE AS \"Strength\", m.MEMO AS \"Remark\", m.GOODSNAME_EN AS \"GOODSNAME_EN\" FROM V_COST_PINGGU_PACKAGE m",
+        "linkColumn": "DOCID",
+        "columns": [
+          {
+            "field": "Details ID",
+            "header": "Details ID"
+          },
+          {
+            "field": "Summary ID",
+            "header": "Summary ID"
+          },
+          {
+            "field": "Manufacturing Category",
+            "header": "Manufacturing Category"
+          },
+          {
+            "field": "Material ID",
+            "header": "Material ID"
+          },
+          {
+            "field": "Material Name",
+            "header": "Material Name"
+          },
+          {
+            "field": "Qty/tablet (mg)",
+            "header": "Qty/tablet (mg)"
+          },
+          {
+            "field": "Additional Qty",
+            "header": "Additional Qty"
+          },
+          {
+            "field": "Qty/batch",
+            "header": "Qty/batch"
+          },
+          {
+            "field": "Last Purchase Qty",
+            "header": "Last Purchase Qty"
+          },
+          {
+            "field": "Unit price (VAT included)",
+            "header": "Unit price (VAT included)"
+          },
+          {
+            "field": "Reference Unit Price",
+            "header": "Reference Unit Price"
+          },
+          {
+            "field": "Cost/batch (VAT included)",
+            "header": "Cost/batch (VAT included)"
+          },
+          {
+            "field": "Manufacturer Name",
+            "header": "Manufacturer Name"
+          },
+          {
+            "field": "Specification",
+            "header": "Specification"
+          },
+          {
+            "field": "Strength",
+            "header": "Strength"
+          },
+          {
+            "field": "Remark",
+            "header": "Remark"
+          },
+          {
+            "field": "GOODSNAME_EN",
+            "header": "GOODSNAME_EN"
+          }
+        ]
+      }
+    ]
+  }
+}
