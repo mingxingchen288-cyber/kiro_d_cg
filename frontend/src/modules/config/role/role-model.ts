@@ -1,7 +1,8 @@
 /**
  * 角色权限（C06 第 8 节、FC-04），对照旧系统 `views/_builtin/permission/index.vue`：
  * - 页面权限树：勾选页面授权，已授权的页面可以"配置按钮""配置列""配置行"；
- * - 按钮权限：全部按钮（`["*"]`）或按区域分组勾选（`system:save`、`master:copyRow`、`COST_MATERIAL:addRow`、`export:<编码>`）；
+ * - 按钮权限：全部按钮（`["*"]`），或者勾选页面级的保存、高级查询（`system:save`），每个区域的新增、删除、修改
+ *   （`master:modify`、`COST_MATERIAL:addRow`，C06 v24 第 8 节），其余区域按钮（`master:copyRow`）和导出（`export:<编码>`）；
  * - 列权限：按区域列出字段的可见、可编辑（C06 另允许增加必填），只能收紧；
  * - 行权限：可视化配置或自定义 SQL；可视化条件生成的 SQL 与旧系统 generateSqlFromConditions 相同。
  */
@@ -106,23 +107,48 @@ export interface ButtonGroup {
   buttons: ButtonChoice[];
 }
 
-const SYSTEM_BUTTONS: ButtonChoice[] = [
+/** 页面级的权限：保存（没有时整页只读）、高级查询 */
+export const PAGE_BUTTONS: ButtonChoice[] = [
   { key: 'system:save', label: '保存' },
-  { key: 'system:addRow', label: '新增' },
-  { key: 'system:deleteRow', label: '删除' },
   { key: 'system:advancedSearch', label: '高级查询' }
 ];
 
-/** 页面的按钮分组：页面级按钮、各区域按钮（分组显示区域标题）、导出配置 */
+/** 区域的新增、删除、修改（C06 v24 第 8 节，用户 2026-10-30"控制到明细级别"），权限键为 `<区域>:<动作>` */
+export const ROW_ACTIONS = [
+  { action: 'addRow', label: '新增' },
+  { action: 'deleteRow', label: '删除' },
+  { action: 'modify', label: '修改' }
+] as const;
+
+export interface AreaPermissionRow {
+  /** `master` 或明细实体编码 */
+  area: string;
+  /** 主表为"主表"，明细取页面配置中的标题，例如"原料/辅料""包材" */
+  title: string;
+  /** 依次为新增、删除、修改的权限键 */
+  choices: ButtonChoice[];
+}
+
+const MASTER_TITLE = '主表';
+
+/** 增删改表：一行一个区域，主表在前，明细按页面配置的顺序；单表页只有主表 */
+export function areaPermissionRows(page: PageContent): AreaPermissionRow[] {
+  const areas = [
+    { area: 'master', title: MASTER_TITLE },
+    ...(page.details ?? []).map(d => ({ area: d.entity, title: d.title }))
+  ];
+  return areas.map(a => ({ ...a, choices: ROW_ACTIONS.map(r => ({ key: `${a.area}:${r.action}`, label: r.label })) }));
+}
+
+const inMatrix = (action: string) => action === 'addRow' || action === 'deleteRow';
+
+/** 其余的区域按钮（复制、业务按钮、保存列配置，分组显示区域标题）和导出配置；新增、删除在增删改表中 */
 export function buttonGroups(page: PageContent, exports: Array<{ key: string; name: string }>): ButtonGroup[] {
-  const groups: ButtonGroup[] = [{ groupName: '页面', buttons: SYSTEM_BUTTONS }];
-  groups.push({
-    groupName: page.title,
-    buttons: (page.master.buttons ?? []).map(b => ({ key: `master:${b.action}`, label: b.label }))
-  });
-  for (const detail of page.details ?? []) {
-    groups.push({ groupName: detail.title, buttons: (detail.buttons ?? []).map(b => ({ key: `${detail.entity}:${b.action}`, label: b.label })) });
-  }
+  const choices = (area: string, buttons: Array<{ action: string; label: string }> | undefined) =>
+    (buttons ?? []).filter(b => !inMatrix(b.action)).map(b => ({ key: `${area}:${b.action}`, label: b.label }));
+  const groups: ButtonGroup[] = [{ groupName: MASTER_TITLE, buttons: choices('master', page.master.buttons) }];
+  for (const detail of page.details ?? [])
+    groups.push({ groupName: detail.title, buttons: choices(detail.entity, detail.buttons) });
   if (exports.length) groups.push({ groupName: '导出', buttons: exports.map(e => ({ key: `export:${e.key}`, label: e.name })) });
   return groups.filter(g => g.buttons.length);
 }

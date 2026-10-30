@@ -10,11 +10,18 @@
         "buttons": [
           "system:save",
           "system:advancedSearch",
+          "master:modify",
           "master:copyRow",
           "master:generateFromBom",
           "master:saveGridConfig",
+          "COST_MATERIAL:addRow",
+          "COST_MATERIAL:deleteRow",
+          "COST_MATERIAL:modify",
           "COST_MATERIAL:copyRow",
           "COST_MATERIAL:saveGridConfig",
+          "COST_PACKAGE:addRow",
+          "COST_PACKAGE:deleteRow",
+          "COST_PACKAGE:modify",
           "COST_PACKAGE:copyRow",
           "COST_PACKAGE:saveGridConfig"
         ],
@@ -68,7 +75,8 @@
       },
       "GOODS_PRICE_MANAGE": {
         "buttons": [
-          "system:addRow",
+          "master:addRow",
+          "master:modify",
           "system:save",
           "system:advancedSearch",
           "master:copyRow",

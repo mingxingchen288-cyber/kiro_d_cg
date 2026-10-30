@@ -36,8 +36,12 @@ export function isErpRow(region: ViewRegion, values: FieldValues, isNew: boolean
   return String(values[region.erpRow.column] ?? '') === region.erpRow.value;
 }
 
-/** 主键、主从关联字段、计算字段、`erpRow.column` 都不能写；ERP 列在没有 `erpRow` 的实体上不能写，有时只在 ERP 行上不能写 */
+/**
+ * 主键、主从关联字段、计算字段、`erpRow.column` 都不能写；ERP 列在没有 `erpRow` 的实体上不能写，有时只在 ERP 行上不能写。
+ * 区域的 `canModify` 为 false（角色没有 `<区域>:modify`，C05 v8）时，已经保存的行整行不能写；新增、复制出的行不受影响。
+ */
 function writableOnRow(region: ViewRegion, field: ViewField, values: FieldValues, isNew: boolean) {
+  if (!isNew && region.canModify === false) return false;
   if (field.name === region.primaryKey) return false;
   if ('parentKey' in region && field.name === region.parentKey) return false;
   if (field.calculated) return false;
@@ -48,7 +52,8 @@ function writableOnRow(region: ViewRegion, field: ViewField, values: FieldValues
 
 /**
  * 字段在这一行上是否由用户填写（C02 第 1 节、C06 第 2 节）：主键、主从关联字段、计算字段、`erpRow.column` 不能；
- * ERP 列在没有 `erpRow` 的实体上都不能，有 `erpRow` 时只在 ERP 行上不能；其余按页面视图的 `editable`。
+ * ERP 列在没有 `erpRow` 的实体上都不能，有 `erpRow` 时只在 ERP 行上不能；角色不能修改这个区域时已经保存的行都不能；
+ * 其余按页面视图的 `editable`。
  */
 export function fieldEditable(region: ViewRegion, field: ViewField, values: FieldValues, isNew: boolean) {
   return field.editable && writableOnRow(region, field, values, isNew);

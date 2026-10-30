@@ -9,7 +9,7 @@ import pytest
 
 from cost_platform.authz import OperationPermissionStage, RolePermissionChecker
 from cost_platform.contracts.fakes import FakeUnitOfWorkFactory
-from cost_platform.contracts.types import CommandState, ExecutionContext
+from cost_platform.contracts.types import CommandState, ExecutionContext, RoleConfig
 
 from ..contracts.support import sample_command
 from ..contracts.test_permission_checker import PermissionCheckerContract
@@ -57,7 +57,8 @@ class TestRolePermissionChecker(PermissionCheckerContract):
 
 
 class OperationPermissionStageHarness:
-    """C02 第 1 节的保存命令（主表修改，原辅料明细新增、修改、删除）：ADMIN（`*`）通过；技术中心没有 system:deleteRow，被拒。"""
+    """C02 第 1 节的保存命令（主表修改，原辅料明细新增、修改、删除）：ADMIN（`*`）通过；只有保存和原辅料修改的角色
+    （端到端场景 3 新建的角色）不能改主表、不能增删原辅料，被拒。"""
 
     kinds = frozenset({"操作权限"})
 
@@ -69,15 +70,16 @@ class OperationPermissionStageHarness:
     def close(self) -> None:
         self._stack.close()
 
-    def _case(self, role_code: str) -> StageCase:
+    def _case(self, role_code: str, granted: RoleConfig | None = None) -> StageCase:
         return StageCase(kind="操作权限", stage=self._stage, state=CommandState(command=sample_command()),
-                         ctx=context(snapshot(role_code)), uow=self._uow)
+                         ctx=context(snapshot(role_code, granted)), uow=self._uow)
 
     def cases(self) -> list[StageCase]:
         return [self._case("ADMIN")]
 
     def failing_cases(self) -> list[StageCase]:
-        return [self._case("技术中心")]
+        save_and_modify = role("技术中心", **{COST_PINGGU: {"buttons": ["system:save", f"{COST_MATERIAL}:modify"]}})
+        return [self._case("技术中心", save_and_modify)]
 
 
 class TestOperationPermissionStage(PipelineStageContract):

@@ -619,17 +619,11 @@ export class PageRuntime {
   // ================================================================ 按钮（FP-14）
 
   /**
-   * 区域中显示的按钮：新增、删除只在页面配置放了这两个按钮的区域显示，且要 `systemButtons` 含对应项；
-   * 其他按钮按区域的 `buttons` 显示，顺序为页面配置的顺序。
+   * 区域中显示的按钮：按区域的 `buttons`，顺序为页面配置的顺序。后端只放角色在这个区域有权限的按钮，新增、删除也按区域
+   * 授权（C05 v8、C06 v24 第 8 节），只在页面配置放了这两个按钮的区域出现。
    */
   regionButtons(region: ViewRegion): ViewButton[] {
-    const view = this.view.value;
-    if (!view) return [];
-    return region.buttons.filter(button => {
-      if (button.action === 'addRow' || button.action === 'deleteRow')
-        return view.systemButtons.includes(button.action);
-      return true;
-    });
+    return this.view.value ? region.buttons : [];
   }
 
   /** 按钮是否可用：没有选中行时 requiresSelection 的按钮不可用；没有保存按钮时整页只读，新增、删除、复制不可用 */

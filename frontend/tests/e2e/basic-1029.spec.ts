@@ -7,8 +7,9 @@
  *    （10-29 改的是备注，现在备注随产品 Lookup 回填写库、一直可写，见 FIELD 的说明。）
  * 2. 部门和账号：系统管理 → 部门管理新增部门，人员管理新增账号（部门选新部门，初始密码用界面预填的值）。
  * 3. 角色权限（@shared-config，新建角色会重新生成成本核算的页面视图并发 config.changed）：配置 → 角色权限新建角色，
- *    成本核算只给"保存"按钮、原辅料"额外投料量"不可编辑；系统管理 → 角色人员把测试账号加进去；
- *    从登录页退出 admin、换测试账号登录，核对菜单、按钮、可编辑，改主表备注再改回。
+ *    成本核算只给"保存"按钮和原料/辅料的"修改"、原辅料"额外投料量"不可编辑；系统管理 → 角色人员把测试账号加进去；
+ *    从登录页退出 admin、换测试账号登录，核对菜单、按钮、可编辑（主表不能改），改原辅料一行的备注并保存。
+ *    （2026-10-30 新增、删除、修改改为按区域给，C06 v24 第 8 节：只给保存时什么都不能改，按新规则多给原辅料的修改。）
  * 4a. 审批流配置（@shared-config）：配置 → 成本核算 → 审批流新建 C06 7.8 的成本明细改价审批（只配第 1 级），
  *    保存后读回的配置与 7.8 逐项相同。用自己的流程编码、保存为不启用，不影响别的保存。
  * 4b. 审批：chengben01 改测试物料的单价提交审批、单据冻结；admin 在待办中通过；chengben01 收到"已通过"，
@@ -262,7 +263,10 @@ test('场景 2 部门和账号：系统管理新增部门、新增账号（部�
 
 // ---------------------------------------------------------------- 3 角色权限
 
-/** 配置 → 角色权限：新增角色、勾选成本核算、按钮只给"保存"、原辅料额外投料量不可编辑、保存角色 */
+/**
+ * 配置 → 角色权限：新增角色、勾选成本核算、按钮只给"保存"和原料/辅料的"修改"、原辅料额外投料量不可编辑、保存角色。
+ * 2026-10-30 起新增、删除、修改按区域给（C06 v24 第 8 节），只给保存时什么都不能改，所以另给原料/辅料的修改。
+ */
 async function createRole(page: Page, code: string, name: string) {
   await openMenu(page, '配置');
   await page.waitForURL('**/config**');
@@ -284,6 +288,9 @@ async function createRole(page: Page, code: string, name: string) {
   const saveBox = buttons.getByRole('checkbox', { name: '保存', exact: true }).first();
   await saveBox.click();
   await expect(saveBox).toBeChecked();
+  const modifyBox = buttons.locator('tr[data-area="COST_MATERIAL"]').getByRole('checkbox', { name: '修改', exact: true });
+  await modifyBox.click();
+  await expect(modifyBox).toBeChecked();
   await buttons.getByRole('button', { name: '确定' }).click();
   await expect(buttons).toHaveCount(0);
 
@@ -319,7 +326,7 @@ async function pageButtons(page: Page) {
 }
 
 test(
-  '场景 3 角色权限：新建角色只给保存、额外投料量不可编辑，分配给测试账号；换账号登录后菜单、按钮、可编辑按角色',
+  '场景 3 角色权限：新建角色只给保存和原辅料的修改、额外投料量不可编辑，分配给测试账号；换账号登录后菜单、按钮、可编辑按角色',
   { lock: 'page.COST_PINGGU', tag: '@shared-config' },
   async ({ page, fresh, data, adminApi }) => {
     const suffix = crypto.randomUUID().slice(0, 6).toUpperCase();
@@ -332,7 +339,7 @@ test(
     await createRole(page, code, name);
     const role = (await adminApi.get(`/api/config/items/role/${code}`)).content;
     expect(role.admin).toBeFalsy();
-    expect(role.pages.COST_PINGGU.buttons).toEqual(['system:save']);
+    expect(role.pages.COST_PINGGU.buttons).toEqual(['system:save', 'COST_MATERIAL:modify']);
     expect(role.pages.COST_PINGGU.columns.COST_MATERIAL.EXADD_MATER.editable).toBe(false);
 
     // 系统管理 → 角色人员：把测试账号加进这个角色
@@ -380,7 +387,7 @@ test(
       PRICE: await canEdit(user, await cell(materials, line, 'PRICE')),
       MEMO: await canEdit(user, await cell(materials, line, 'MEMO')),
       masterMEMO: await canEdit(user, await cell(masterGrid(user), doc.docId, 'MEMO'))
-    }).toEqual({ EXADD_MATER: false, PRICE: true, MEMO: true, masterMEMO: true });
+    }).toEqual({ EXADD_MATER: false, PRICE: true, MEMO: true, masterMEMO: false });
     // 右键菜单没有明细新增、复制、删除
     await (await cell(materials, line, 'MEMO')).click({ button: 'right' });
     await nextFrame(user);
@@ -388,16 +395,14 @@ test(
     for (const b of ['明细新增', '明细复制', '明细删除']) expect(contextMenu.join()).not.toContain(b);
     await user.keyboard.press('Escape');
 
-    // 主表备注改为"成本会计测试"保存，再改回原值
-    const memo = () => cell(masterGrid(user), doc.docId, 'MEMO');
+    // 原料/辅料这一行的备注改为"成本会计测试"保存（测试成本单结束时删除，不用改回）
+    const memo = () => cell(materials, line, 'MEMO');
     await edit(user, await memo(), '成本会计测试');
     mustSave(await save(user));
     await toast(user, '已保存');
     await expect(await memo()).toHaveText('成本会计测试');
-    await edit(user, await memo(), data.marker);
-    mustSave(await save(user));
-    await expect(await memo()).toHaveText(data.marker);
-    expect((await adminApi.record(doc.docId)).master.values.MEMO).toBe(data.marker);
+    const saved = (await adminApi.record(doc.docId)).details.COST_MATERIAL.find(r => r.rowKey === line)!;
+    expect(saved.values.MEMO).toBe('成本会计测试');
     await closeMenu(user);
   }
 );

@@ -30,7 +30,9 @@
   | `addRow`（新增行） | 否 |
   | `saveGridConfig`（保存列配置） | 否 |
 
-  页面视图中区域按钮的 `copyRow`、`saveGridConfig` 按此表给出 `requiresSelection`；`addRow`、`deleteRow` 是页面级按钮（C05 的 `systemButtons`），前端按此表决定没有选中行时是否可用。业务动作的 `requiresSelection` 取页面配置中的值。
+  页面视图中区域按钮的内置动作按此表给出 `requiresSelection`，业务动作的取页面配置中的值。
+
+  按钮按角色过滤（C05 v8、C06 v24 第 8 节）：区域按钮只留角色有 `<区域>:<动作>` 或 `*` 的，新增、删除也一样按区域（`<区域>:addRow`、`<区域>:deleteRow`），`systemButtons` 只有 `save`、`advancedSearch`。区域的 `canModify` 为角色有没有 `<区域>:modify`：没有时为 false，字段的 `editable` 不因此改变（新增、复制出的行仍按 `editable` 填写），前端把这个区域已保存的行整行设为只读。旧代码生成的页面视图（`systemButtons` 带 `addRow`、`deleteRow`，没有 `canModify`）照样能读，下次保存任何配置时按 CF-02 重新生成。
 
   页面字段的 `aggregate`（汇总行求和，C06 v18 第 3 节）原样带进页面视图的字段（C05 v4），没有设置时省略；保存时只能用于数值字段（C06 第 10 节）。
   不可编辑的字段是本区域可编辑字段的 Lookup 回填目标（`fillBack` 为 true）、有写入列且在 `writableFields` 中时，页面视图的字段标 `fillWritable`（C05 v5），与 authz AZ-04 接受的回填字段相同：例如成本核算主表的产品名称、规格不能直接填写，随产品 Lookup 回填后写库。

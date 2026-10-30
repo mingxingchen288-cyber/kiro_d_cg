@@ -90,7 +90,12 @@ export const ViewMaster = object('ViewMaster', {
   buttons: array(ViewButton),
   grid: GridOptions,
   formLayout: array(FormCell),
-  erpRow: optional(nullable(ErpRow))
+  erpRow: optional(nullable(ErpRow)),
+  /**
+   * C05 v8：当前角色能否修改本区域已经保存的行（角色权限 `<区域>:modify`）。为 false 时这些行整行只读；
+   * 新增、复制出的行不受影响，按 `fields[].editable`。为 true 时省略。
+   */
+  canModify: optional(bool)
 });
 export type ViewMaster = Infer<typeof ViewMaster>;
 
@@ -103,13 +108,19 @@ export const ViewDetail = object('ViewDetail', {
   buttons: array(ViewButton),
   grid: GridOptions,
   formLayout: array(FormCell),
-  erpRow: optional(nullable(ErpRow))
+  erpRow: optional(nullable(ErpRow)),
+  /** 同 ViewMaster.canModify */
+  canModify: optional(bool)
 });
 export type ViewDetail = Infer<typeof ViewDetail>;
 
 export const PackRef = object('PackRef', { packId: code, version: int });
 export type PackRef = Infer<typeof PackRef>;
 
+/**
+ * C05 v8 起后端只给出 `save`、`advancedSearch`；新增、删除按区域授权，见区域的 `buttons`。`addRow`、`deleteRow`
+ * 留着是为了能读 v8 之前生成、还没重新生成的页面视图，页面不用这两项。
+ */
 export const SystemButton = literal('save', 'addRow', 'deleteRow', 'advancedSearch');
 export type SystemButton = Infer<typeof SystemButton>;
 

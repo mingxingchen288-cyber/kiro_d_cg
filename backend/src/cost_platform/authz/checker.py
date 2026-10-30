@@ -5,6 +5,8 @@
 
 对照旧系统（cost-server `auth` 包）：
 - 按钮：`PagePermission.hasButton`，`*` 或包含该键；键的分组由组件表名改为区域编码（C06 第 8 节）。
+- 新增、删除、修改：旧后端保存时只检查 save（`DynamicDataService.java` 第 1095 行）；新平台按用户 2026-10-30 的要求
+  "权限可以按照新增 删除 修改 保存 这样给吗？控制到明细级别"，按区域检查（C06 v24 第 8 节、`patch_denials`）。
 - 页面访问：`PermissionService.getPagePermission` 为 null（角色没有该页面）时拒绝查询、保存和导出。
 - 行权限：`PermissionService.parseRowFilter`，可视化写法取 `sql`、自定义写法取整串；旧系统把 `${userId}`、
   `${username}` 拼进 SQL，这里换成绑定变量。只加在主表上（`DynamicDataService.query` 的 `isDetailTable`）。
@@ -20,12 +22,14 @@ from cost_platform.contracts.types import (
     Command,
     DetailAdd,
     DetailDelete,
+    DetailModify,
     EntityConfig,
     ErrorCode,
     ErrorDetail,
     ExecutionContext,
     MasterAdd,
     MasterDelete,
+    MasterModify,
     PageView,
     PlatformError,
     RolePage,
@@ -36,9 +40,9 @@ from cost_platform.contracts.types import (
 
 ALL_BUTTONS = "*"
 SAVE_KEY = "system:save"
-ADD_KEY = "system:addRow"
-DELETE_KEY = "system:deleteRow"
 MASTER_AREA = "master"
+ADD_ACTION, COPY_ACTION, MODIFY_ACTION, DELETE_ACTION = "addRow", "copyRow", "modify", "deleteRow"
+"""区域的新增、复制、修改、删除：权限键为 `<区域>:<动作>`（C06 v24 第 8 节）。"""
 
 _BIND_NAMES = {"userId": "rp_user_id", "username": "rp_username"}
 _PLACEHOLDER = re.compile(r"\$\{(userId|username)\}")
@@ -98,35 +102,50 @@ class RolePermissionChecker:
         return any(self.has_button(ctx, page, key) for key in keys)
 
     def patch_denials(self, ctx: ExecutionContext, command: Command) -> list[ErrorDetail]:
-        """AZ-01：Patch 中的新增行需要 `system:addRow` 或该区域的 `copyRow`（复制出的行在后端也是新增行），
-        删除需要 `system:deleteRow`。返回不满足的行，每行一条明细；都满足时为空。"""
+        """AZ-01：Patch 中的行按所在区域（主表为 `master`，明细为明细实体编码）检查（C06 v24 第 8 节）：
+        - 新增行需要 `<区域>:addRow` 或 `<区域>:copyRow`（复制出的行在后端也是新增行）；
+        - 已有行的修改（`changes` 不为空）需要 `<区域>:modify`；
+        - 删除需要 `<区域>:deleteRow`；删除主表行连同明细（WP-06），只看 `master:deleteRow`，不看这张单据的明细。
+        返回不满足的行，每行一条明细；都满足时为空。按钮动作展开的修改、审批通过时的写入不在 Patch 中，不在这里检查。"""
         page = command.page
         if page is None or not command.documents:
             return []
-        can_add = self.has_button(ctx, page, ADD_KEY)
-        can_delete = self.has_button(ctx, page, DELETE_KEY)
         denials: list[ErrorDetail] = []
 
+        def allowed(area: str, *actions: str) -> bool:
+            return any(self.has_button(ctx, page, f"{area}:{action}") for action in actions)
+
         def add(area: str, entity: str, client_row_id: str) -> None:
-            if not can_add and not self.has_button(ctx, page, f"{area}:copyRow"):
-                denials.append(ErrorDetail(message=f"没有新增行的权限：需要 {ADD_KEY} 或 {area}:copyRow",
+            if not allowed(area, ADD_ACTION, COPY_ACTION):
+                denials.append(ErrorDetail(message=f"没有新增行的权限：需要 {area}:{ADD_ACTION} 或 {area}:{COPY_ACTION}",
                                            entity=entity, client_row_id=client_row_id))
 
-        def delete(entity: str, row_key: str) -> None:
-            if not can_delete:
-                denials.append(ErrorDetail(message=f"没有删除行的权限：需要 {DELETE_KEY}", entity=entity, row_key=row_key))
+        def modify(area: str, entity: str, row_key: str) -> None:
+            if not allowed(area, MODIFY_ACTION):
+                denials.append(ErrorDetail(message=f"没有修改行的权限：需要 {area}:{MODIFY_ACTION}", entity=entity,
+                                           row_key=row_key))
+
+        def delete(area: str, entity: str, row_key: str) -> None:
+            if not allowed(area, DELETE_ACTION):
+                denials.append(ErrorDetail(message=f"没有删除行的权限：需要 {area}:{DELETE_ACTION}", entity=entity,
+                                           row_key=row_key))
 
         for patch in command.documents:
             master = patch.master
+            if isinstance(master, MasterDelete):
+                delete(MASTER_AREA, patch.entity, master.row_key)
+                continue
             if isinstance(master, MasterAdd):
                 add(MASTER_AREA, patch.entity, master.client_row_id)
-            elif isinstance(master, MasterDelete):
-                delete(patch.entity, master.row_key)
+            elif isinstance(master, MasterModify) and master.changes:
+                modify(MASTER_AREA, patch.entity, master.row_key)
             for detail in patch.details:
                 if isinstance(detail, DetailAdd):
                     add(detail.entity, detail.entity, detail.client_row_id)
+                elif isinstance(detail, DetailModify) and detail.changes:
+                    modify(detail.entity, detail.entity, detail.row_key)
                 elif isinstance(detail, DetailDelete):
-                    delete(detail.entity, detail.row_key)
+                    delete(detail.entity, detail.entity, detail.row_key)
         return denials
 
     # ------------------------------------------------------------ AZ-03 行权限

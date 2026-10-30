@@ -580,6 +580,9 @@ class ViewMaster(Wire):
     grid: GridOptions
     form_layout: list[FormCell]
     erp_row: ErpRow | None = None
+    can_modify: Bool = True
+    """C05 v8：当前角色能否修改本区域已经保存的行（角色权限 `<区域>:modify`，C06 第 8 节）。为 false 时这些行的字段
+    都不能编辑；新增、复制出的行不受影响，按 `fields[].editable`。为 true 时省略。"""
 
 
 class ViewDetail(Wire):
@@ -592,6 +595,8 @@ class ViewDetail(Wire):
     grid: GridOptions
     form_layout: list[FormCell]
     erp_row: ErpRow | None = None
+    can_modify: Bool = True
+    """同 `ViewMaster.can_modify`，权限键为 `<明细实体>:modify`。"""
 
 
 class PackRef(Wire):
@@ -600,6 +605,8 @@ class PackRef(Wire):
 
 
 SystemButton: TypeAlias = Literal["save", "addRow", "deleteRow", "advancedSearch"]
+"""C05 v8 起 config 只给出 `save`、`advancedSearch`；新增、删除按区域授权，见区域的 `buttons`。`addRow`、`deleteRow`
+留在这里，是为了能读 v8 之前生成、下次保存配置前还没重新生成的页面视图，前端不用这两项。"""
 
 
 class PageView(Wire):
