@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from cost_platform.contracts.ports import UnitOfWork
 from cost_platform.contracts.types import (
     ApprovalFlowConfig,
+    ApprovalView,
     DocumentPatch,
     DocumentRef,
     ErrorCode,
@@ -60,6 +61,7 @@ def _record_row(record: ApprovalRecord) -> dict[str, Any]:
         "pending_status": record.pending_status,
         "result": _dumps(record.result),
         "finished_at": record.finished_at,
+        "final_view": None if record.final_view is None else _dumps(dump_wire(ApprovalView, record.final_view)),
     }
 
 
@@ -74,6 +76,7 @@ def _to_record(row: Any) -> ApprovalRecord:
         submitted_at=row.submitted_at, flows=flows, triggers=triggers, patch=parse_wire(DocumentPatch, pending["patch"]),
         key_map=dict(pending["keyMap"]), progress=decode_progress(json.loads(row.progress)), params=json.loads(row.params),
         pending_status=row.pending_status, result=json.loads(row.result), finished_at=row.finished_at,
+        final_view=None if row.final_view is None else parse_wire(ApprovalView, json.loads(row.final_view)),
     )
 
 

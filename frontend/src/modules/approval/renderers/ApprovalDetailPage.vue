@@ -4,6 +4,8 @@
  * 卡片依次为审批进度、来源单据主表（审批中时带"待生效"）、修改明细（每张明细表一个卡片 Tab）、受影响单据（每块一个卡片 Tab，
  * 标题后显示条数）、处理（意见、人工参数、撤回 / 驳回 / 通过）。旧系统是全屏弹窗，这里是路由 `/approval/:approvalId` 的页面。
  * 旧系统折叠显示的"审批记录"（动作日志）在 C09 的审批详情中没有对应字段，各次处理的人、时间和意见在审批进度中显示。
+ * 已结束的审批，修改内容为结束那一刻存下的值（C06 7.6）；结束时没有保存的（`viewUnsaved`），写明没有保存，对照旧系统
+ * "该审批未保存修改内容展示数据"。
  */
 import { computed, onMounted } from 'vue';
 import type { ShellApi } from '../../../contracts/shell';
@@ -27,6 +29,8 @@ const detail = runtime.detail;
 const view = runtime.view;
 
 const pending = computed(() => detail.value?.status === 'pending');
+/** 已结束的审批显示结束那一刻存下的修改内容；结束时没有保存的（C06 7.6），不显示修改内容，写明没有保存 */
+const unsaved = computed(() => detail.value?.viewUnsaved === true);
 const actions = computed(() => detail.value?.actions ?? { canPass: false, canReject: false, canWithdraw: false });
 const hasActions = computed(() => actions.value.canPass || actions.value.canReject || actions.value.canWithdraw);
 const busy = computed(() => state.loading || state.previewing || state.submitting);
@@ -136,7 +140,14 @@ onMounted(() => {
           <ApprovalStepsGrid :steps="detail?.steps ?? []" />
         </section>
 
-        <template v-if="view">
+        <section v-if="unsaved" class="approval-card" aria-label="修改内容">
+          <h2>修改内容</h2>
+          <NAlert type="warning" :bordered="false">
+            这个审批结束时的修改前、修改后的值没有保存，无法显示修改内容。
+          </NAlert>
+        </section>
+
+        <template v-if="view && !unsaved">
           <section class="approval-card">
             <h2>
               {{ view.master.title || '主表变更' }}
@@ -145,7 +156,7 @@ onMounted(() => {
                 <template #trigger>
                   <button type="button" class="approval-help" aria-label="修改内容说明">ⓘ</button>
                 </template>
-                {{ pending ? '修改后的值为本次待审修改按计算规则重算的结果，尚未生效' : '显示审批时的修改前后的值' }}
+                {{ pending ? '修改后的值为本次待审修改按计算规则重算的结果，尚未生效' : '显示审批结束时的修改前、修改后的值' }}
               </NTooltip>
             </h2>
             <ApprovalViewGrid kind="master" :columns="view.master.columns" :rows="view.master.rows" />

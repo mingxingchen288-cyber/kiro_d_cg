@@ -9,6 +9,9 @@
 驳回、撤回（AP-11、AP-12）：写处理记录和原因，审批状态改为已驳回或已撤回，待审修改标为作废，删除本审批的冻结记录，
 生成通知意图。驳回必须填写原因；只有发起人能撤回，只要有人做过通过就不能撤回。
 
+结束（最终通过、驳回、撤回）时把那一刻的修改内容存进审批（`final_view`），已结束的审批详情显示它（C06 7.6）；
+对照旧系统送审时存下展示快照、查看历史不再执行 SQL（`ApprovalPresentationService.readSnapshot`）。
+
 命令的执行上下文来源为本审批（C04）：可以写本审批冻结的数据，写入不再触发审批。
 对照旧系统 `ConfiguredApprovalRuntime.approve`、`approveComposite`、`reject`、`cancel`、`finish`、`applyPending`。
 """
@@ -241,6 +244,8 @@ class ProcessStage:
         record.result = results
         record.pending_status = "applied"
         record.finished_at = ctx.now
+        # 结束那一刻的修改内容：修改前为加锁读到的当前数据，修改后为要写的值重算后的结果，以后数据再变也按它显示（C06 7.6）
+        record.final_view = computation.view
         self.deps.store.release(uow, record.approval_id)
         state.notifications += notify.intents(record, "passed", directory)
 
@@ -335,6 +340,8 @@ class ProcessStage:
         if not decision.allowed:
             raise PlatformError(ErrorCode.PERMISSION_DENIED, decision.reason or "不能处理这个审批")
         level = record.progress.level
+        # 结束那一刻的修改内容：按此时的数据和勾选算一次存下，以后数据再变也按它显示（C06 7.6）
+        record.final_view = self.evaluator.compute(uow, ctx, record, self.deps.store.affected(uow, record.approval_id)).view
         record.progress = decision.progress
         record.pending_status = "void"
         record.finished_at = ctx.now

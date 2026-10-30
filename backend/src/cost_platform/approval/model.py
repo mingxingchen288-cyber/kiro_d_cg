@@ -1,7 +1,8 @@
 """审批数据（模块说明第 2 节）在内存中的结构，以及存进 CLOB 列时的 JSON 编码。
 
 一个审批：所属页面、来源单据、发起人、提交时间、状态、提交时命中的各审批流定义（AP-13）、触发本审批的行、待审修改
-（含新增行提交时取得的主键）、各级各节点进度、各级填写的参数、执行结果。受影响单据的行和处理记录各有一张表。
+（含新增行提交时取得的主键）、各级各节点进度、各级填写的参数、执行结果、结束那一刻的修改内容。受影响单据的行和处理记录
+各有一张表。
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from decimal import Decimal
 from typing import Any, Literal
 
 from cost_platform.contracts.decimal_text import format_decimal
-from cost_platform.contracts.types import ApprovalFlowConfig, DocumentPatch, DocumentRef, RowOp, Value
+from cost_platform.contracts.types import ApprovalFlowConfig, ApprovalView, DocumentPatch, DocumentRef, RowOp, Value
 
 from .routing import Member, Node, Progress
 
@@ -103,6 +104,8 @@ class ApprovalRecord:
     result: list[dict[str, Any]] = field(default_factory=list)
     """执行结果：最终批准时每一步写入或跳过（AP-21 的"记录已不存在"）。"""
     finished_at: datetime | None = None
+    final_view: ApprovalView | None = None
+    """结束（通过、驳回、撤回）那一刻的修改内容，已结束的审批详情显示它（C06 7.6）；待审时、以及结束时没有保存的为空。"""
 
     @property
     def status(self) -> str:

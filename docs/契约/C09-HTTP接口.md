@@ -161,6 +161,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 - 受影响单据中记录已不存在的行（`keyColumn` 为空，approval AP-21）排在这一块最后：`missing` 为 true，`op` 为 `none`，`cells` 为查到的值；没有 `ref` 和 `checked`，不能勾选。前端整行红底，显示"记录已不存在"（frontend-approval FA-09）。
 - 同一账号在本级多个节点中待处理时，通过一次即计入这些节点（approval AP-16）；通过请求的 `checkedRows` 列出当前用户能改勾选的各块中勾选的行，用 `flow`、`block` 指出属于哪个审批流的哪一块；这些块中没有列出的行就是取消了，只能从上一级保留的行中选；不能改勾选的块不用提交，保持上一级的结果。
 - 任何已登录的用户都能查看审批详情和进度，`actions` 给出当前用户能做的操作。
+- 已结束的审批（`status` 为 `approved`、`rejected`、`withdrawn`）：`view` 为结束那一刻存下的修改内容，不再按当前数据计算（C06 7.6、[approval](../模块/approval.md) AP-23），`editable` 都为 false，`params` 为空数组，`actions` 都为 false。结束时没有存下、也不能从已有记录还原的，另给出 `"viewUnsaved": true`，`view` 的 `master.rows`、`details`、`affected` 都为空，前端写明结束时的值没有保存；其他情况省略 `viewUnsaved`（C01 第 1 节）。
 - `params` 是当前用户这次通过要填写的人工参数，格式同 C06 7.1 的 `params`：取各审批流中 `source` 为 `manual`、`level` 为当前级别的参数；这次通过会使审批到达终点时，还包括不带 `level` 的参数。不是本级待处理的审批人，或者没有要填写的参数时，为空数组。
 - 打开详情或预览之后结果发生变化时，通过返回 409 RECONFIRM_REQUIRED，前端重新读取详情。
 - 不是本级尚未处理的审批人提交通过或驳回，不是发起人提交撤回，或者已有人做过通过之后提交撤回，返回 403 PERMISSION_DENIED。

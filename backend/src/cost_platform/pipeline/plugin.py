@@ -6,10 +6,13 @@
 `/api/admin/command-review`（执行上下文取 assembly 的 `ContextProvider`）。
 
 命令审查的开关和记录在 Redis（`{ns}:cmdlog`、`{ns}:cmdlog:enabled`）；Redis 客户端在第一次读写时才连接，setup 不连 Redis。
+
+start 预读已发布实体（`EntityDirectory.tables`）的表的列定义，stop 停掉后台检查（`warmup.py`，WP-15）。
 """
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import redis
@@ -20,6 +23,7 @@ from cost_platform.contracts.ports import (
     CommandMonitor,
     CommandRecorder,
     ContextProvider,
+    EntityDirectory,
     PermissionChecker,
     PipelineStage,
     RulesEngine,
@@ -39,6 +43,7 @@ from .stages import LockStage, MergeIntentsStage, MergePatchesStage, Recalculate
 from .table_writer import OracleTableWriter
 from .tracing import SqlTracer
 from .values import ColumnScales
+from .warmup import SchemaWarmup
 from .writer import ChangeWriter
 
 MIGRATIONS = Path(migrations.__file__).parent
@@ -51,7 +56,7 @@ REDIS_TIMEOUT_SECONDS = 5
 class PipelinePlugin:
     name = "pipeline"
     provides = (CommandRecorder, TableWriter, CommandMonitor, PipelineStage, APIRouter)
-    requires = (PermissionChecker, RulesEngine, SchemaInspector, Clock, ContextProvider)
+    requires = (PermissionChecker, RulesEngine, SchemaInspector, Clock, ContextProvider, EntityDirectory)
 
     def __init__(self, lock_wait_seconds: int, request_wait_seconds: int, redis_url: str, redis_namespace: str) -> None:
         """`lock_wait_seconds`：加锁读取等锁的秒数（`FOR UPDATE WAIT n`）；`request_wait_seconds`：同一请求键仍在处理时
@@ -61,12 +66,14 @@ class PipelinePlugin:
         self._request_wait = request_wait_seconds
         self._redis_url = redis_url
         self._redis_namespace = redis_namespace
+        self._warmup: SchemaWarmup  # setup 中创建，start 中预读
 
     def setup(self, reg: PluginView) -> None:
         permission = reg.get(PermissionChecker)
         engine = reg.get(RulesEngine)
         inspector = reg.get(SchemaInspector)
         scales = ColumnScales(inspector)
+        self._warmup = SchemaWarmup(scales, reg.get(EntityDirectory))
         store = OracleDocumentStore(self._lock_wait)
         loader = DocumentLoader(store, permission)
         tables = OracleTableWriter(self._lock_wait, inspector)
@@ -86,3 +93,11 @@ class PipelinePlugin:
         ]
         for stage in stages:
             reg.add(PipelineStage, stage)
+
+    async def start(self) -> None:
+        """预读已发布实体的表的列定义，读完才返回（平台在全部插件 start 之后才接受请求）；再启动后台检查（`warmup.py`）。
+        排在 config 之后 start（依赖 `ContextProvider`、`EntityDirectory`），这时配置已预热。"""
+        await asyncio.to_thread(self._warmup.start)
+
+    async def stop(self) -> None:
+        await asyncio.to_thread(self._warmup.stop)

@@ -48,3 +48,14 @@ def test_column_scales_come_from_table_columns() -> None:
     assert scales.scale(MATERIAL_ENTITY.table, "USAGE") is None
     scales.scale(MATERIAL_ENTITY.table, "USAGE")
     assert len(inspector.calls_to("columns")) == 1  # 同一张表只查一次
+
+
+def test_preloaded_tables_are_not_read_again_when_saving() -> None:
+    """启动时预读成本核算的两张表：之后保存时取小数位不再读列定义；已读过的表再预读也不读。"""
+    inspector = scales_inspector({("T_COST_PINGGU_DTL", "PRICE"): 2})
+    scales = ColumnScales(inspector)
+    assert scales.preload(["T_COST_PINGGU", "T_COST_PINGGU_DTL"]) == ["T_COST_PINGGU", "T_COST_PINGGU_DTL"]
+    assert len(inspector.calls_to("columns")) == 2
+    assert scales.scale(MATERIAL_ENTITY.table, "PRICE") == 2
+    assert scales.preload(["T_COST_PINGGU_DTL", "T_COST_GOODS"]) == ["T_COST_GOODS"]
+    assert [c.args[0] for c in inspector.calls_to("columns")] == ["T_COST_PINGGU", "T_COST_PINGGU_DTL", "T_COST_GOODS"]

@@ -54,6 +54,13 @@ class EntityDirectoryContract:
             t.TableEntity(entity="COST_GOODS_PRICE", master="COST_GOODS_PRICE", parent_key=None)]
         assert directory.entities_on_table("T_COST_NOT_REGISTERED") == []
 
+    def test_tables(self, directory: Any) -> None:
+        """实体写入的表去重、按名称排列；两个明细共用的 T_COST_PINGGU_DTL 只出现一次。d_cg 上还有别的已发布实体，所以只要求
+        包含这三张表。"""
+        tables = directory.tables()
+        assert tables == sorted(set(tables))
+        assert {"T_COST_GOODS", "T_COST_PINGGU", "T_COST_PINGGU_DTL"} <= set(tables)
+
 
 class TestFakeEntityDirectory(EntityDirectoryContract):
     @pytest.fixture
