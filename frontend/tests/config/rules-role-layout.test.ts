@@ -9,7 +9,7 @@ import { ItemEditor } from '../../src/modules/config/core/item-editor';
 import { FormLayoutModel, toGrid } from '../../src/modules/config/layout/form-layout';
 import { columnPolicy, columnRows, generateRowSql, rowPolicyForm, rowPolicyValue } from '../../src/modules/config/role/role-model';
 import { RuleEditor } from '../../src/modules/config/rules/rule-editor';
-import { matchCondition } from '../../src/modules/config/rules/rule-model';
+import { matchCondition, validateCondition } from '../../src/modules/config/rules/rule-model';
 import { createBackend, notifier } from './support';
 
 describe('规则表单（FC-06）', () => {
@@ -44,6 +44,15 @@ describe('规则表单（FC-06）', () => {
         { when: "matches(GOODSNAME, '硬片|铝箔|复合膜')", expression: 'PER_HL * master.APEX_PL * (1 + EXADD_MATER / 100) / 1000000' }
       ]
     });
+  });
+
+  it('条件里的值含单引号：用双引号括起，不转义（ZEN 的字符串没有转义，同后端 expressions._string）', () => {
+    expect(matchCondition('GOODSNAME', 'equals', "乙酰'唑胺")).toBe(`GOODSNAME == "乙酰'唑胺"`);
+    expect(matchCondition('GOODSNAME', 'contains', "乙酰'唑胺")).toBe(`contains(GOODSNAME, "乙酰'唑胺")`);
+    expect(matchCondition('GOODSNAME', 'notContains', "乙酰'唑胺")).toBe(`not contains(GOODSNAME, "乙酰'唑胺")`);
+    expect(validateCondition('GOODSNAME', 'pattern', "乙酰'唑胺|硬片")).toBe(`not matches(GOODSNAME, "乙酰'唑胺|硬片")`);
+    // 不含单引号时仍用单引号
+    expect(matchCondition('GOODSNAME', 'equals', '乙酰唑胺')).toBe("GOODSNAME == '乙酰唑胺'");
   });
 
   it('ERP 来的物料整行不能编辑：可编辑规则，可视化条件，保存内容与 C06 样例相同', async () => {
