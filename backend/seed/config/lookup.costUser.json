@@ -1,0 +1,16 @@
+{
+  "type": "lookup",
+  "key": "costUser",
+  "name": "人员选择",
+  "content": {
+    "table": "V_COST_USER",
+    "columns": [
+      "USERNAME",
+      "REAL_NAME"
+    ],
+    "keywordColumns": [
+      "USERNAME",
+      "REAL_NAME"
+    ]
+  }
+}

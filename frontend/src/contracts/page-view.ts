@@ -54,6 +54,11 @@ export const ViewField = object('ViewField', {
   lookup: nullable(LookupSetting),
   /** 汇总行（C06 第 3 节 `aggregate`）：`sum` 为这一列在表格底部的汇总行中求和；没有设置时省略 */
   aggregate: optional(nullable(literal('sum'))),
+  /**
+   * C05 v5：不可编辑、但随本区域可编辑字段的 Lookup 回填写库的字段为 true（例如成本核算主表的产品名称）；否则省略。
+   * 用户不能直接填写，Lookup 回填和复制带来的值写进命令（authz AZ-04 接受）。
+   */
+  fillWritable: optional(bool),
   default: optional(nullable(FieldDefault)),
   compare: optional(nullable(FieldCompareView))
 });

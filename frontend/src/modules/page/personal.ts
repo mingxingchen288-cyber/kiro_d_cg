@@ -21,6 +21,16 @@ export function columnsToApply(region: ViewRegion, grid: PersonalGrid | undefine
   return (grid?.columns ?? []).filter(c => visible.has(c.field));
 }
 
+/**
+ * 列的先后，与刷新页面后相同（表格按页面视图的字段顺序建列，再按个人配置的列排序，AG Grid 把个人配置中没有的列按原来的
+ * 先后排在后面）：个人配置中的可见列按个人配置，其余可见列按页面视图的顺序排在后面。
+ */
+export function columnOrder(region: ViewRegion, grid: PersonalGrid | undefined): string[] {
+  const own = columnsToApply(region, grid).map(c => c.field);
+  const rest = region.fields.filter(f => f.visible && !own.includes(f.name)).map(f => f.name);
+  return [...own, ...rest];
+}
+
 function sameColumns(a: PersonalColumn[], b: PersonalColumn[]) {
   return JSON.stringify(a) === JSON.stringify(b);
 }

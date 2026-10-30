@@ -7,8 +7,14 @@
     "kind": "save",
     "writableFields": {
       "COST_PINGGU": [
+        "GOODSID",
+        "GOODSNAME",
+        "GOODSNAME_EN",
+        "STRENGTH",
+        "MA_NO",
         "ANNUAL_QTY",
         "APEX_PL",
+        "MAH",
         "P_PERPACK",
         "S_PERBACK",
         "PACKTYPE",
@@ -19,8 +25,13 @@
         "YIELD",
         "OUT_PRICE_F",
         "COST_PERQP",
+        "CUSTOMID",
+        "CUSTOMNAME",
         "MEMO",
+        "COUNTRY",
         "FMRATE",
+        "TRANPOSID",
+        "LIVERY",
         "PINGGU_CLASS",
         "BUSINESS_USER"
       ],

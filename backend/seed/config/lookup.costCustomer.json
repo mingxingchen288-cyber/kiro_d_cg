@@ -1,0 +1,22 @@
+{
+  "type": "lookup",
+  "key": "costCustomer",
+  "name": "客户选择",
+  "content": {
+    "table": "V_COST_CUSTOMER_LOOKUP",
+    "columns": [
+      "CUSTOMID",
+      "CUSTOMNAME",
+      "COUNTRY",
+      "LIVERY",
+      "TRANPOSID"
+    ],
+    "keywordColumns": [
+      "CUSTOMID",
+      "CUSTOMNAME",
+      "COUNTRY",
+      "LIVERY",
+      "TRANPOSID"
+    ]
+  }
+}

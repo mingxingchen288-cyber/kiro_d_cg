@@ -531,6 +531,9 @@ class ViewField(Wire):
     lookup: ViewLookup | None
     aggregate: Aggregate | None = None
     """汇总行：`sum` 为在表格底部的汇总行中求和（C06 第 3 节）；没有时省略。"""
+    fill_writable: Bool = False
+    """字段不可编辑，但它是本区域可编辑字段的 Lookup 回填目标（`fillBack` 为 true），且保存时能写（在保存操作的
+    `writableFields` 中、有写入列，authz 的 AZ-04）：前端把 Lookup 回填和复制带来的值写进命令。为 false 时省略。"""
 
 
 class ViewButton(Wire):

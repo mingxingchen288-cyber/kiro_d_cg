@@ -378,9 +378,6 @@
       }
     ],
     "fieldDefaults": {
-      "GOODSID": {
-        "editable": false
-      },
       "GOODSNAME": {
         "editable": false
       },
@@ -394,9 +391,6 @@
         "editable": false
       },
       "MAH": {
-        "editable": false
-      },
-      "CUSTOMID": {
         "editable": false
       },
       "CUSTOMNAME": {

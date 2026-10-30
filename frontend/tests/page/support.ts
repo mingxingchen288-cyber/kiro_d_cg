@@ -170,6 +170,8 @@ export class FakeGrid implements GridPort {
   reloads: boolean[] = [];
   applied: PersonalColumn[] | null = null;
   state: PersonalColumn[] = [];
+  /** orderColumns 每次给出的列的先后 */
+  readonly ordered: string[][] = [];
 
   updateRows(ids: string[]) {
     this.updated.push(ids);
@@ -207,6 +209,9 @@ export class FakeGrid implements GridPort {
   applyColumnState(columns: PersonalColumn[]) {
     this.applied = columns;
   }
+  orderColumns(ids: string[]) {
+    this.ordered.push([...ids]);
+  }
   stopEditing() {}
   neighbor(id: string, offset: -1 | 1) {
     return this.ids[this.ids.indexOf(id) + offset] ?? null;
@@ -217,8 +222,14 @@ export class FakeGrid implements GridPort {
   }
 }
 
-/** 打开成本核算页：主表第一页是 2550、2551，单据加载按 RECORDS */
-export async function openCostPage(view: PageView = costView(), setup?: (fake: ReturnType<typeof createFakeShell>) => void) {
+/**
+ * 打开成本核算页：主表第一页是 2550、2551，单据加载按 RECORDS；`records` 给出时主表第一页和单据加载都按它（按给出的顺序）。
+ */
+export async function openCostPage(
+  view: PageView = costView(),
+  setup?: (fake: ReturnType<typeof createFakeShell>) => void,
+  records: Record<string, RecordResponse> = RECORDS
+) {
   const fake = createFakeShell({
     user: { userId: '1', username: 'zhangsan', displayName: '张三', departmentId: '10' },
     role: { code: 'COST_ACCOUNTANT', name: '成本会计', admin: false }
@@ -227,12 +238,12 @@ export async function openCostPage(view: PageView = costView(), setup?: (fake: R
   fake.http.on('GET', '/api/pages/:pageCode/view', view);
   fake.http.on('GET', '/api/pages/:pageCode/personal', {});
   fake.http.on('POST', '/api/pages/:pageCode/rows', {
-    rows: [RECORDS['2550'].master, RECORDS['2551'].master],
-    total: 2,
+    rows: Object.values(records).map(r => r.master),
+    total: Object.keys(records).length,
     aggregates: {}
   });
   fake.http.on('GET', '/api/pages/:pageCode/records/:recordKey', (call: { params: Record<string, string> }) =>
-    structuredClone(RECORDS[call.params.recordKey])
+    structuredClone(records[call.params.recordKey])
   );
   const runtime = new PageRuntime(MASTER, {
     api: createPlatformApi(fake.http),

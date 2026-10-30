@@ -4,7 +4,7 @@
 可见、可编辑只能收紧，必填只能增加。字段本身不能编辑的情况：`role` 不是 `input`（计算字段、系统字段）、`column` 为 null
 （只在 readView 中）、没有 `erpRow` 的实体的 ERP 列、`erpRow.column` 本身（只由平台写，C06 第 2 节）。
 可编辑再与页面保存操作的 `writableFields` 取交集（C05）：后端保存时按它拒绝（authz 的 `writable_fields`），
-页面上显示能编辑的字段，保存时一定能写。
+页面上显示能编辑的字段，保存时一定能写。不可编辑、但随可编辑字段的 Lookup 回填写库的字段标 `fillWritable`（C05）。
 
 按钮：区域按钮按页面配置的顺序，只留当前角色有权限的：`addRow`、`deleteRow` 是页面级按钮，要 `system:<动作>`
 （同时列在 `systemButtons` 中），前端只在页面配置放了这两个按钮的区域显示它们（C05、frontend-page 的 FP-14）；
@@ -45,13 +45,17 @@ PAGE_LEVEL_ACTIONS = frozenset({"addRow", "deleteRow"})
 Layer = FieldFlags | FieldSetting | None
 
 
+def _structural(field: EntityField, entity: EntityConfig) -> bool:
+    """字段本身能不能写：只有 `role` 为 `input`、有写入列的字段，不含没有 `erpRow` 的实体的 ERP 列和 `erpRow.column`。"""
+    return (field.role == "input" and field.column is not None
+            and not (field.source == "erp" and entity.erp_row is None)
+            and not (entity.erp_row is not None and field.name == entity.erp_row.column))
+
+
 def field_state(field: EntityField, entity: EntityConfig, layers: Sequence[Layer]) -> tuple[bool, bool, bool]:
     """（可见、可编辑、必填）：各层叠加，可见、可编辑只能收紧，必填只能增加。"""
     visible = all(layer is None or layer.visible is not False for layer in layers)
-    writable = (field.role == "input" and field.column is not None
-                and not (field.source == "erp" and entity.erp_row is None)
-                and not (entity.erp_row is not None and field.name == entity.erp_row.column))
-    editable = writable and all(layer is None or layer.editable is not False for layer in layers)
+    editable = _structural(field, entity) and all(layer is None or layer.editable is not False for layer in layers)
     required = any(layer is not None and layer.required is True for layer in layers)
     return visible, editable, required
 
@@ -70,7 +74,15 @@ def _view_field(field: EntityField, entity: EntityConfig, setting: FieldSetting 
 
 def _fields(entity: EntityConfig, settings: Mapping[str, FieldSetting], columns: Mapping[str, FieldFlags],
             writable: Collection[str]) -> list[ViewField]:
-    return [_view_field(f, entity, settings.get(f.name), columns.get(f.name), writable) for f in entity.fields]
+    """区域的字段。不可编辑的字段是本区域可编辑字段的 Lookup 回填目标、有写入列且在 `writableFields` 中时，
+    `fillWritable` 为 true（与 authz AZ-04 接受的回填字段相同）：例如成本核算主表的产品名称不能直接填写，
+    但随产品 Lookup 回填后要写库（旧系统 useLookupDialog.ts 回填不看目标列能否编辑，DynamicDataService 照样写入）。"""
+    fields = [_view_field(f, entity, settings.get(f.name), columns.get(f.name), writable) for f in entity.fields]
+    targets = {target for f in fields if f.editable and f.lookup is not None and f.lookup.fill_back for target in f.lookup.fill}
+    own = {f.name: f for f in entity.fields}
+    return [f.model_copy(update={"fill_writable": True})
+            if not f.editable and f.name in targets and f.name in writable and _structural(own[f.name], entity) else f
+            for f in fields]
 
 
 def _allowed(grant: RolePage, key: str) -> bool:

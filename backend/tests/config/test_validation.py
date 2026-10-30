@@ -146,8 +146,8 @@ def test_layers_pass(env: Env) -> None:
 
 
 def test_layers_rejected(env: Env) -> None:
-    page = edited("page", "COST_PINGGU", lambda c: c["master"].update(fields={"GOODSID": {"editable": True}}))
-    assert_rejected(problems(env, page), "master.fields.GOODSID.editable", "只能收紧可编辑")
+    page = edited("page", "COST_PINGGU", lambda c: c["master"].update(fields={"GOODSNAME": {"editable": True}}))
+    assert_rejected(problems(env, page), "master.fields.GOODSNAME.editable", "只能收紧可编辑")
     page = edited("page", "COST_PINGGU", lambda c: c["master"].update(fields={"MEMO": {"visible": False, "required": True}}))
     role = edited("role", "ADMIN", lambda c: c["pages"]["COST_PINGGU"].update(
         columns={"master": {"MEMO": {"visible": True, "required": False}}}))

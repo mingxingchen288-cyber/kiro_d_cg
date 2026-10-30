@@ -41,6 +41,9 @@ function compareRenderer(runtime: PageRuntime, entity: string, field: ViewField,
   };
 }
 
+/** 空单元格（汇总行中不求和的布尔列） */
+const emptyCell = () => '';
+
 function filterOf(field: ViewField): ColDef['filter'] {
   if (field.type === 'number') return 'agNumberColumnFilter';
   if (field.type === 'date' || field.type === 'datetime') return 'agDateColumnFilter';
@@ -145,6 +148,8 @@ export function buildColumns(runtime: PageRuntime, region: ViewRegion, withFormC
       // 复选框：勾选即修改（C01：JSON 中为 true/false）
       column.cellDataType = 'boolean';
       column.valueFormatter = undefined;
+      // 底部汇总行（FP-17）不求和布尔列：不画复选框，留空；其他行用 AG Grid 的复选框
+      column.cellRendererSelector = params => (params.node.rowPinned ? { component: emptyCell } : undefined);
     } else if (field.type === 'date') {
       column.cellDataType = 'dateString';
     } else {

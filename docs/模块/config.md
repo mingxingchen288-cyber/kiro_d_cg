@@ -33,6 +33,7 @@
   页面视图中区域按钮的 `copyRow`、`saveGridConfig` 按此表给出 `requiresSelection`；`addRow`、`deleteRow` 是页面级按钮（C05 的 `systemButtons`），前端按此表决定没有选中行时是否可用。业务动作的 `requiresSelection` 取页面配置中的值。
 
   页面字段的 `aggregate`（汇总行求和，C06 v18 第 3 节）原样带进页面视图的字段（C05 v4），没有设置时省略；保存时只能用于数值字段（C06 第 10 节）。
+  不可编辑的字段是本区域可编辑字段的 Lookup 回填目标（`fillBack` 为 true）、有写入列且在 `writableFields` 中时，页面视图的字段标 `fillWritable`（C05 v5），与 authz AZ-04 接受的回填字段相同：例如成本核算主表的产品名称、规格不能直接填写，随产品 Lookup 回填后写库。
 - CF-04：发布状态与生效时点。
   - 表 `PF_CONFIG_GENERATION` 只有一行，记录配置代号。每次保存都把代号加一，配置快照的版本号和 `X-Config-Version` 就是这个代号。
   - 一次保存的状态依次为：待生效（Redis 中已登记待生效标记，Oracle 尚未提交）→ 已生效（Oracle 已提交）→ 已同步（Redis 已切换到新代号）。Oracle 提交的那一刻就是生效时点。

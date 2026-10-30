@@ -36,17 +36,31 @@ export function isErpRow(region: ViewRegion, values: FieldValues, isNew: boolean
   return String(values[region.erpRow.column] ?? '') === region.erpRow.value;
 }
 
+/** 主键、主从关联字段、计算字段、`erpRow.column` 都不能写；ERP 列在没有 `erpRow` 的实体上不能写，有时只在 ERP 行上不能写 */
+function writableOnRow(region: ViewRegion, field: ViewField, values: FieldValues, isNew: boolean) {
+  if (field.name === region.primaryKey) return false;
+  if ('parentKey' in region && field.name === region.parentKey) return false;
+  if (field.calculated) return false;
+  if (region.erpRow && field.name === region.erpRow.column) return false;
+  if (field.source === 'erp') return Boolean(region.erpRow) && !isErpRow(region, values, isNew);
+  return true;
+}
+
 /**
  * 字段在这一行上是否由用户填写（C02 第 1 节、C06 第 2 节）：主键、主从关联字段、计算字段、`erpRow.column` 不能；
  * ERP 列在没有 `erpRow` 的实体上都不能，有 `erpRow` 时只在 ERP 行上不能；其余按页面视图的 `editable`。
  */
+export function fieldEditable(region: ViewRegion, field: ViewField, values: FieldValues, isNew: boolean) {
+  return field.editable && writableOnRow(region, field, values, isNew);
+}
+
+/**
+ * 字段能否写进命令：用户能填写的字段（fieldEditable），以及不能直接填写、但随 Lookup 回填写库的字段
+ * （C05 `fillWritable`，例如成本核算主表的产品名称；旧系统 useLookupDialog.ts 回填不看目标列能否编辑，
+ * DynamicDataService 照样写入）。
+ */
 export function fieldWritable(region: ViewRegion, field: ViewField, values: FieldValues, isNew: boolean) {
-  if (field.name === region.primaryKey) return false;
-  if ('parentKey' in region && field.name === region.parentKey) return false;
-  if (field.calculated || !field.editable) return false;
-  if (region.erpRow && field.name === region.erpRow.column) return false;
-  if (field.source === 'erp') return Boolean(region.erpRow) && !isErpRow(region, values, isNew);
-  return true;
+  return (field.editable || Boolean(field.fillWritable)) && writableOnRow(region, field, values, isNew);
 }
 
 // ---- 默认值（FP-15，C06 第 2 节；旧系统 useWorkingSetStore.ts 的 resolveColumnDefaultValue）

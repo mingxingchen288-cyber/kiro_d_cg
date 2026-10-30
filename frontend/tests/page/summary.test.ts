@@ -134,4 +134,24 @@ describe('汇总行', () => {
     ]);
     expect(runtime.summaryRow(MATERIAL)?.AMOUNT).toBe('1512.5');
   });
+
+  it('汇总行的布尔列（原辅料的"客户指定"）不画复选框；普通行照常用 AG Grid 的复选框', async () => {
+    const view = summedView();
+    view.details[0].fields.push({
+      ...view.details[0].fields[0],
+      name: 'CUSTOMER_SPECIFIED',
+      label: '客户指定',
+      type: 'boolean'
+    });
+    const { runtime } = await openCostPage(view);
+    const columns = buildColumns(runtime, runtime.view.value!.details[0], false);
+    const specified = columns.find(c => c.colId === 'CUSTOMER_SPECIFIED')!;
+    expect(specified.cellDataType).toBe('boolean');
+    const select = specified.cellRendererSelector as (p: unknown) => { component: () => string } | undefined;
+    const pinned = select({ node: { rowPinned: 'bottom' }, data: { __id: SUMMARY_ROW_ID } });
+    expect(pinned?.component()).toBe('');
+    expect(select({ node: { rowPinned: undefined }, data: { __id: '206323' } })).toBeUndefined();
+    // 其他列不受影响
+    expect(columns.find(c => c.colId === 'AMOUNT')!.cellRendererSelector).toBeUndefined();
+  });
 });
