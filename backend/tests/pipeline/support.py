@@ -246,6 +246,8 @@ class MemoryStore:
         self.rows = rows if rows is not None else initial_rows()
         self.writes: list[Write] = []
         self.locked: list[tuple[str, list[str]]] = []
+        self.lock_order: list[tuple[str, str]] = []
+        """按先后加上的每个行锁：（物理表、主键），`lock_load` 和 `lock_key` 都记。"""
         self.detail_loads: list[list[str]] = []
         """每次读明细时的单据主键（一次读取一条语句）。"""
         self.denied: set[tuple[str, str]] = set()
@@ -261,6 +263,28 @@ class MemoryStore:
                   row_condition: t.SqlCondition | None = None) -> dict[str, t.Row]:
         keys = sorted(set(row_keys), key=int)
         self.locked.append((entity_code, keys))
+        self.lock_order += [(entity.table, k) for k in keys]
+        return self.read_masters(uow, entity_code, entity, keys, row_condition)
+
+    def lock_key(self, uow: UnitOfWork, table: str, key_column: str, key: str, numeric: bool) -> None:
+        self.lock_order.append((table, key))
+
+    def read_documents(self, uow: UnitOfWork, ctx: t.ExecutionContext,
+                       refs: Sequence[t.DocumentRef]) -> dict[t.DocumentRef, t.DocumentData]:
+        found = {}
+        for ref in refs:
+            if ref.record_key not in self.rows[ref.entity]:
+                continue
+            entity = ENTITIES[ref.entity]
+            details = {link.entity: [self._row(link.entity, k) for k in sorted(self.rows[link.entity], key=int)
+                                     if str(to_wire("number", self.rows[link.entity][k][link.parent_key])) == ref.record_key]
+                       for link in entity.details}
+            found[ref] = t.DocumentData(ref=ref, master=self._row(ref.entity, ref.record_key), details=details)
+        return found
+
+    def read_masters(self, uow: UnitOfWork, entity_code: str, entity: t.EntityConfig, row_keys: list[str],
+                     row_condition: t.SqlCondition | None = None) -> dict[str, t.Row]:
+        keys = sorted(set(row_keys), key=int)
         found = {k: self._row(entity_code, k) for k in keys if k in self.rows[entity_code]}
         if row_condition is not None:
             outside = [k for k in found if (entity_code, k) in self.denied]
@@ -440,7 +464,7 @@ class Pipeline:
         self.recorder = OracleCommandRecorder()
         self.loader = DocumentLoader(self.store, self.setup.permission)
         self.merger = DocumentMerger(self.setup.permission, scales)
-        self.intents = IntentMerger(self.loader, scales)
+        self.intents = IntentMerger(scales)
         self.calc = Recalculator(self.setup.engine, scales)
         self.writer = ChangeWriter(self.store)
         self.stages: list[PipelineStage] = [

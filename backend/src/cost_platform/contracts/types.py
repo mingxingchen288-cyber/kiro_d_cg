@@ -2204,6 +2204,33 @@ class TableEntity:
     parent_key: str | None
 
 
+LockLayer: TypeAlias = Literal["approval", "document", "base"]
+LOCK_LAYERS: tuple[LockLayer, ...] = ("approval", "document", "base")
+"""业务加锁的层级，按加锁的先后（write-pipeline WP-03，用户 2026-10-30）：审批记录（PF_APPROVAL）→ 单据层（有 details 的
+主表实体，例如成本核算）→ 基础数据层（其余注册实体和没注册的表，例如物料清单 T_COST_GOODS）。层级由配置自动判断。"""
+
+
+@dataclass(frozen=True)
+class LockTarget:
+    """一个要加行锁的对象（C08 第 5b 节 `BusinessLocker`）：层级、物理表（大写）、主键列（大写）和主键文本。
+    `numeric` 为 True 时主键按数值比较（主键字段或列是数值类型）。"""
+
+    layer: LockLayer
+    table: str
+    key_column: str
+    key: str
+    numeric: bool
+
+    def order(self) -> tuple[int, str, Decimal | str]:
+        """统一的加锁顺序（WP-03）：层级 → 表名 → 主键。同一张表的主键类型相同，数值与文本不会互相比较。"""
+        return LOCK_LAYERS.index(self.layer), self.table, Decimal(self.key) if self.numeric else self.key
+
+
+class LockScopeChanged(Exception):
+    """加锁前普通读取的本命令单据，锁住后核对时已被别人改了（write-pipeline WP-13 的例外，用户 2026-10-30 规则 4）。
+    由 `BusinessLocker.lock` 抛出；编排回滚整个事务，用新的范围把整条命令重来一次，命令记录随事务重新插入。"""
+
+
 PackHandle: TypeAlias = object
 """rules-core 的 load_pack 返回的句柄，对调用方不透明。"""
 
@@ -2280,3 +2307,7 @@ class CommandState:
     escape_hatch_calls: list[dict[str, Any]] = dc_field(default_factory=list)
     """逃生舱的调用记录（OP-04）：每次调用一项，已是写进命令记录的 JSON（键为 camelCase，值按 C01 写成文本）。"""
     outcome: Outcome | None = None
+    defer_lock: bool = False
+    """为 True 时"加锁读取"只普通读取 `involved` 中的单据、不加锁（WP-03）：approval 在"确定涉及的单据"按配置判断触发审批
+    要冻结排在本单据之前或同层的数据时设置（例如物料清单改价冻结成本单）；由"触发审批"把这些单据和要冻结的数据按统一
+    顺序一次锁完并核对（AP-02）。"""

@@ -1,6 +1,7 @@
 """写没在平台注册的表（WP-19，C06 7.5）：审批流全部通过后，approval 对受影响单据勾选的行执行的操作。
 
-按主键用 `SELECT … FOR UPDATE WAIT n` 加行锁读出整行；approval 做冻结检查后，按主键只写指定的列，不校验、不计算，
+按主键加行锁读出整行（`locks.lock_row_sql`，纳入统一加锁顺序，基础数据层；最终批准时这些行已在"确定涉及的单据"锁住，
+这里再锁一次并读出）；approval 做冻结检查后，按主键只写指定的列，不校验、不计算，
 只写实际变化的列（架构 10.4 第 3 步）；数值按 WP-15 处理小数位（列的小数位取 `SchemaInspector`）。改前、改后的列值
 记入审计差异，由 `changes(uow)` 取出，随命令记录写入（WP-11，不看页面的 audit）。新增行的主键取序列 `<表名>_SEQ`。
 
@@ -23,6 +24,7 @@ from cost_platform.contracts.decimal_text import format_decimal
 from cost_platform.contracts.ports import SchemaInspector, UnitOfWork
 from cost_platform.contracts.types import DocumentRef, RowChange, Value
 
+from .locks import LockBook, lock_row_sql, row_target
 from .values import ColumnScales, round_decimal
 
 
@@ -57,9 +59,12 @@ class _Unit:
 
 
 class OracleTableWriter:
-    def __init__(self, lock_wait_seconds: int, inspector: SchemaInspector) -> None:
+    """`book` 为本事务已持有的锁（与加锁读取、`BusinessLocker` 共用，plugin.py 接线）；省略时用自己的。"""
+
+    def __init__(self, lock_wait_seconds: int, inspector: SchemaInspector, book: LockBook | None = None) -> None:
         self._wait = int(lock_wait_seconds)
         self._inspector = inspector
+        self._book = book or LockBook()
         self._scales = ColumnScales(inspector)
         self._units: WeakKeyDictionary[UnitOfWork, _Unit] = WeakKeyDictionary()
 
@@ -73,9 +78,9 @@ class OracleTableWriter:
         return list(self._unit(uow).changes)
 
     def lock_row(self, uow: UnitOfWork, table_name: str, key_column: str, key: str) -> dict[str, Value] | None:
-        """读出整行并加行锁；不存在时为 None。列名为数据库中的列名（大写）。"""
-        sql = f"SELECT * FROM {table_name} WHERE {key_column} = :k FOR UPDATE WAIT {self._wait}"
-        result = uow.connection.execute(text(sql), {"k": key})
+        """读出整行并加行锁；不存在时为 None。列名为数据库中的列名（大写）。排在本事务已持有的锁之前时 500（`LockBook`）。"""
+        self._book.claim(uow, [row_target(self._inspector, table_name, key_column, key)])
+        result = uow.connection.execute(text(lock_row_sql(table_name, key_column, self._wait)), {"k": key})
         record = result.mappings().first()
         if record is None:
             return None

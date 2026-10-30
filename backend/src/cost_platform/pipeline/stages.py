@@ -7,7 +7,7 @@
 | 确定涉及的单据 | `loader.PageSaveInvolved` | `command.documents` 不为空 | 每张单据一项 |
 | 加锁读取 | `LockStage` | `involved` 或 `intents` 所属单据中有还没读入 `current` 的已有单据 | `DocumentLoader.lock` |
 | 合并修改 | `MergePatchesStage` | `command.documents` 不为空 | `DocumentMerger.merge_patches` |
-| 合并意图 | `MergeIntentsStage` | `intents` 不为空 | `IntentMerger.absorb`（不再加锁、不再做冻结检查） |
+| 合并意图 | `MergeIntentsStage` | `intents` 不为空 | `IntentMerger.absorb`（不加锁、不做冻结检查） |
 | 计算与规则 | `RecalculateStage` | `changes.rows` 不为空 | `lookups.fill_lookup_fields` + `Recalculator.run` + `check_required` |
 | 写入变更 | `WriteChangesStage` | `changes.rows` 不为空 | `ChangeWriter.apply` |
 
@@ -56,8 +56,9 @@ def _needs_details(state: CommandState, ctx: ExecutionContext) -> Callable[[Docu
 
 class LockStage:
     """加锁读取（WP-03、WP-05、WP-18）：先把 `intents` 所属的、不在 `involved` 中的已有单据按（实体、主键）排序加入
-    `involved`，再把 `involved` 中还没读入的单据加锁读入 `current`。已不存在的单据按 `rowNotFound` 处理（写 `skipped`
-    或 409）。"""
+    `involved`，再把 `involved` 中还没读入的单据按统一顺序加锁读入 `current`（`DocumentLoader.lock`）。动作轮次中新找到的
+    单据只能排在已持有的锁之后（往后找）；往前、同层找到的已在"确定涉及的单据"一起锁住（operations、approval），这里再锁
+    一次并读出。已不存在的单据按 `rowNotFound` 处理（写 `skipped` 或 409）。"""
 
     name = "加锁读取"
 
@@ -90,7 +91,7 @@ class MergePatchesStage:
 
 class MergeIntentsStage:
     """合并意图（WP-18）：把动作、审批展开出的 `intents` 合并进 `candidate` 并清空。所属单据已由这一轮的"加锁读取"
-    读入、由"冻结检查"检查过，所以不再传冻结检查阶段。"""
+    读入、由"冻结检查"检查过，这里不再加锁。"""
 
     name = "合并意图"
 
@@ -101,7 +102,7 @@ class MergeIntentsStage:
         return bool(state.intents)
 
     def run(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> None:
-        self._intents.absorb(uow, state, ctx, freeze=None)
+        self._intents.absorb(uow, state, ctx)
 
 
 def _still_changed(state: CommandState, entity: str, row_key: str, changes: Mapping[str, BusinessValue]) -> bool:

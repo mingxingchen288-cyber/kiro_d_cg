@@ -1,6 +1,7 @@
 """write-pipeline 的插件（架构 6.1，`.reports/modules/plugin-spec.md` 第 1、2 节）。
 
 提供：`CommandRecorder`（判重、命令结果、命令记录）、`TableWriter`（审批通过后写没注册的表，交给 approval）、
+`BusinessLocker`（业务加锁的统一入口，交给 approval、operations，`locks.py`）、
 `CommandMonitor`（命令审查 WP-17，orchestration 包在整个命令事务外面）、管道阶段"确定涉及的单据"（页面保存）、
 "加锁读取"、"合并修改"、"合并意图"、"计算与规则"、"写入变更"（`stages.py`），以及 C09 第 7a 节的路由
 `/api/admin/command-review`（执行上下文取 assembly 的 `ContextProvider`）。
@@ -19,6 +20,7 @@ import redis
 from fastapi import APIRouter
 
 from cost_platform.contracts.ports import (
+    BusinessLocker,
     Clock,
     CommandMonitor,
     CommandRecorder,
@@ -37,6 +39,7 @@ from .calc import Recalculator
 from .command_log import OracleCommandRecorder
 from .document_store import OracleDocumentStore
 from .loader import DocumentLoader, PageSaveInvolved
+from .locks import LockBook, PipelineLocks
 from .merge import DocumentMerger, IntentMerger
 from .review import RedisCommandMonitor, RedisCommandReview, command_review_router
 from .stages import LockStage, MergeIntentsStage, MergePatchesStage, RecalculateStage, WriteChangesStage
@@ -55,7 +58,7 @@ REDIS_TIMEOUT_SECONDS = 5
 
 class PipelinePlugin:
     name = "pipeline"
-    provides = (CommandRecorder, TableWriter, CommandMonitor, PipelineStage, APIRouter)
+    provides = (CommandRecorder, TableWriter, BusinessLocker, CommandMonitor, PipelineStage, APIRouter)
     requires = (PermissionChecker, RulesEngine, SchemaInspector, Clock, ContextProvider, EntityDirectory)
 
     def __init__(self, lock_wait_seconds: int, request_wait_seconds: int, redis_url: str, redis_namespace: str) -> None:
@@ -74,10 +77,12 @@ class PipelinePlugin:
         inspector = reg.get(SchemaInspector)
         scales = ColumnScales(inspector)
         self._warmup = SchemaWarmup(scales, reg.get(EntityDirectory))
+        book = LockBook()  # 加锁读取、TableWriter、BusinessLocker 共用：同一事务的锁按同一顺序检查（locks.py）
         store = OracleDocumentStore(self._lock_wait)
-        loader = DocumentLoader(store, permission)
-        tables = OracleTableWriter(self._lock_wait, inspector)
+        loader = DocumentLoader(store, permission, book)
+        tables = OracleTableWriter(self._lock_wait, inspector, book)
         reg.provide(TableWriter, tables)
+        reg.provide(BusinessLocker, PipelineLocks(book, store, inspector))
         reg.provide(CommandRecorder, OracleCommandRecorder(self._request_wait, tables))
         client = redis.Redis.from_url(self._redis_url, socket_timeout=REDIS_TIMEOUT_SECONDS)
         review = RedisCommandReview(client, self._redis_namespace)
@@ -87,7 +92,7 @@ class PipelinePlugin:
             PageSaveInvolved(),
             LockStage(loader),
             MergePatchesStage(DocumentMerger(permission, scales)),
-            MergeIntentsStage(IntentMerger(loader, scales)),
+            MergeIntentsStage(IntentMerger(scales)),
             RecalculateStage(Recalculator(engine, scales)),
             WriteChangesStage(ChangeWriter(store)),
         ]

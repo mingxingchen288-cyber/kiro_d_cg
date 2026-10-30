@@ -6,8 +6,10 @@
 一个，AP-09）；一个都没有时按普通保存写入。
 
 进入审批的单据：新增行从序列取得正式主键；保存提交时命中的审批流定义、待审修改和触发行；按 `freeze` 对每个触发行找出
-还要冻结的数据，连同来源单据检查它们是否已在别的审批中（AP-06），登记冻结记录；按 `affected` 块对每个触发行查出受影响
-单据的行，按修改表的主键合并、默认勾选，并检查同一记录会不会被写成两个值（AP-22）；生成给第 1 级审批人的通知意图。
+还要冻结的数据（普通查询），按 write-pipeline 的统一顺序把它们锁住（用户 2026-10-30 规则 2、3：排在本单据之后的这时再锁；
+排在之前或同层的，`TriggerScopeStage` 已让本单据推迟加锁，这时和本单据一起锁），锁住后连同来源单据检查它们是否已在
+别的审批中（AP-06，单独一条语句），登记冻结记录；按 `affected` 块对每个触发行查出受影响单据的行（锁后读），按修改表的
+主键合并、默认勾选，并检查同一记录会不会被写成两个值（AP-22）；生成给第 1 级审批人的通知意图。
 这些单据记入 `pending_documents`，write-pipeline 不写它们；同一命令中其余单据照常写入。
 
 对照旧系统 `ConfiguredApprovalRuntime.beforeSave`（逐个候选流程判断入口、合成一个审批、送审时给新增行取号、保存
@@ -31,7 +33,9 @@ from cost_platform.contracts.types import (
     ExecutionContext,
     FlowLevel,
     FlowNode,
+    LOCK_LAYERS,
     FreezeEntry,
+    LockTarget,
     MasterAdd,
     PlatformError,
     RecordRef,
@@ -42,7 +46,7 @@ from . import notify
 from .approvers import Directory, resolve
 from .catalog import ApprovalCatalog, NamedFlow
 from .deps import ApprovalDeps
-from .freeze import frozen_detail
+from .freeze import check_documents, frozen_detail
 from .model import AffectedRow, ApprovalRecord, FlowSnapshot, TriggerRow
 from .patch import assign_keys, bill_key, key_value, patch_ref
 from .routing import Node, start
@@ -72,6 +76,19 @@ class _Hit:
 
 
 @dataclass
+class _Prepared:
+    """进入审批的一张单据在加锁前算出的部分：取得的主键、触发行的参数、触发行和冻结范围（普通查询）。"""
+
+    hit: _Hit
+    key_map: dict[str, str]
+    bill: str
+    scopes: list[RowScope]
+    triggers: list[TriggerRow]
+    freezes: list[tuple[str, str]]
+    locks: list[LockTarget]
+
+
+@dataclass
 class _Submission:
     ref: DocumentRef
     record: ApprovalRecord
@@ -84,6 +101,45 @@ def node_entered(node: FlowNode, ctx_department: str | None) -> bool:
     return node.enabled and (node.department is None or node.department == ctx_department)
 
 
+def is_page_save(state: CommandState, ctx: ExecutionContext) -> bool:
+    """页面保存、执行上下文不带传播来源时（C04：来源为审批的写入不再触发审批）。"""
+    return ctx.origin.kind == "user" and state.command.page is not None and bool(state.command.documents)
+
+
+class TriggerScopeStage:
+    """"确定涉及的单据"中触发审批的部分（用户 2026-10-30 规则 3）：本页面启用的审批流要冻结排在本单据之前或同层的数据时
+    （冻结表注册过的按所属主表实体的层级，没注册的为基础数据层；例如物料清单改价要冻结含这个物料的成本单），设
+    `CommandState.defer_lock`：加锁读取只普通读取本单据，合并、计算、入口条件和冻结的 SQL 都在加锁前执行一次，"触发审批"
+    再把本单据和要冻结的数据按统一顺序一次锁完并核对本单据（AP-02）。只看配置，不执行 SQL；要冻结的都排在本单据之后时
+    （成本核算改价冻结物料清单）照常先锁本单据，冻结前再锁要冻结的（规则 2）。"""
+
+    name = "确定涉及的单据"
+
+    def __init__(self, deps: ApprovalDeps) -> None:
+        self.deps = deps
+
+    def applies(self, state: CommandState, ctx: ExecutionContext) -> bool:
+        return is_page_save(state, ctx)
+
+    def run(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> None:
+        page = state.command.page or ""
+        catalog = self.deps.catalog(ctx)
+        flows = catalog.flows(page)
+        if not flows:
+            return
+        locks = self.deps.locker()
+        own = LOCK_LAYERS.index(locks.layer(ctx, ctx.config.page_view(page).master.entity))
+        for flow in flows:
+            for item in flow.config.freeze:
+                if not item.enabled:
+                    continue
+                entities = catalog.entities_on_table(item.table)
+                layer = locks.layer(ctx, entities[0].root) if entities else "base"
+                if LOCK_LAYERS.index(layer) <= own:
+                    state.defer_lock = True
+                    return
+
+
 class TriggerStage:
     name = "触发审批"
 
@@ -92,10 +148,11 @@ class TriggerStage:
         self.evaluator = Evaluator(deps)
 
     def applies(self, state: CommandState, ctx: ExecutionContext) -> bool:
-        """页面保存、执行上下文不带传播来源时（C04：来源为审批的写入不再触发审批）。"""
-        return ctx.origin.kind == "user" and state.command.page is not None and bool(state.command.documents)
+        return is_page_save(state, ctx)
 
     def run(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> None:
+        """入口条件和冻结范围在加锁前用普通查询算出；冻结前按统一顺序一次锁完（规则 2、3），之后才读受影响单据、
+        检查冲突、单独一条语句查冻结（规则 6）、登记冻结。"""
         catalog = self.deps.catalog(ctx)
         flows = catalog.flows(state.command.page or "")
         if not flows:
@@ -108,10 +165,12 @@ class TriggerStage:
                 hit = self._entered(uow, state, ctx, flows, ref, patch, rows)
                 if hit is not None:
                     hits.append(hit)
-        if not hits:
+        prepared = [self._prepare(uow, state, ctx, catalog, hit) for hit in hits]
+        self._lock(uow, state, ctx, [target for p in prepared for target in p.locks])
+        if not prepared:
             return
         directory = Directory(self.deps.directory)
-        submissions = [self._prepare(uow, state, ctx, catalog, directory, hit) for hit in hits]
+        submissions = [self._submission(uow, state, ctx, directory, p) for p in prepared]
         self._exclusive(uow, submissions)
         for submission in submissions:
             record = submission.record
@@ -160,10 +219,26 @@ class TriggerStage:
                 found.append(_FlowHit(flow, nodes, sorted(triggered)))
         return _Hit(ref, patch, rows, scopes, found) if found else None
 
+    # ---------------------------------------------------------------- 加锁（WP-03 的统一顺序）
+
+    def _lock(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext, targets: list[LockTarget]) -> None:
+        """冻结前加锁。`defer_lock` 时本命令的单据还没锁（`TriggerScopeStage`）：和要冻结的数据合在一起按统一顺序一次锁完，
+        锁住后核对本单据与加锁前读到的相同（不同时整个事务回滚重来，规则 4），再查本单据的冻结（AP-03，锁后单独一条）。
+        否则本单据已在加锁读取锁住，要冻结的都排在它之后，这时再锁（规则 2）。"""
+        own = [ref for ref in state.involved if ref in state.current] if state.defer_lock else []
+        if not own and not targets:
+            return
+        locks = self.deps.locker()
+        expected = {ref: state.current[ref] for ref in own}
+        locks.lock(uow, ctx, [*(locks.document(ctx, ref) for ref in own), *targets], expected or None)
+        if own:
+            check_documents(self.deps.store, uow, ctx, own)
+
     # ---------------------------------------------------------------- 进入审批（AP-02）
 
     def _prepare(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext, catalog: ApprovalCatalog,
-                 directory: Directory, hit: _Hit) -> _Submission:
+                 hit: _Hit) -> _Prepared:
+        """加锁前的部分：取主键、触发行和冻结范围（普通查询）。"""
         config = ctx.config
         master_entity = config.entity(hit.ref.entity)
         key_map = assign_keys(uow, self.deps.keys, config, hit.patch)
@@ -185,7 +260,15 @@ class TriggerStage:
         triggers = [TriggerRow(id=i, entity=r.entity, op=r.op, row_key=r.row_key or key_map.get(r.client_row_id or ""),
                                client_row_id=r.client_row_id,
                                flows=[f.flow.code for f in hit.flows if i in f.triggered]) for i, r in enumerate(hit.rows)]
-        freezes = self._freezes(uow, catalog, master_entity.table, bill, hit, scopes)
+        freezes, locks = self._freezes(uow, ctx, catalog, master_entity.table, bill, hit, scopes)
+        return _Prepared(hit, key_map, bill, scopes, triggers, freezes, locks)
+
+    def _submission(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext, directory: Directory,
+                    prepared: _Prepared) -> _Submission:
+        """锁住之后的部分：受影响单据（读到的是锁后的值）、写入冲突、第 1 级审批人和审批记录。"""
+        config = ctx.config
+        hit, scopes, bill = prepared.hit, prepared.scopes, prepared.bill
+        master_entity = config.entity(hit.ref.entity)
         affected = self._affected(uow, hit, scopes)
         self._conflicts(uow, hit, scopes, affected)
 
@@ -202,15 +285,17 @@ class TriggerStage:
             operation=state.command.operation, operation_label=config.operation(state.command.operation).label,
             source=DocumentRef(hit.ref.entity, bill), source_label=label, applicant_id=ctx.identity.user_id,
             applicant_name=ctx.identity.display_name, applicant_department=ctx.identity.department_id, submitted_at=ctx.now,
-            flows=[FlowSnapshot(f.flow.code, f.flow.name, f.flow.config) for f in hit.flows], triggers=triggers,
-            patch=hit.patch, key_map=key_map, progress=start([f.flow.code for f in hit.flows], entered),
+            flows=[FlowSnapshot(f.flow.code, f.flow.name, f.flow.config) for f in hit.flows], triggers=prepared.triggers,
+            patch=hit.patch, key_map=prepared.key_map, progress=start([f.flow.code for f in hit.flows], entered),
         )
-        return _Submission(hit.ref, record, affected, freezes)
+        return _Submission(hit.ref, record, affected, prepared.freezes)
 
-    def _freezes(self, uow: UnitOfWork, catalog: ApprovalCatalog, root_table: str, bill: str, hit: _Hit,
-                 scopes: Sequence[RowScope]) -> list[tuple[str, str]]:
-        """要冻结的数据（C06 7.4）：触发审批的单据总是整张冻结；冻结表注册过的，查到的行所属的整张单据冻结；没注册的，
-        只冻结查到的那一行。"""
+    def _freezes(self, uow: UnitOfWork, ctx: ExecutionContext, catalog: ApprovalCatalog, root_table: str, bill: str, hit: _Hit,
+                 scopes: Sequence[RowScope]) -> tuple[list[tuple[str, str]], list[LockTarget]]:
+        """要冻结的数据（C06 7.4）和它们的锁对象：触发审批的单据总是整张冻结（它由加锁读取或 `_lock` 锁住）；冻结表注册过的，
+        查到的行所属的整张单据冻结，锁这张单据；没注册的，只冻结、只锁查到的那一行。查找用普通查询（加锁之前）。"""
+        locks = self.deps.locker()
+        targets: list[LockTarget] = []
         found: dict[tuple[str, str], None] = {(root_table, bill): None}
         for flow_hit in hit.flows:
             for item in flow_hit.flow.config.freeze:
@@ -231,11 +316,16 @@ class TriggerStage:
                 keys = list(dict.fromkeys(keys))
                 if entities:
                     for owner in owners(self.deps.sql, uow, catalog, item.table, keys).values():
-                        found[(owner.entity.root_config.table, owner.document.record_key)] = None
+                        entry = (owner.entity.root_config.table, owner.document.record_key)
+                        if entry not in found:
+                            found[entry] = None
+                            targets.append(locks.document(ctx, owner.document))
                 else:
                     for key in keys:
-                        found[(item.table, key)] = None
-        return list(found)
+                        if (item.table, key) not in found:
+                            found[(item.table, key)] = None
+                            targets.append(locks.row(item.table, pk, key))
+        return list(found), targets
 
     def _affected(self, uow: UnitOfWork, hit: _Hit, scopes: Sequence[RowScope]) -> list[AffectedRow]:
         """受影响单据的行（C06 7.5）：每个触发行执行一次关联条件，结果按修改表的主键合并，记下找到它的全部触发行，默认都

@@ -8,6 +8,9 @@
   的连接上只读执行，参数用绑定变量；结果的值按字段类型转换（与读取单据相同，数值为 Decimal）。
 - 展开只生成 `RowIntent`：删除、新增、修改明细。write-pipeline 对不在 `involved` 中的单据先加锁读取、做冻结检查，再合并、
   检查写权限并计算（WP-18）；被审批冻结的单据整个命令返回 409 FROZEN_BY_APPROVAL。
+- 加锁顺序（WP-03，用户 2026-10-30）：`replaceDetails` 只写选中的单据，不找别的单据。`updateRows` 找到的单据排在选中单据
+  之前或同层时，SQL 已在"确定涉及的单据"之前普通执行一次、找到的单据和选中的一起锁住（`ButtonInvolvedStage`），展开时
+  只写锁住的这一批；排在之后时由加锁读取往后追加。
 - 列名与字段名按不区分大小写对应：SQLAlchemy 的 Oracle 方言把不带引号的列名转成小写。
 """
 
@@ -129,27 +132,45 @@ def expand_replace_details(rnd: Round, action: ReplaceDetails, cursor: int) -> l
 
 # ---------------------------------------------------------------- updateRows
 
-def expand_update_rows(rnd: Round, action: UpdateRows) -> list[RowIntent]:
-    """按 SQL 找到要改的记录和新值（C06 第 6 节）：SQL 执行一次，不看选中行，涉及的单据由结果决定。
-
-    每一行是一条记录：`recordKeyColumn` 为单据主键，`entity` 为明细实体时 `rowKeyColumns` 的一列为明细主键（同 6.1）；
-    其余列写到同名字段。主键列为空的行表示记录已不存在，跳过。同一条记录的同一字段被写成不同的值时 422 VALIDATION_FAILED；
-    要写的字段不可写时 422 FIELD_NOT_WRITABLE（与 `fieldMapping.to` 相同）。"""
-    entity = rnd.entity(action.entity)
+def _update_rows(rnd: Round, action: UpdateRows) -> tuple[str, list[tuple[str, str, Sequence[object]]], list[str]]:
+    """执行 `updateRows` 的 SQL：所属单据的主表实体、每条记录的（单据主键、行主键、这一行结果），以及结果的列名。
+    主键列为空的行表示记录已不存在，不在其中。"""
     columns, records = _execute(rnd, action.sql, {})
     keys = [action.record_key_column, *action.row_key_columns]
     positions = [_position(columns, k) for k in keys]
     if any(p is None for p in positions):
         missing = [k for k, p in zip(keys, positions, strict=True) if p is None]
         raise PlatformError(ErrorCode.INTERNAL_ERROR, f"SQL 的结果缺少 {', '.join(missing)}")
-    mapped = _value_columns(action.entity, entity, columns, skip=keys)
     detail = bool(action.row_key_columns)
     document_entity = rnd.master_of(action.entity) if detail else action.entity
-    plan = WritePlan()
+    found = []
     for record in records:
         record_key = _key_text(record[positions[0]])  # type: ignore[index]
         row_key = _key_text(record[positions[1]]) if detail else record_key  # type: ignore[index]
-        if record_key is None or row_key is None:
+        if record_key is not None and row_key is not None:
+            found.append((record_key, row_key, record))
+    return document_entity, found, columns
+
+
+def update_rows_documents(rnd: Round, action: UpdateRows) -> list[DocumentRef]:
+    """`updateRows` 找到的单据（加锁前的预查，`ButtonInvolvedStage`，规则 3）。"""
+    document_entity, found, _ = _update_rows(rnd, action)
+    return list(dict.fromkeys(DocumentRef(document_entity, record_key) for record_key, _, _ in found))
+
+
+def expand_update_rows(rnd: Round, action: UpdateRows) -> list[RowIntent]:
+    """按 SQL 找到要改的记录和新值（C06 第 6 节）：SQL 执行一次，不看选中行，涉及的单据由结果决定。
+
+    每一行是一条记录：`recordKeyColumn` 为单据主键，`entity` 为明细实体时 `rowKeyColumns` 的一列为明细主键（同 6.1）；
+    其余列写到同名字段。主键列为空的行表示记录已不存在，跳过。同一条记录的同一字段被写成不同的值时 422 VALIDATION_FAILED；
+    要写的字段不可写时 422 FIELD_NOT_WRITABLE（与 `fieldMapping.to` 相同）。已预查的命令只写锁住的这一批单据
+    （`Round.locked`，规则 3）。"""
+    entity = rnd.entity(action.entity)
+    document_entity, found, columns = _update_rows(rnd, action)
+    mapped = _value_columns(action.entity, entity, columns, skip=[action.record_key_column, *action.row_key_columns])
+    plan = WritePlan()
+    for record_key, row_key, record in found:
+        if not rnd.locked(DocumentRef(document_entity, record_key)):
             continue
         planned = plan.row(document_entity, record_key, action.entity, row_key)
         for i, field in mapped:

@@ -30,6 +30,8 @@ from .types import (
     FreezeEntry,
     Identity,
     ImportReport,
+    LockLayer,
+    LockTarget,
     LookupConfig,
     MenuItem,
     OperationConfig,
@@ -251,7 +253,8 @@ class TableWriter(Protocol):
     """审批流通过后写没在平台注册的表（C06 7.5，WP-19）：按主键直接写，不校验、不重算。"""
 
     def lock_row(self, uow: UnitOfWork, table: str, key_column: str, key: str) -> dict[str, Value] | None:
-        """`SELECT … FOR UPDATE WAIT n` 读出整行；不存在时为 None。"""
+        """经 `BusinessLocker` 的统一顺序（基础数据层）`SELECT … FOR UPDATE WAIT n` 读出整行；不存在时为 None。
+        最终批准时要写的行已在"确定涉及的单据"锁住（AP-10），这里是再锁一次并读出。"""
         ...
 
     def update(self, uow: UnitOfWork, table: str, key_column: str, key: str, values: dict[str, Value]) -> None: ...
@@ -270,6 +273,52 @@ class CommandMonitor(Protocol):
 
     def watch(self, command: Command, ctx: ExecutionContext) -> AbstractContextManager[None]:
         """进入时开始记录；退出时按有没有异常记一条（异常照常抛出，记录失败不影响命令）。开关关闭时什么都不做。"""
+        ...
+
+
+# ============================================================ 5b. write-pipeline 提供的业务加锁入口
+#
+# 2026-10-30 由使用方 approval、operations 提出：它们要加的锁（审批记录、冻结对象、找到的别的单据）必须和 write-pipeline
+# 的加锁读取按同一顺序，而业务模块之间不能互相导入，所以单设端口。替代实现为 contracts/fakes 的 `FakeBusinessLocker`。
+
+class BusinessLocker(Protocol):
+    """业务加锁的唯一入口（write-pipeline 提供，WP-03；用户 2026-10-30 同意"固定加锁层级"）。
+
+    统一顺序：审批记录 → 单据层 → 基础数据层（`LOCK_LAYERS`），同一层按（表名、主键），主键按类型比较（`LockTarget.order`）。
+    一个事务中后加的锁必须排在已持有的全部锁之后；要锁的对象排在前面或同层时，调用方先用普通查询找出范围
+    （`read` 和本来就要执行的查询），再和自己的单据合在一起一次锁完。使用方：approval（审批记录、冻结对象、最终通过要写的
+    单据和行）、operations（按钮找到的别的单据）。"""
+
+    def document(self, ctx: ExecutionContext, ref: DocumentRef) -> LockTarget:
+        """单据的锁对象：主表实体的表和主键；有 details 的为单据层，没有的为基础数据层。"""
+        ...
+
+    def row(self, table: str, key_column: str, key: str) -> LockTarget:
+        """没注册的表中一行的锁对象（基础数据层）；主键列是数值类型时按数值比较。"""
+        ...
+
+    def approval(self, approval_id: str) -> LockTarget:
+        """审批记录（PF_APPROVAL）的锁对象，排在所有业务数据之前。"""
+        ...
+
+    def layer(self, ctx: ExecutionContext, entity: str) -> LockLayer:
+        """实体所属单据的层级：有 details 的主表实体为单据层，其余为基础数据层。"""
+        ...
+
+    def read(self, uow: UnitOfWork, ctx: ExecutionContext, refs: list[DocumentRef]) -> dict[DocumentRef, DocumentData]:
+        """加锁前的普通读取：主表和全部明细，不加锁；不存在的单据不在结果中。结果可作为 `lock` 的 `expected`。"""
+        ...
+
+    def lock(self, uow: UnitOfWork, ctx: ExecutionContext, targets: list[LockTarget],
+             expected: dict[DocumentRef, DocumentData] | None = None) -> None:
+        """按统一顺序一行一条 `SELECT … FOR UPDATE WAIT n` 锁住 `targets` 中本事务还没持有的（不存在的行没有锁可加）。
+        `expected` 为加锁前普通读到的本命令单据（其中的单据也要在 `targets` 中）：锁住后重读核对，有一张不同就抛
+        `LockScopeChanged`。要锁的对象排在本事务已持有的锁之前时 500 INTERNAL_ERROR（违反加锁顺序，属于实现错误）。
+        等锁超时 409 DOCUMENT_BUSY。"""
+        ...
+
+    def held(self, uow: UnitOfWork) -> frozenset[LockTarget]:
+        """本事务已持有的锁（经本入口加的）。"""
         ...
 
 

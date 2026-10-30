@@ -29,6 +29,7 @@ from cost_platform.approval.sql import RowScope, UowSqlRunner, binds_for, displa
 from cost_platform.approval.store import ApprovalStore
 from cost_platform.assembly.settings import Settings
 from cost_platform.contracts import types as t
+from cost_platform.contracts.fakes import FakeBusinessLocker
 from cost_platform.db_core.engine import OracleUnitOfWorkFactory, create_oracle_engine
 
 from ..contracts.test_freeze_reader import FreezeReaderContract
@@ -168,7 +169,10 @@ def test_e37_trigger_stage_on_d_cg(engine: Engine, uow: object) -> None:
                                                         "changes": {f: str(v) for f, v in e.items()}} for k, e in edits.items()]}]})
     state = t.CommandState(command=command, involved=[ref], current={ref: current}, candidate={ref: candidate},
                            changes=t.ChangePlan(rows=changes))
-    deps = ApprovalDeps(catalog=lambda ctx: config.catalog, schema=schema(), directory=directory(), documents=None)  # type: ignore[arg-type]
+    # 加锁用替代实现：这里核对的是 SQL 片段和阶段在 d_cg 数据上的结果，不锁 d_cg 的业务行；加锁顺序的真实验证见
+    # tests/pipeline/test_oracle_lock_order.py
+    deps = ApprovalDeps(catalog=lambda ctx: config.catalog, schema=schema(), directory=directory(), documents=None,  # type: ignore[arg-type]
+                        locks=FakeBusinessLocker())
     approval = create_approval(deps)
     ctx = config.ctx(YANGNA, now=datetime(2026, 10, 29, 10, 0, 0))
     approval.trigger.run(uow, state, ctx)  # type: ignore[arg-type]

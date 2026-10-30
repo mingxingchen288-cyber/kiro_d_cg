@@ -38,7 +38,13 @@ from cost_platform.approval.store import ApprovalStore
 from cost_platform.approval.tables import metadata
 from cost_platform.config.page_view import build_page_view
 from cost_platform.contracts import types as t
-from cost_platform.contracts.fakes import FakeConfigSnapshot, FakeDirectory, FakeSchemaInspector, FakeUnitOfWorkFactory
+from cost_platform.contracts.fakes import (
+    FakeBusinessLocker,
+    FakeConfigSnapshot,
+    FakeDirectory,
+    FakeSchemaInspector,
+    FakeUnitOfWorkFactory,
+)
 from cost_platform.contracts.values import from_db, from_wire, to_wire
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
@@ -541,10 +547,11 @@ class Pipeline:
     """按架构第 7 节的顺序调用 approval 的阶段；判重、加锁读取（这里直接读 World）、合并、计算（`toy_calc` 同样的三条）、
     写入由这里代替。命令出错时 World 和审批数据（替代事务）一起回滚。只用于模拟验证。"""
 
-    def __init__(self, world: World, approval: ApprovalModule, uow: FakeUnitOfWorkFactory) -> None:
+    def __init__(self, world: World, approval: ApprovalModule, uow: FakeUnitOfWorkFactory, locks: FakeBusinessLocker) -> None:
         self.world = world
         self.approval = approval
         self.uow = uow
+        self.locks = locks
         self.done: dict[tuple[str, str], Run] = {}
         self.executed: list[t.Command] = []
         self.runs: list[Run] = []
@@ -587,9 +594,11 @@ class Pipeline:
         state = t.CommandState(command=command)
         if stages.resolve.applies(state, ctx):
             stages.resolve.run(uow, state, ctx)
+        if stages.trigger_scope.applies(state, ctx):
+            stages.trigger_scope.run(uow, state, ctx)
         for patch in command.documents:
             state.involved.append(patch_ref(patch))
-        self._load(state, list(state.involved))
+        self._load(uow, ctx, state, list(state.involved))
         if stages.freeze_check.applies(state, ctx):
             stages.freeze_check.run(uow, state, ctx)
         if stages.process.applies(state, ctx):
@@ -603,10 +612,12 @@ class Pipeline:
         state.changes = t.ChangePlan(rows=self._diff(state))
         return state
 
-    def _load(self, state: t.CommandState, refs: list[t.DocumentRef]) -> None:
-        for ref in refs:
-            if ref not in state.current and (doc := self.world.load(ref)) is not None:
-                state.current[ref] = doc
+    def _load(self, uow: Any, ctx: t.ExecutionContext, state: t.CommandState, refs: list[t.DocumentRef]) -> None:
+        """加锁读取（代替 write-pipeline）：库里有的单据按统一顺序经 `locks` 一次锁住（`defer_lock` 时只读不锁），再读入。"""
+        found = {ref: doc for ref in refs if ref not in state.current and (doc := self.world.load(ref)) is not None}
+        if found and not state.defer_lock:
+            self.locks.lock(uow, ctx, [self.locks.document(ctx, ref) for ref in found])
+        state.current.update(found)
 
     def _merge(self, ctx: t.ExecutionContext, state: t.CommandState, patch: t.DocumentPatch) -> None:
         ref = patch_ref(patch)
@@ -644,7 +655,7 @@ class Pipeline:
         new_refs = [i.document for i in intents if i.document not in state.involved]
         if new_refs:
             state.involved += list(dict.fromkeys(new_refs))
-            self._load(state, new_refs)
+            self._load(uow, ctx, state, new_refs)
             for ref in new_refs:
                 if ref in state.current:
                     state.candidate[ref] = copy.deepcopy(state.current[ref])
@@ -728,11 +739,12 @@ class Harness:
         self.sql = sample_sql(self.world)
         self.directory = directory()
         self.store = ApprovalStore()
+        self.locks = FakeBusinessLocker(self.world.load)
         self.deps = ApprovalDeps(catalog=lambda ctx: self.config.catalog, schema=schema(), directory=self.directory,
-                                 documents=self.world, rules=self.config.rules, tables=self.world, store=self.store, sql=self.sql,
-                                 keys=self.world)
+                                 documents=self.world, rules=self.config.rules, tables=self.world, locks=self.locks,
+                                 store=self.store, sql=self.sql, keys=self.world)
         self.approval = create_approval(self.deps)
-        self.pipeline = Pipeline(self.world, self.approval, self.uow)
+        self.pipeline = Pipeline(self.world, self.approval, self.uow, self.locks)
         self.service = ApprovalService(self.deps, self.uow, self.pipeline)
         self._keys = 0
 

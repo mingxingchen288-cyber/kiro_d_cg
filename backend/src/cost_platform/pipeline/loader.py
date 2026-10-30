@@ -20,6 +20,7 @@ from cost_platform.contracts.types import (
 )
 
 from .document_store import DetailSource, RowStore
+from .locks import LockBook, document_target
 
 
 def is_new_key(key: str | None) -> bool:
@@ -80,16 +81,22 @@ class PageSaveInvolved:
 
 
 class DocumentLoader:
-    """加锁读取：主表行一个实体一条 `SELECT … FOR UPDATE WAIT n`（单据锁），明细一条语句读出，结果写入 `current`。"""
+    """加锁读取：按统一顺序（`locks.py`）锁住主表行（单据锁），明细一条语句读出，结果写入 `current`。
 
-    def __init__(self, store: RowStore, permission: PermissionChecker) -> None:
+    `book` 为本事务已持有的锁（与 `TableWriter`、`BusinessLocker` 共用，plugin.py 接线）；省略时用自己的。"""
+
+    def __init__(self, store: RowStore, permission: PermissionChecker, book: LockBook | None = None) -> None:
         self._store = store
         self._permission = permission
+        self._book = book or LockBook()
 
     def lock(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext,
              refs: Sequence[DocumentRef] | None = None,
              needs_details: Callable[[DocumentRef], bool] | None = None) -> list[DocumentRef]:
-        """锁住并读入 `refs`（省略时为 `involved` 中还没有读入的已有单据），按（实体、主键）排序。
+        """锁住并读入 `refs`（省略时为 `involved` 中还没有读入的已有单据），按统一顺序：层级 → 表 → 主键（WP-03）。
+        要锁的单据排在本事务已持有的锁之前时 500（`LockBook.claim`）：往前、同层找到的单据应在"确定涉及的单据"
+        一起锁住。本事务已持有锁的单据（例如审批处理在"确定涉及的单据"已锁住）再锁一次并读出。
+        `state.defer_lock` 为 True 时只普通读取、不加锁（由"触发审批"按顺序一次锁完并核对，AP-02）。
 
         `needs_details` 给出哪些单据要读明细（页面保存用 `calc.patch_needs_details`，WP-08、WP-10）；省略时都读。
         不读明细的单据 `details` 为空，这张单据不会求值（`calc.needs_recalculation`）。
@@ -98,20 +105,24 @@ class DocumentLoader:
         （WP-05）。用户发起的命令带出行权限判断列，超出时 403（WP-03）；来源为审批时不查行权限（C08 第 7 节）。
         返回读到的单据。"""
         wanted = refs if refs is not None else state.involved
-        pending = sorted({r for r in wanted if not is_new_key(r.record_key) and r not in state.current}, key=sort_key)
+        targets = {r: document_target(ctx, r) for r in wanted if not is_new_key(r.record_key) and r not in state.current}
+        pending = sorted(targets, key=lambda r: targets[r].order())
+        if not state.defer_lock:
+            self._book.claim(uow, targets.values())
+        read = self._store.read_masters if state.defer_lock else self._store.lock_load
         by_entity: dict[str, list[DocumentRef]] = defaultdict(list)
         for ref in pending:
             by_entity[ref.entity].append(ref)
         command = state.command
         reject = rejects_missing(state, ctx)
         loaded: list[DocumentRef] = []
-        for code in sorted(by_entity):
+        for code in by_entity:  # 按统一顺序第一次出现的先后：层级、表名
             entity = ctx.config.entity(code)
             condition = None
             if ctx.origin.kind == "user" and command.page is not None:
                 condition = self._permission.row_condition(ctx, command.page, code)
             keys = [r.record_key for r in by_entity[code]]
-            masters = self._store.lock_load(uow, code, entity, keys, row_condition=condition)
+            masters = read(uow, code, entity, keys, row_condition=condition)
             missing = [k for k in keys if k not in masters]
             if missing and reject:
                 raise PlatformError(ErrorCode.ROW_NOT_FOUND, "要修改的数据已被删除",

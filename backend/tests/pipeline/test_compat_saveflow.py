@@ -46,7 +46,7 @@ def test_e01_through_pipeline_stages() -> None:
     loader = DocumentLoader(store, setup.permission)
     stages: list[PipelineStage] = [
         PageSaveInvolved(), LockStage(loader), MergePatchesStage(DocumentMerger(setup.permission)),
-        MergeIntentsStage(IntentMerger(loader)), RecalculateStage(Recalculator(setup.engine)), WriteChangesStage(ChangeWriter(store))]
+        MergeIntentsStage(IntentMerger()), RecalculateStage(Recalculator(setup.engine)), WriteChangesStage(ChangeWriter(store))]
     recorder = OracleCommandRecorder()
     factory = Factory()
     cmd = command([master_modify("1001", {"MEMO": "测试"})])

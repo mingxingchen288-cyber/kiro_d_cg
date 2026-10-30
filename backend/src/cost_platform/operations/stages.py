@@ -11,7 +11,7 @@ orchestration 按 `STAGE_ORDER` 调用：确定涉及的单据 → 加锁读取 
 
 from __future__ import annotations
 
-from cost_platform.contracts.ports import RelatedQuery, UnitOfWork
+from cost_platform.contracts.ports import BusinessLocker, RelatedQuery, UnitOfWork
 from cost_platform.contracts.types import (
     CommandState,
     DocumentRef,
@@ -30,11 +30,18 @@ from cost_platform.contracts.types import (
     UpdateTargets,
 )
 
-from .actions import Round, expand_recalculate, expand_update_records, expand_update_targets
+from .actions import (
+    Round,
+    expand_recalculate,
+    expand_update_records,
+    expand_update_targets,
+    finds_other_documents,
+    search_targets,
+)
 from .escape_hatch import EscapeHatchExecutor, EscapeHatchRegistry, EscapeHatchRunner, SqlEscapeHatchRunner
-from .memory import MemoryBook
+from .memory import CommandMemory, MemoryBook
 from .selection import SelectedRow, SelectionResolver, requires_selection, selected_rows, sort_key
-from .sql_actions import expand_replace_details, expand_update_rows
+from .sql_actions import expand_replace_details, expand_update_rows, update_rows_documents
 
 _APPROVAL_OPERATIONS = "approval."
 
@@ -49,18 +56,23 @@ def _button_operation(state: CommandState, ctx: ExecutionContext) -> OperationCo
 
 
 class ButtonInvolvedStage:
-    """"确定涉及的单据"的按钮部分（OP-05、OP-08）：写 `involved` 和 `actions`。
+    """"确定涉及的单据"的按钮部分（OP-05、OP-07、OP-08）：写 `involved` 和 `actions`。
 
     - 命令带了 `documents` 时 400 INVALID_REQUEST：按钮只传选中行的主键（C02 第 1 节）。
     - 页面上引用本操作的按钮要求选中行、`params.selectedRows` 却为空时 422 VALIDATION_FAILED。
     - 选中行所属的单据按（实体、主键）排序写入 `involved`，由 write-pipeline 加锁读取；动作的来源都取加锁读到的数据。
     - `actions` 为操作的通用动作；操作本身是逃生舱（`kind` 为 `escapeHatch`）时为调用它的一个 `escapeHatch` 动作。
+    - 往前、同层找（`finds_other_documents`，用户 2026-10-30 规则 3）：加锁之前，普通读出选中的单据（`BusinessLocker.read`），
+      用它跑一遍 `updateRecords` 的 `find` 和 `updateRows` 的 SQL，把找到的单据和选中的单据按统一顺序一次锁完，锁住后核对
+      选中的单据没有变（变了时整个事务回滚重来，规则 4）。`locks` 为空时不预查（只用于不找别的单据的测试）。
     """
 
     name = "确定涉及的单据"
 
-    def __init__(self, related: RelatedQuery) -> None:
+    def __init__(self, related: RelatedQuery, locks: BusinessLocker | None = None) -> None:
         self._resolver = SelectionResolver(related)
+        self._related = related
+        self._locks = locks
 
     def applies(self, state: CommandState, ctx: ExecutionContext) -> bool:
         return _button_operation(state, ctx) is not None
@@ -82,8 +94,29 @@ class ButtonInvolvedStage:
             state.involved.append(ref)
         if operation.kind == "escapeHatch":
             state.actions.append(EscapeHatch(action="escapeHatch", operation=command.operation))
-        else:
-            state.actions.extend(operation.actions)
+            return
+        state.actions.extend(operation.actions)
+        page_master = view.master.entity if view is not None else None
+        if self._locks is not None and finds_other_documents(ctx, operation, page_master, self._locks):
+            self._prescan(uow, state, ctx, operation, page_master, refs, self._locks)
+
+    def _prescan(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext, operation: OperationConfig,
+                 page_master: str | None, refs: list[DocumentRef], locks: BusinessLocker) -> None:
+        """规则 3：本来就要执行的查找挪到加锁之前，用普通查询执行；查到的单据和选中的单据合在一起按顺序一次锁完。
+        来源为选中单据在数据库中的当前数据（OP-07）。"""
+        peeked = locks.read(uow, ctx, refs)
+        scratch = CommandState(command=state.command, current=dict(peeked))
+        rnd = Round(uow=uow, state=scratch, ctx=ctx, related=self._related, operation_code=state.command.operation,
+                    operation=operation, page_master=page_master, sources=[r for r in refs if r in peeked],
+                    memory=CommandMemory())
+        found: list[DocumentRef] = []
+        for action in operation.actions:
+            if isinstance(action, UpdateRecords):
+                found += [target.document for target in search_targets(rnd, action.find).values()]
+            elif isinstance(action, UpdateRows):
+                found += update_rows_documents(rnd, action)
+        documents = dict.fromkeys([*rnd.sources, *found])
+        locks.lock(uow, ctx, [locks.document(ctx, ref) for ref in documents], peeked)
 
 
 class ActionStage:
@@ -98,10 +131,11 @@ class ActionStage:
     name = "展开动作"
 
     def __init__(self, related: RelatedQuery, registry: EscapeHatchRegistry | None = None,
-                 runner: EscapeHatchRunner | None = None) -> None:
+                 runner: EscapeHatchRunner | None = None, locks: BusinessLocker | None = None) -> None:
         self._related = related
         self._escape = EscapeHatchExecutor(registry or EscapeHatchRegistry(), runner or SqlEscapeHatchRunner())
         self._book = MemoryBook()
+        self._locks = locks
 
     def applies(self, state: CommandState, ctx: ExecutionContext) -> bool:
         memory = self._book.peek(state)
@@ -131,9 +165,11 @@ class ActionStage:
         if operation is None:
             raise PlatformError(ErrorCode.INTERNAL_ERROR, f"动作 {action.action} 只用于按钮操作")
         view = ctx.config.page_view(command.page) if command.page is not None else None
+        page_master = view.master.entity if view is not None else None
+        prescanned = self._locks is not None and finds_other_documents(ctx, operation, page_master, self._locks)
         rnd = Round(uow=uow, state=state, ctx=ctx, related=self._related, operation_code=command.operation,
-                    operation=operation, page_master=view.master.entity if view is not None else None,
-                    sources=sources, memory=memory)
+                    operation=operation, page_master=page_master, sources=sources, memory=memory, locks=self._locks,
+                    prescanned=prescanned)
         if isinstance(action, Recalculate):
             state.intents.extend(expand_recalculate(rnd, action))
         elif isinstance(action, UpdateRecords):
