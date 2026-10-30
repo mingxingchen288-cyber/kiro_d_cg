@@ -20,7 +20,7 @@ describe('E39 物料清单改价审批：取消 2556', () => {
     // 来源单据主表：物料清单 25，单价 75 → 80
     const master = rt.view.value!.master;
     expect(master.title).toBe('物料清单');
-    expect(gridRows(master.rows)[0].texts).toEqual(['25', '聚维酮K30', '75', '75 → 80']);
+    expect(gridRows(master.rows)[0].texts).toEqual(['25', '聚维酮K30', '75.00', '75.00 → 80.00']);
 
     // 受影响单据：按修改表主键（DTLID）一个勾选框，默认全选；记录已不存在的行没有勾选框
     const block = rt.view.value!.affected[0];
@@ -36,8 +36,8 @@ describe('E39 物料清单改价审批：取消 2556', () => {
     expect(rt.isChecked(block, '206323')).toBe(true);
     expect(rt.isChecked(block, '103681')).toBe(true);
     expect(rt.canToggle(block, '103681')).toBe(true);
-    expect(rows[1].texts.slice(3, 5)).toEqual(['75 → 80', '23.25 → 24.8']);
-    expect(rows[2].texts).toEqual(['2601', '—', '聚维酮K30', '75', '150', '—', '—']);
+    expect(rows[1].texts.slice(3, 5)).toEqual(['75.00 → 80.00', '23.25 → 24.80']);
+    expect(rows[2].texts).toEqual(['2601', '—', '聚维酮K30', '75.00', '150.00', '—', '—']);
     expect(rt.selectionCount()).toEqual({ checked: 2, total: 2 });
 
     // 取消 2556：preview 提交当前勾选，按返回的 view 刷新
@@ -47,9 +47,9 @@ describe('E39 物料清单改价审批：取消 2556', () => {
     ]);
     expect(rt.isChecked(block, '103681')).toBe(false);
     rows = gridRows(rt.view.value!.affected[0].rows);
-    expect(rows[1].texts).toEqual(['2556', '10mg氯丙嗪片', '聚维酮K30', '75', '23.25', '1.1566', '689.03']);
+    expect(rows[1].texts).toEqual(['2556', '10mg氯丙嗪片', '聚维酮K30', '75.00', '23.25', '1.1566', '689.03']);
     expect(rows[1].changed.some(Boolean)).toBe(false);
-    expect(rows[0].texts.slice(3, 5)).toEqual(['75 → 80', '750 → 800']);
+    expect(rows[0].texts.slice(3, 5)).toEqual(['75.00 → 80.00', '750.00 → 800.00']);
     expect(rt.fingerprint.value).toBe(E39_PREVIEW_FINGERPRINT);
     expect(rt.selectionCount()).toEqual({ checked: 1, total: 2 });
 
@@ -78,6 +78,6 @@ describe('E39 物料清单改价审批：取消 2556', () => {
         { flow: 'GOODS_TO_COST', block: 'costMaterial', key: '103681' }
       ]
     });
-    expect(gridRows(rt.view.value!.affected[0].rows)[1].texts[3]).toBe('75 → 80');
+    expect(gridRows(rt.view.value!.affected[0].rows)[1].texts[3]).toBe('75.00 → 80.00');
   });
 });

@@ -15,6 +15,7 @@ from fastapi import APIRouter
 
 from cost_platform.contracts.ports import (
     CommandExecutor,
+    ConfigSnapshotReader,
     ContextProvider,
     DirectoryReader,
     DocumentReader,
@@ -38,13 +39,13 @@ from .service import ApprovalService
 MIGRATIONS = Path(migrations.__file__).parent
 """PF_APPROVAL 等平台表的迁移脚本目录（assembly 的 `platform db` 用）。"""
 
-_DEPS = (SchemaInspector, DirectoryReader, DocumentReader, RulesEngine, TableWriter, EntityDirectory)
+_DEPS = (SchemaInspector, DirectoryReader, DocumentReader, RulesEngine, TableWriter, EntityDirectory, ConfigSnapshotReader)
 
 
 def _deps(reg: PluginView) -> ApprovalDeps:
-    return ApprovalDeps(catalog=catalog_of(reg.get(EntityDirectory)), schema=reg.get(SchemaInspector),
-                        directory=reg.get(DirectoryReader), documents=reg.get(DocumentReader), rules=reg.get(RulesEngine),
-                        tables=reg.get(TableWriter))
+    return ApprovalDeps(catalog=catalog_of(reg.get(EntityDirectory), reg.get(ConfigSnapshotReader)),
+                        schema=reg.get(SchemaInspector), directory=reg.get(DirectoryReader), documents=reg.get(DocumentReader),
+                        rules=reg.get(RulesEngine), tables=reg.get(TableWriter))
 
 
 class ApprovalPlugin:

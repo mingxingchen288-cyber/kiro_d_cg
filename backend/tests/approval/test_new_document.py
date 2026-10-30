@@ -29,7 +29,7 @@ def cells(row: t.ViewRow) -> list[tuple[object, object]]:
 def check_goods_block(detail: t.ApprovalDetail) -> None:
     [goods] = detail.view.affected
     [target] = goods.rows
-    assert (target.op, target.checked, cells(target)) == ("modify", True, [("25", "25"), ("聚维酮K30", "聚维酮K30"), ("75", "80")])
+    assert (target.op, target.checked, cells(target)) == ("modify", True, [("25", "25"), ("聚维酮K30", "聚维酮K30"), ("75.00", "80.00")])
 
 
 def test_new_cost_document_shown_as_added_and_inserted_when_approved() -> None:
@@ -47,11 +47,11 @@ def test_new_cost_document_shown_as_added_and_inserted_when_approved() -> None:
     detail = h.detail(ADMIN, approval.approval_id)
     [head] = detail.view.master.rows
     assert detail.view.master.columns == ["单据号", "产品", "每盒成本", "千片加工费"]
-    assert (head.op, cells(head)[:3]) == ("add", [(None, bill), (None, "250mg乙酰唑胺片"), (None, "8")])
+    assert (head.op, cells(head)[:3]) == ("add", [(None, bill), (None, "250mg乙酰唑胺片"), (None, "8.0000")])
     [material] = [d for d in detail.view.details if d.key == "material"]
     [row] = material.rows
     assert (row.op, row.flows) == ("add", ["COST_TO_GOODS"])
-    assert cells(row) == [(None, "25"), (None, "聚维酮K30"), (None, "80"), (None, "800")]
+    assert cells(row) == [(None, "25"), (None, "聚维酮K30"), (None, "80.00"), (None, "800.00")]
     check_goods_block(detail)
 
     result = h.pass_(ADMIN, approval.approval_id)
@@ -76,10 +76,10 @@ def test_new_detail_row_of_existing_document() -> None:
 
     detail = h.detail(ADMIN, approval.approval_id)
     [head] = detail.view.master.rows
-    assert (head.op, cells(head)[0], cells(head)[2]) == ("modify", ("2550", "2550"), ("18.425", "26.425"))
+    assert (head.op, cells(head)[0], cells(head)[2]) == ("modify", ("2550", "2550"), ("18.4250", "26.4250"))
     [material] = [d for d in detail.view.details if d.key == "material"]
     [row] = material.rows
-    assert (row.op, cells(row)) == ("add", [(None, "25"), (None, "聚维酮K30"), (None, "80"), (None, "800")])
+    assert (row.op, cells(row)) == ("add", [(None, "25"), (None, "聚维酮K30"), (None, "80.00"), (None, "800.00")])
     check_goods_block(detail)
 
     result = h.pass_(ADMIN, approval.approval_id)

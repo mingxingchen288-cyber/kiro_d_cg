@@ -10,6 +10,8 @@ orchestration 的 `CommandExecutor`（C02 第 1 节、架构 10.4）。
 from __future__ import annotations
 
 import dataclasses
+import functools
+from collections.abc import Callable
 from typing import Literal
 
 from cost_platform.contracts.ports import CommandExecutor, UnitOfWorkFactory
@@ -57,9 +59,11 @@ def summary(record: ApprovalRecord) -> ApprovalSummary:
         status=record.progress.status, level=record.progress.level)  # type: ignore[arg-type]
 
 
-def step(record: ApprovalRecord, node: Node, status: str | None = None) -> ApprovalStep:
+def step(record: ApprovalRecord, node: Node, role_name: Callable[[str], str], status: str | None = None) -> ApprovalStep:
+    """进度中的一个节点。按角色配置的审批人显示角色名称（例如 ADMIN 显示"系统管理员"，C09 第 6 节）：进度中记的是
+    角色编码，显示时取当前的名称，已经发起的审批也这样显示。"""
     flow = record.flow(node.flow)
-    members = [StepMember(type=m.kind, id=m.id, name=m.name, status=m.status,
+    members = [StepMember(type=m.kind, id=m.id, name=role_name(m.id) if m.kind == "role" else m.name, status=m.status,
                           processed_by=UserBrief(user_id=m.processed_by, display_name=m.processed_by_name or m.processed_by)
                           if m.processed_by else None, processed_at=m.processed_at, comment=m.comment) for m in node.members]
     return ApprovalStep(level=node.level, flow=node.flow, flow_name=flow.name, node=node.name, mode=node.mode,
@@ -99,7 +103,7 @@ class ApprovalService:
             mine = pending_nodes(record.progress, ctx.identity.user_id, is_member)
             computation = self.evaluator.compute(uow, ctx, record, affected, editable=editable_blocks(record, mine))
             upcoming = NextLevels(self.deps, uow, record, computation.scopes, strict=False)
-            steps = self._steps(record, upcoming)
+            steps = self._steps(ctx, record, upcoming)
             params = self._params(record, mine, upcoming, ctx, is_member)
         actions = ApprovalActions(can_pass=bool(mine), can_reject=bool(mine),
                                   can_withdraw=can_withdraw(record.progress, record.applicant_id, ctx.identity.user_id))
@@ -121,9 +125,10 @@ class ApprovalService:
             computation = self.evaluator.compute(uow, ctx, record, affected, editable=editable)
         return PreviewResponse(view=computation.view, fingerprint=computation.fingerprint)
 
-    def _steps(self, record: ApprovalRecord, upcoming: NextLevels) -> list[ApprovalStep]:
+    def _steps(self, ctx: ExecutionContext, record: ApprovalRecord, upcoming: NextLevels) -> list[ApprovalStep]:
         order = {f.code: i for i, f in enumerate(record.flows)}
-        items = [(n.level, order[n.flow], n.index, step(record, n)) for n in record.progress.nodes]
+        role_name = functools.cache(self.deps.catalog(ctx).role_name)
+        items = [(n.level, order[n.flow], n.index, step(record, n, role_name)) for n in record.progress.nodes]
         if record.progress.status == "pending":
             active = record.progress.active_flows()
             level = record.progress.level
@@ -134,7 +139,7 @@ class ApprovalService:
                     nodes = upcoming(flow, level)
                     if nodes:
                         still.append(flow)
-                        items += [(n.level, order[n.flow], n.index, step(record, n, "upcoming")) for n in nodes]
+                        items += [(n.level, order[n.flow], n.index, step(record, n, role_name, "upcoming")) for n in nodes]
                 active = still
         return [s for *_, s in sorted(items, key=lambda i: i[:3])]
 

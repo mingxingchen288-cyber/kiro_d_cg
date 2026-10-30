@@ -20,6 +20,7 @@ from cost_platform.contracts import types as t
 from cost_platform.contracts.fakes import (
     FakeCommandExecutor,
     FakeConfigSnapshot,
+    FakeConfigSnapshotReader,
     FakeDirectory,
     FakeDocumentReader,
     FakeEntityDirectory,
@@ -29,6 +30,7 @@ from cost_platform.contracts.fakes import (
 )
 from cost_platform.contracts.ports import (
     CommandExecutor,
+    ConfigSnapshotReader,
     ContextProvider,
     DirectoryReader,
     DocumentReader,
@@ -72,8 +74,8 @@ class _SetupOnlyContext:
 
 class Providers:
     name = "fakes"
-    provides = (SchemaInspector, DirectoryReader, DocumentReader, RulesEngine, TableWriter, EntityDirectory, UnitOfWorkFactory,
-                CommandExecutor, ContextProvider)
+    provides = (SchemaInspector, DirectoryReader, DocumentReader, RulesEngine, TableWriter, EntityDirectory, ConfigSnapshotReader,
+                UnitOfWorkFactory, CommandExecutor, ContextProvider)
     requires = ()
 
     def setup(self, reg: PluginView) -> None:
@@ -83,6 +85,7 @@ class Providers:
         reg.provide(RulesEngine, FakeRulesEngine())
         reg.provide(TableWriter, _SetupOnlyTableWriter())
         reg.provide(EntityDirectory, FakeEntityDirectory())
+        reg.provide(ConfigSnapshotReader, FakeConfigSnapshotReader())
         reg.provide(UnitOfWorkFactory, FakeUnitOfWorkFactory())
         reg.provide(CommandExecutor, FakeCommandExecutor())
         reg.provide(ContextProvider, _SetupOnlyContext())
@@ -119,7 +122,8 @@ def test_snapshot_catalog_matches_items_catalog() -> None:
     snapshot = FakeConfigSnapshot(version=1, role_code="COST", role=config.roles["COST"], entities=config.entities,
                                   approval_flows={code: flow for code, (_, flow) in config.flows.items()},
                                   flow_names={code: name for code, (name, _) in config.flows.items()})
-    catalog = SnapshotApprovalCatalog(snapshot, FakeEntityDirectory(config.entities))
+    roles = FakeConfigSnapshotReader([config.snapshot(code) for code in config.roles])
+    catalog = SnapshotApprovalCatalog(snapshot, FakeEntityDirectory(config.entities), roles)
     assert catalog.flows("COST_PINGGU") == config.catalog.flows("COST_PINGGU")
     assert [(f.code, f.name) for f in catalog.flows("COST_PINGGU")] == [
         ("COST_TO_GOODS", "成本明细改价审批"), ("TECH_CUSTOMER_MATERIAL", "技术中心客指物料变更审批")]
@@ -127,3 +131,6 @@ def test_snapshot_catalog_matches_items_catalog() -> None:
         assert catalog.entities_on_table(table) == config.catalog.entities_on_table(table)
     assert [(e.code, e.root, e.parent_key) for e in catalog.entities_on_table("T_COST_PINGGU_DTL")] == [
         ("COST_MATERIAL", "COST_PINGGU", "DOCID"), ("COST_PACKAGE", "COST_PINGGU", "DOCID")]
+    # 审批人角色的名称取该角色的配置快照（C06 第 8 节），与按配置项内容的相同
+    assert [catalog.role_name(code) for code in ("ADMIN", "008", "007")] == ["系统管理员", "采购", "生产"]
+    assert [config.catalog.role_name(code) for code in ("ADMIN", "008", "007")] == ["系统管理员", "采购", "生产"]

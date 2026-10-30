@@ -39,7 +39,9 @@ def test_todo_detail_preview_pass_over_http() -> None:
     assert todo.json()["total"] == 1 and todo.json()["rows"][0]["source"] == {"entity": "COST_PINGGU", "recordKey": "2550",
                                                                               "label": "250mg乙酰唑胺片"}
     detail = api.get(f"/api/approvals/{approval.approval_id}", headers=admin).json()
-    assert detail["view"]["affected"][0]["rows"][0]["cells"][2] == {"before": "75", "after": "80"}
+    assert detail["view"]["affected"][0]["rows"][0]["cells"][2] == {"before": "75.00", "after": "80.00"}
+    member = detail["steps"][0]["members"][0]
+    assert (member["type"], member["id"], member["name"]) == ("role", "ADMIN", "系统管理员")
     preview = api.post(f"/api/approvals/{approval.approval_id}/preview", json={"checkedRows": []}, headers=admin).json()
     assert preview["fingerprint"] == detail["fingerprint"]  # 物料清单一块是 all，不能改勾选
     passed = api.post(f"/api/approvals/{approval.approval_id}/pass", headers=admin, json={
