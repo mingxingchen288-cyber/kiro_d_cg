@@ -1,6 +1,7 @@
 /**
  * 链路 1（真实联调，浏览器 → 后端 → d_cg）：成本核算主从页的明细。
- * admin 打开成本核算（通用页面 /page/COST_PINGGU），页面下方有"原料/辅料""包材"两个页签；选中成本单 2550，在"原料/辅料"把第一行（DTLID 206323）的
+ * admin 打开成本核算（通用页面 /page/COST_PINGGU），页面下方有"原料/辅料""包材"两个明细（按 admin 自己的个人配置显示为页签或上下堆叠，
+ * 用例两种都能跑，不改个人配置）；选中成本单 2550，在"原料/辅料"把第一行（DTLID 206323）的
  * 备注改为"测试"并保存；刷新页面再选 2550 显示"测试"；再改回原值保存。"客户指定"复选框勾选、保存，再取消、保存。
  * 200680（E01 的单据）在 cmx 中已经没有明细，改用同为 250mg乙酰唑胺片的 2550。
  * 数据库中的值由 backend/tests/e2e/test_cost_detail.py 和运行后的只读查询核对。
@@ -41,15 +42,35 @@ async function scrollTo(grid: Locator, cell: Locator) {
   await expect(cell).toBeVisible();
 }
 
-/** 打开成本核算页，选中成本单 2550（默认按主键升序，是第一行），等原料/辅料明细出现 */
+/**
+ * 明细的显示方式：取打开页面的用户自己的个人配置（明细区右上角"Tab / 堆叠"选中的那个），用例只读、不切换，
+ * 别人可能正用同一个账号在浏览器里验证。页面在读完个人配置后才显示内容，所以单选出现时已是最终的显示方式。
+ */
+async function detailMode(page: Page): Promise<'tabs' | 'stack'> {
+  const stack = page.getByRole('radio', { name: '堆叠' });
+  await expect(stack).toBeAttached();
+  return (await stack.isChecked()) ? 'stack' : 'tabs';
+}
+
+/**
+ * 打开成本核算页，选中成本单 2550（默认按主键升序，是第一行），等原料/辅料明细出现。
+ * Tab 方式下明细是"原料/辅料""包材"两个页签；堆叠方式下选中单据后两个明细上下排列，各自带标题。
+ */
 async function openDocument(page: Page) {
   await page.goto('/page/COST_PINGGU');
-  await expect(page.locator('.n-tabs-tab', { hasText: '原料/辅料' })).toBeVisible();
-  await expect(page.locator('.n-tabs-tab', { hasText: '包材' })).toBeVisible();
+  const mode = await detailMode(page);
+  if (mode === 'tabs') {
+    await expect(page.locator('.n-tabs-tab', { hasText: '原料/辅料' })).toBeVisible();
+    await expect(page.locator('.n-tabs-tab', { hasText: '包材' })).toBeVisible();
+  }
   await page
     .getByTestId('master-grid')
     .locator(`.ag-pinned-left-cols-container .ag-row[row-id="${DOCID}"] [col-id="DOCID"]`)
     .click();
+  if (mode === 'stack') {
+    await expect(materialGrid(page).getByText('原料/辅料', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('detail-COST_PACKAGE').getByText('包材', { exact: true })).toBeVisible();
+  }
   await expect(materialGrid(page).locator(`.ag-center-cols-container .ag-row[row-id="${DTLID}"]`)).toBeVisible();
 }
 
