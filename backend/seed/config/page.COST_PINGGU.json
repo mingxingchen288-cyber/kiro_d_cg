@@ -71,6 +71,18 @@
           "label": "删除"
         },
         {
+          "action": "generateFromBom",
+          "label": "由BOM生成明细",
+          "operation": "COST_PINGGU.generateFromBom",
+          "requiresSelection": true
+        },
+        {
+          "action": "syncPrice",
+          "label": "同步采购价",
+          "operation": "COST_PINGGU.syncPrice",
+          "requiresSelection": false
+        },
+        {
           "action": "saveGridConfig",
           "label": "保存列配置"
         }

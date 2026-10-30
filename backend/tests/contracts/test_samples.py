@@ -407,6 +407,8 @@ _SECTION_1_1_MODELS: dict[str, tuple[Any, ...]] = {
     "`operation` 的内容": (t.OperationConfig,),
     "`updateTargets` 的 `targets[]`": (t.TargetUpdate,),
     "关联 SQL（6.1，用于 `updateRecords`）": (t.SqlFinder,),
+    "`replaceDetails`（第 6 节）": (t.ReplaceDetails,),
+    "`updateRows`（第 6 节）": (t.UpdateRows,),
     "`rule` 的内容": (t.RuleConfig,),
     "可视化条件的 `conditions[]`（第 5 节）": (t.RuleConditionItem,),
     "rule 的 `branches[]`": (t.Branch,),

@@ -154,7 +154,8 @@ def _current_row(state: CommandState, document: DocumentRef, entity: str, row_ke
     return next((r for r in doc.details.get(entity, []) if r.row_key == row_key), None)
 
 
-def _intents(rnd: Round, plan: WritePlan) -> list[RowIntent]:
+def planned_intents(rnd: Round, plan: WritePlan) -> list[RowIntent]:
+    """一个动作要写的全部目标行生成 intents：先检查每个字段能不能写（OP-02），再按行解决取值冲突（`WritePlan.resolved`）。"""
     entities = {row.entity: rnd.entity(row.entity) for row in plan.rows.values()}
     checks = []
     for row in plan.rows.values():
@@ -178,7 +179,7 @@ def expand_update_records(rnd: Round, action: UpdateRecords) -> list[RowIntent]:
         for finding in target.found_by:
             for item in action.field_mapping:
                 plan.put(row, item.to, source_value(item.from_, finding))
-    return _intents(rnd, plan)
+    return planned_intents(rnd, plan)
 
 
 # ---------------------------------------------------------------- updateTargets
@@ -215,4 +216,4 @@ def expand_update_targets(rnd: Round, action: UpdateTargets) -> list[RowIntent]:
                 planned = plan.row(target.document.entity, target.document.record_key, entity, row_key)
                 for item in spec.field_mapping:
                     plan.put(planned, item.to, source_value(item.from_, finding))
-    return _intents(rnd, plan)
+    return planned_intents(rnd, plan)

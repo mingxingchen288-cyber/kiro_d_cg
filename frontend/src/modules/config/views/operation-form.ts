@@ -28,6 +28,8 @@ export const ACTION_OPTIONS: Array<{ label: string; value: ActionStep['action'] 
   { label: '按计算规则重算（recalculate）', value: 'recalculate' },
   { label: '把来源的值写到目标（updateTargets）', value: 'updateTargets' },
   { label: '找到记录并更新（updateRecords）', value: 'updateRecords' },
+  { label: '按 SQL 替换选中单据的明细（replaceDetails）', value: 'replaceDetails' },
+  { label: '按 SQL 找到记录并更新，不用选中行（updateRows）', value: 'updateRows' },
   { label: '逃生舱（escapeHatch）', value: 'escapeHatch' }
 ];
 
@@ -39,6 +41,10 @@ export function newAction(kind: ActionStep['action']): ActionStep {
       return { action: 'updateTargets', targets: [{ entity: '', fieldMapping: [] }] };
     case 'updateRecords':
       return { action: 'updateRecords', find: { kind: 'relationKey', entity: '', targetKey: '', sourceKey: '', rows: 'all' }, fieldMapping: [] };
+    case 'replaceDetails':
+      return { action: 'replaceDetails', entity: '', sql: '', binds: {} };
+    case 'updateRows':
+      return { action: 'updateRows', entity: '', sql: '', recordKeyColumn: '', rowKeyColumns: [] };
     default:
       return { action: 'escapeHatch', operation: '' };
   }

@@ -2,7 +2,7 @@
 /**
  * 本页面的操作（C06 第 4、6 节）：左侧列出保存操作和以"页面编码."开头、或被本页面按钮引用的操作，右侧编辑：
  * 名称、类型（保存 / 按钮 / 逃生舱）、传播（必须写）、行不存在时、可写字段、影响实体、动作（重算、写到目标、
- * 找到记录并更新、逃生舱），逃生舱另登记存储过程和会修改的表、列。旧系统按钮里的执行方式（存储过程、SQL、Java 方法）
+ * 找到记录并更新、按 SQL 替换明细、按 SQL 更新、逃生舱），逃生舱另登记存储过程和会修改的表、列。旧系统按钮里的执行方式（存储过程、SQL、Java 方法）
  * 在新平台改为这里的通用动作；逃生舱只在用户点名时启用。
  */
 import { computed, onMounted, ref } from 'vue';
@@ -170,6 +170,35 @@ onMounted(() => editor.loadList());
                 <NButton text type="error" @click="action.fieldMapping.splice(mi, 1)">删</NButton>
               </div>
               <NButton size="tiny" dashed @click="action.fieldMapping.push({ from: '', to: '' })">+ 字段映射</NButton>
+            </template>
+            <template v-if="action.action === 'replaceDetails'">
+              <NSpace :wrap="true" align="center" class="mt-8">
+                <NSelect v-model:value="action.entity" :options="entityOptions" placeholder="要替换的明细" style="width: 220px" />
+                <span class="hint">删掉选中单据这个明细的全部行，再把 SQL 的每一行新增为一行；列名写成字段名，计算字段和名称不写</span>
+              </NSpace>
+              <NInput v-model:value="action.sql" type="textarea" class="mt-8" placeholder="只能是一条查询语句，参数用绑定变量" />
+              <NInput
+                :value="toLines(action.binds)"
+                type="textarea"
+                class="mt-8"
+                placeholder="绑定变量：名称=主表实体.字段，每行一个"
+                style="width: 320px"
+                @update:value="v => action.action === 'replaceDetails' && (action.binds = fromLines(v))"
+              />
+            </template>
+            <template v-if="action.action === 'updateRows'">
+              <NSpace :wrap="true" align="center" class="mt-8">
+                <NSelect v-model:value="action.entity" :options="entityOptions" placeholder="要修改的实体" style="width: 220px" />
+                <NInput v-model:value="action.recordKeyColumn" placeholder="单据主键列" style="width: 130px" />
+                <NInput
+                  :value="toList(action.rowKeyColumns)"
+                  placeholder="明细主键列（明细写一列）"
+                  style="width: 190px"
+                  @update:value="v => action.action === 'updateRows' && (action.rowKeyColumns = fromList(v))"
+                />
+                <span class="hint">不用选中行；SQL 不用绑定变量，其余列名写成要改的字段名</span>
+              </NSpace>
+              <NInput v-model:value="action.sql" type="textarea" class="mt-8" placeholder="只能是一条查询语句，结果含单据主键列、明细主键列和要改的字段" />
             </template>
           </NCard>
           <NSpace size="small">

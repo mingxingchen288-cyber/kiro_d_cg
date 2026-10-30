@@ -869,7 +869,9 @@ export class PageRuntime {
 
   /**
    * 业务按钮：命令只带选中行的主键（params.selectedRows），documents 为空数组；有没保存的修改也直接执行。
-   * 成功后结果中的行显示后端返回的值，这些行没保存的修改丢弃；其他行没保存的修改保留。失败时编辑缓冲不变。
+   * `requiresSelection` 为 false 的按钮（例如"同步采购价"）没有选中行也能点，selectedRows 为空数组。
+   * 成功后结果中的行显示后端返回的值，这些行没保存的修改丢弃；其他行没保存的修改保留。按钮新增、删除的明细行
+   * （例如"由BOM生成明细"）在明细区显示的单据中随之出现、去掉。失败时编辑缓冲不变。
    */
   async runOperation(region: ViewRegion, button: ViewButton): Promise<CommandResult | null> {
     const view = this.view.value;
@@ -895,17 +897,19 @@ export class PageRuntime {
     const discard: RowId[] = [];
     const updates = new Map<string, string[]>();
     const removes = new Map<string, string[]>();
+    let detailsChanged = false;
     for (const row of result.rows) {
       discard.push({ entity: row.entity, id: row.rowKey });
       const gridId = this.model.gridId(row.rowKey);
       if ('deleted' in row) {
         this.model.removeRow(row.entity, row.rowKey);
         removes.set(row.entity, [...(removes.get(row.entity) ?? []), gridId]);
+        detailsChanged = true;
         continue;
       }
-      const recordKey =
-        row.entity === view.master.entity ? row.rowKey : (this.model.buffer.recordOf(row.entity, row.rowKey) ?? '');
-      this.model.applyResultRow(row, recordKey);
+      if (this.isNewDetail(row)) detailsChanged = true;
+      // 按钮新增的明细行按关联字段归到所属单据（recordKeyOf）；它的 clientRowId 由后端生成，不用作表格标识
+      this.model.applyResultRow({ ...row, clientRowId: null }, this.recordKeyOf(row, result));
       updates.set(row.entity, [...(updates.get(row.entity) ?? []), gridId]);
     }
     this.model.buffer.discard(discard);
@@ -921,10 +925,23 @@ export class PageRuntime {
       const port = this.port(entity);
       if (port) port.updateRows(ids.filter(id => port.hasRow(id)));
     }
+    if (detailsChanged) this.showDetails(this.state.activeRecord);
     this.syncState();
     this.announce(result, `${button.label}已完成`);
     await this.refreshAggregates();
     return result;
+  }
+
+  /** 按钮结果中前端还没有的明细行：按钮新增的行，例如"由BOM生成明细"按 BOM 新增的原辅料、包材 */
+  private isNewDetail(row: ResultRow) {
+    return row.entity !== this.model.master && !this.model.buffer.recordOf(row.entity, row.rowKey);
+  }
+
+  /** 明细区显示的单据有新增或删除的行时，按模型中的明细重新排列（新增的行排在后面） */
+  private showDetails(recordId: string | null) {
+    if (!recordId) return;
+    for (const detail of this.view.value?.details ?? [])
+      this.port(detail.entity)?.setRows(this.detailGridIds(detail.entity, recordId));
   }
 
   // ================================================================ 审批进度（FP-16）

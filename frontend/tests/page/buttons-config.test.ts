@@ -6,9 +6,15 @@ import type { CommandResult } from '../../src/contracts/command';
 import { PlatformError } from '../../src/contracts/errors';
 import type { EvaluationRequest, EvaluationResult } from '../../src/contracts/rules';
 import { serverMessageSamples } from '../../src/contracts/fakes/samples';
-import { MASTER, MATERIAL, costView, materialRow, openCostPage, selectRecord } from './support';
+import { MASTER, MATERIAL, costView, masterRow, materialRow, openCostPage, selectRecord } from './support';
 
 const UUID = '7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
+
+/** 按钮执行后按计算规则重算的主表行：总成本换成 `total` */
+const recalculated = (docid: string, memo: string | null, total: string) => {
+  const row = masterRow(docid, memo);
+  return { ...row, values: { ...row.values, TOTAL_COST: total } };
+};
 
 describe('按钮（FP-14）', () => {
   it('只按 systemButtons 和区域 buttons 显示；没有选中行时删除、复制和 requiresSelection 的按钮不可用，新增可用', async () => {
@@ -69,6 +75,88 @@ describe('按钮（FP-14）', () => {
     expect(runtime.model.buffer.isChanged(MATERIAL, '206324', 'MEMO')).toBe(true);
     expect(runtime.model.buffer.isChanged(MASTER, '2551', 'MEMO')).toBe(true);
     expect(ctx.material.updatedIds).toContain('206323');
+  });
+
+  it('"同步采购价"的 requiresSelection 为 false：没有选中行也能点，selectedRows 为空数组；成功后结果中的行显示后端的值', async () => {
+    const view = costView();
+    view.master.buttons = view.master.buttons.map(b =>
+      b.action === 'syncPrice' ? { ...b, label: '同步采购价', requiresSelection: false } : b
+    );
+    const ctx = await openCostPage(view);
+    const { runtime, fake } = ctx;
+    const button = view.master.buttons.find(b => b.action === 'syncPrice')!;
+    expect(runtime.buttonEnabled(view.master, button)).toBe(true);
+    const result: CommandResult = {
+      requestKey: UUID,
+      outcome: 'saved',
+      rows: [
+        { ...materialRow('206400', '2551', '25', '聚维酮K30', '45'), entity: MATERIAL },
+        { ...recalculated('2551', '原备注', '12.5'), entity: MASTER }
+      ],
+      idMap: {},
+      prompts: [],
+      skipped: [],
+      approvals: []
+    };
+    fake.http.on('POST', '/api/commands', result);
+    await runtime.clickButton(view.master, button);
+    const [command] = fake.http.callsTo('POST', '/api/commands');
+    expect(command.body).toMatchObject({
+      operation: 'COST_PINGGU.syncPrice',
+      documents: [],
+      params: { selectedRows: [] }
+    });
+    expect(runtime.gridRow(MASTER, '2551').TOTAL_COST).toBe('12.5');
+    expect(ctx.master.updatedIds).toContain('2551');
+    expect(fake.messages.at(-1)).toEqual({ kind: 'success', text: '同步采购价已完成' });
+  });
+
+  it('选中成本单 2550 点"由BOM生成明细"：删掉的明细从明细区去掉，后端新增的明细出现在明细区，主表显示重算后的值', async () => {
+    const view = costView();
+    view.master.buttons = [
+      ...view.master.buttons,
+      {
+        key: 'master:generateFromBom',
+        action: 'generateFromBom',
+        label: '由BOM生成明细',
+        operation: 'COST_PINGGU.generateFromBom',
+        requiresSelection: true
+      }
+    ];
+    const ctx = await openCostPage(view);
+    const { runtime, fake } = ctx;
+    await selectRecord(ctx, '2550');
+    expect(ctx.material.ids).toEqual(['206323', '206324', '206325']);
+    // 后端新增的行带着后端生成的 clientRowId
+    const added = (row: ReturnType<typeof materialRow>) => ({
+      ...row,
+      entity: MATERIAL,
+      clientRowId: `tmp-00000000-0000-5000-8000-000000${row.rowKey}`
+    });
+    const result: CommandResult = {
+      requestKey: UUID,
+      outcome: 'saved',
+      rows: [
+        { entity: MATERIAL, rowKey: '206323', deleted: true },
+        { entity: MATERIAL, rowKey: '206324', deleted: true },
+        { entity: MATERIAL, rowKey: '206325', deleted: true },
+        added(materialRow('208500', '2550', '115', '硬脂酸镁', '75')),
+        added(materialRow('208501', '2550', '9631', '聚维酮K30', '45')),
+        { ...recalculated('2550', null, '20.1'), entity: MASTER }
+      ],
+      idMap: {},
+      prompts: [],
+      skipped: [],
+      approvals: []
+    };
+    fake.http.on('POST', '/api/commands', result);
+    await runtime.clickButton(view.master, view.master.buttons.find(b => b.action === 'generateFromBom')!);
+    const [command] = fake.http.callsTo('POST', '/api/commands');
+    expect(command.body).toMatchObject({ params: { selectedRows: [{ entity: MASTER, rowKey: '2550' }] } });
+    expect(ctx.material.ids).toEqual(['208500', '208501']);
+    expect(runtime.gridRow(MATERIAL, '208500')).toMatchObject({ GOODSNAME: '硬脂酸镁', PRICE: '75', DOCID: '2550' });
+    expect(runtime.model.buffer.recordOf(MATERIAL, '208501')).toBe('2550');
+    expect(runtime.gridRow(MASTER, '2550').TOTAL_COST).toBe('20.1');
   });
 
   it('按钮命令失败时编辑缓冲不变', async () => {

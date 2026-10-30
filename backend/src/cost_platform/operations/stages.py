@@ -22,9 +22,11 @@ from cost_platform.contracts.types import (
     OperationConfig,
     PlatformError,
     Recalculate,
+    ReplaceDetails,
     Row,
     SkippedRow,
     UpdateRecords,
+    UpdateRows,
     UpdateTargets,
 )
 
@@ -32,6 +34,7 @@ from .actions import Round, expand_recalculate, expand_update_records, expand_up
 from .escape_hatch import EscapeHatchExecutor, EscapeHatchRegistry, EscapeHatchRunner, SqlEscapeHatchRunner
 from .memory import MemoryBook
 from .selection import SelectedRow, SelectionResolver, requires_selection, selected_rows, sort_key
+from .sql_actions import expand_replace_details, expand_update_rows
 
 _APPROVAL_OPERATIONS = "approval."
 
@@ -84,7 +87,8 @@ class ButtonInvolvedStage:
 
 
 class ActionStage:
-    """"展开动作"（OP-01、OP-02、OP-04、OP-07）：每次 `run` 展开 `actions` 中的下一个动作。
+    """"展开动作"（OP-01、OP-02、OP-04、OP-07、OP-09、OP-10）：每次 `run` 展开 `actions` 中的下一个动作。
+    `replaceDetails`、`updateRows` 的展开见 `sql_actions.py`。
 
     `applies` 在还有没执行的动作时为 True。展开结果写入 `intents`；逃生舱在这一轮直接执行，每次调用的记录
     （`EscapeHatchCall.to_record()`）写入 `escape_hatch_calls`，由 write-pipeline 随命令记录写入（OP-04）。第一轮先检查
@@ -136,6 +140,10 @@ class ActionStage:
             state.intents.extend(expand_update_records(rnd, action))
         elif isinstance(action, UpdateTargets):
             state.intents.extend(expand_update_targets(rnd, action))
+        elif isinstance(action, ReplaceDetails):
+            state.intents.extend(expand_replace_details(rnd, action, memory.cursor - 1))
+        elif isinstance(action, UpdateRows):
+            state.intents.extend(expand_update_rows(rnd, action))
 
     @staticmethod
     def _locate(state: CommandState, rows: list[SelectedRow]) -> list[tuple[DocumentRef, Row]]:
