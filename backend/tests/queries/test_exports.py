@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import zipfile
 from decimal import Decimal
 from typing import Any
 
@@ -18,9 +20,9 @@ from cost_platform.contracts.types import (
     parse_wire,
 )
 from cost_platform.queries.catalog import ItemsCatalog
-from cost_platform.queries.exports import Exports, _field_text
+from cost_platform.queries.exports import Exports, _field_value
 from cost_platform.queries.lists import PageQueries
-from cost_platform.queries.xlsx import HEADER, Cell, Workbook
+from cost_platform.queries.xlsx import HEADER, LINK, Cell, Workbook
 
 from . import xlsx_reader
 from .support import MASTER, PAGE, context, database, field
@@ -62,7 +64,8 @@ def list_request(**fields: Any) -> dict[str, Any]:
 
 
 def test_default_export_has_the_shown_columns_and_the_list_rows() -> None:
-    """默认导出当前页面：列为用户当前显示的列，行和顺序与列表相同（全部满足条件的行，不分页），数值为文本单元格。"""
+    """默认导出当前页面：列为用户当前显示的列，行和顺序与列表相同（全部满足条件的行，不分页）；数值字段（单据号、总成本）
+    为数值单元格，`<v>` 与列表返回的十进制文本相同，产品名称为文本单元格。"""
     query = list_request(sortModel=[{"colId": "TOTAL_COST", "sort": "desc"}],
                          filterModel={"GOODSNAME": {"filterType": "text", "type": "contains", "filter": "胶囊"}})
     file = make().export(context(), PAGE, body(mode="page", request=query, columns=["GOODSNAME", "DOCID", "TOTAL_COST"]))
@@ -76,7 +79,8 @@ def test_default_export_has_the_shown_columns_and_the_list_rows() -> None:
     assert rows[0] == ["产品名称", "单据号", "总成本"]
     expected = [[r.values["GOODSNAME"], r.values["DOCID"], r.values["TOTAL_COST"]] for r in every.rows]
     assert rows[1:] == [cells[:2] if cells[2] is None else cells for cells in expected]  # 空值不写单元格（1005 的总成本）
-    assert {c.kind for ref, c in sheet.cells.items() if ref.startswith("C") and ref != "C1"} == {"s"}
+    kinds = {col: {c.kind for ref, c in sheet.cells.items() if ref[0] == col and ref != f"{col}1"} for col in "ABC"}
+    assert kinds == {"A": {"s"}, "B": {"n"}, "C": {"n"}}
     assert all(sheet.cells[ref].style == HEADER for ref in ("A1", "B1", "C1"))
 
 
@@ -87,12 +91,18 @@ def test_default_export_only_visible_columns() -> None:
     assert caught.value.code is ErrorCode.VALIDATION_FAILED
 
 
-def test_numbers_are_text_cells_with_every_digit() -> None:
-    """12345678.12345678 写成文本单元格，内容就是十进制文本，在 Excel 中打开后显示不变。"""
+def test_numbers_are_number_cells_with_the_database_digits() -> None:
+    """数值写成数值单元格（不带 t），`<v>` 是数据库原样的十进制文本，不经过浮点、不用科学计数法：d_cg 成本单 2566 的
+    每批辅料成本 1292.385444247787610619469026548672566372 原样写出（Excel 打开后只保留 15 位有效数字，显示 1292.38544424779，
+    与旧系统相同），12345678.12345678、8 位小数的 0.00000001 也一样。"""
+    values = ["1292.385444247787610619469026548672566372", "12345678.12345678", "0.00000001"]
     workbook = Workbook()
-    workbook.sheet("s").append([Cell(_field_text(field("TOTAL_COST", "总成本"), Decimal("12345678.12345678")))])
-    cell = xlsx_reader.read(workbook.to_bytes()).sheet("s").cells["A1"]
-    assert (cell.kind, cell.value) == ("s", "12345678.12345678")
+    sheet = workbook.sheet("s")
+    sheet.append([Cell(_field_value(field("TOTAL_FL", "每批辅料成本"), Decimal(v))) for v in values])
+    xml = zipfile.ZipFile(io.BytesIO(workbook.to_bytes())).read("xl/worksheets/sheet1.xml").decode()
+    assert ('<row r="1"><c r="A1"><v>1292.385444247787610619469026548672566372</v></c><c r="B1"><v>12345678.12345678</v></c>'
+            '<c r="C1"><v>0.00000001</v></c></row>') in xml
+    assert sheet.widths == {0: 41, 1: 17, 2: 10}  # 列宽仍按十进制文本的字节数
 
 
 def test_role_without_the_export_config_is_denied() -> None:
@@ -114,7 +124,8 @@ def test_available_exports_only_for_the_role() -> None:
 
 def test_per_master_layout_like_the_old_export() -> None:
     """perMaster：主表一张工作表；每张有明细的主单一张"明细_<主键>"，块为标题行、表头行、数据行，块之间空一行；
-    主表的 Summary ID 链接到明细工作表，明细标题行和 Summary ID 链接回主表的行；表头一行、"/" 原样保留。"""
+    主表的 Summary ID 链接到明细工作表，明细标题行和 Summary ID 链接回主表的行；表头一行、"/" 原样保留。
+    SQL 查出的数值（Summary ID、总成本、单价）为数值单元格，链接列的数值单元格带链接样式；链接列仍按值推断到 Summary ID。"""
     file = make().export(context(), PAGE, body(mode="config", exportCode="cost-pinggu-export", scope="all", request=list_request()))
     assert file.file_name == "物料成本核算表.xlsx"
     book = xlsx_reader.read(file.content)
@@ -126,6 +137,7 @@ def test_per_master_layout_like_the_old_export() -> None:
                              ["1001", "胶囊A", "10.5"], ["1002", "片剂B", "20.25"], ["1003", "胶囊C", "10.5"],
                              ["1004", "Granule d", "5"], ["1005", "胶囊E"]]
     assert all(master.cells[f"{c}1"].style == HEADER for c in "ABC")
+    assert [(master.cells[r].kind, master.cells[r].style) for r in ("A2", "B2", "C2")] == [("n", LINK), ("s", 0), ("n", 0)]
     assert master.links == {"A2": "'明细_1001'!A1", "A3": "'明细_1002'!A1", "A4": "'明细_1003'!A1", "A5": "'明细_1004'!A1"}
     assert master.widths == {0: 10, 1: 12, 2: 35}
 
@@ -137,6 +149,7 @@ def test_per_master_layout_like_the_old_export() -> None:
     assert detail.links == {"A1": "'物料成本核算'!A3", "B3": "'物料成本核算'!A3", "B4": "'物料成本核算'!A3",
                             "A6": "'物料成本核算'!A3", "B8": "'物料成本核算'!A3"}
     assert detail.cells["A2"].style == 2 and detail.cells["A1"].style == 3
+    assert [(detail.cells[r].kind, detail.cells[r].style) for r in ("A3", "B3", "C3", "D3")] == [("n", 0), ("n", LINK), ("s", 0), ("n", 0)]
     assert detail.widths[0] == len("【原辅料明细】".encode()) == 21
     assert [r[0] for r in book.sheet("明细_1001").rows()] == ["【原辅料明细】", "Details ID", "5001"]
 

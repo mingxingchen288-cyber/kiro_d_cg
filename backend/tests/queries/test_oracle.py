@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 from sqlalchemy import Engine, text
 
+from cost_platform.contracts.decimal_text import format_decimal
 from cost_platform.contracts.fakes import FakeConfigSnapshot, FakeEntityDirectory, FakePermissionChecker
 from cost_platform.contracts.types import (
     DocumentData,
@@ -251,14 +252,16 @@ def test_personal_config_on_d_cg(uow: OracleUnitOfWorkFactory) -> None:
 # ---------------------------------------------------------------- T-QE-3
 
 def _cost_pinggu_export() -> ExportConfig:
-    """按旧系统 cmx.T_COST_EXPORT_CONFIG 的 cost-pinggu-export 写的导出配置 data/cost-pinggu-export.json（SQL 和列原文见
-    .reports/modules/queries-export/01-旧导出与个人配置.out.txt）；d_cg 复制的业务表没有 DELETED 列，去掉了 `m.DELETED = 0`。"""
-    source = (Path(__file__).parent / "data" / "cost-pinggu-export.json").read_text(encoding="utf-8")
-    return parse_wire(ExportConfig, json.loads(source))
+    """seed 中按旧系统 cmx.T_COST_EXPORT_CONFIG 的 cost-pinggu-export 写的导出配置（`export.cost-pinggu-export.json` 的
+    `content`，SQL 和列原文见 .reports/modules/queries-export/01-旧导出与个人配置.out.txt）；d_cg 复制的业务表没有 DELETED 列，
+    去掉了 `m.DELETED = 0`。"""
+    source = (SEED / "export.cost-pinggu-export.json").read_text(encoding="utf-8")
+    return parse_wire(ExportConfig, json.loads(source)["content"])
 
 
 def test_cost_pinggu_export_on_d_cg(engine: Engine, uow: OracleUnitOfWorkFactory) -> None:
-    """以管理员导出 cost-pinggu-export：主表一张、每张有明细的成本单一张"明细_<DOCID>"，块、链接与旧系统相同。"""
+    """以管理员导出 cost-pinggu-export：主表一张、每张有明细的成本单一张"明细_<DOCID>"，块、链接与旧系统相同；
+    数值为数值单元格，`<v>` 为数据库原样的十进制文本（2566 的每批辅料成本有 40 位有效数字），文本为文本单元格。"""
     config = _cost_pinggu_export()
     catalog = ItemsCatalog(exports={"cost-pinggu-export": config})
     exports = Exports(uow, FakePermissionChecker(), lambda c: catalog)
@@ -281,10 +284,16 @@ def test_cost_pinggu_export_on_d_cg(engine: Engine, uow: OracleUnitOfWorkFactory
     row_2550 = next(i for i, r in enumerate(master.rows(), start=1) if r and r[0] == "2550")
     assert master.links[f"A{row_2550}"] == "'明细_2550'!A1"
     assert sheet.links["A1"] == f"'物料成本核算'!A{row_2550}" and sheet.links["B3"] == f"'物料成本核算'!A{row_2550}"
+    assert [master.cells[f"{c}{row_2550}"].kind for c in "ABC"] == ["n", "n", "s"]  # Summary ID、Product ID、Product Name
+    assert [sheet.cells[f"{c}3"].kind for c in "ABE"] == ["n", "n", "s"]  # Details ID、Summary ID、Material Name
+    row_2566 = next(i for i, r in enumerate(master.rows(), start=1) if r and r[0] == "2566")
+    excipient = master.cells[f"O{row_2566}"]  # Excipient Cost/batch (Excl Rebate)，即 TOTAL_FL
+    expected = format_decimal(scalar(engine, "SELECT TOTAL_FL FROM T_COST_PINGGU WHERE DOCID = 2566"))
+    assert (excipient.kind, excipient.value) == ("n", expected)
 
 
-def test_number_text_cell_on_d_cg(uow: OracleUnitOfWorkFactory) -> None:
-    """数值为文本单元格，12345678.12345678 不丢精度。"""
+def test_number_cell_on_d_cg(uow: OracleUnitOfWorkFactory) -> None:
+    """数值为数值单元格，12345678.12345678 原样写进 `<v>`，不经过浮点。"""
     config = parse_wire(ExportConfig, {
         "page": PAGE, "name": "精度", "fileName": "精度",
         "master": {"sheet": "精度", "sql": 'SELECT m.DOCID AS DOCID, 12345678.12345678 AS "Big" FROM T_COST_PINGGU m WHERE m.DOCID = 2550',
@@ -294,7 +303,7 @@ def test_number_text_cell_on_d_cg(uow: OracleUnitOfWorkFactory) -> None:
         ctx(), PAGE, parse_wire(ExportRequest, {"mode": "config", "exportCode": "big", "scope": "all",
                                                 "request": {"startRow": 0, "endRow": 1}}))
     cell = xlsx_reader.read(file.content).sheet("精度").cells["A2"]
-    assert (cell.kind, cell.value) == ("s", "12345678.12345678")
+    assert (cell.kind, cell.value) == ("n", "12345678.12345678")
 
 
 def test_default_export_matches_list_on_d_cg(uow: OracleUnitOfWorkFactory) -> None:
