@@ -5,7 +5,9 @@
  *   默认的 `page` 是 admin（`test.use({ user: 'chengben01' })` 换账号）；`as('chengben01')` 另开一个已登录的浏览器上下文；
  *   要从登录页开始的用例用 `fresh()` 开一个没有登录的上下文。
  * - 页面：`openPage(page, '页面编码')` 按页面编码打开通用页面；`openDoc(page, 单据号)` 按单据号筛选主表并选中。
- * - 表格：`cell(grid, rowId, colId)` 按 row-id、col-id 取格子；`edit(page, 格子, 值)`；`canEdit`；`save(page)`；`summary(grid)`。
+ * - 表格：`cell(grid, rowId, colId)` 按 row-id、col-id 取格子；`header(grid, colId)` 列头；`edit(page, 格子, 值)`；`canEdit`；
+ *   `save(page)`；`summary(grid)`。测试模式（`vite --mode test`、`pnpm build:test`）下表格关掉了列虚拟化，全部列都已渲染，
+ *   不用横向滚动找列；只有悬停列头前用 `scrollToColumn` 滚一次（格子由 Playwright 在操作前自己滚到可见）。
  * - 提示：`toast(page, 文字)`。
  * - 接口：`api`（默认页面的账号）、`adminApi`、`apiOf(page)`：经平台接口读数据、准备数据。
  * - 测试数据：`data.copyDoc('2550')` 复制出自己的测试成本单（备注带 PF_TEST）；`data.goods()` 测试物料；
@@ -629,10 +631,10 @@ export async function openPage(page: Page, code: string) {
  */
 export async function filterColumn(page: Page, column: string, value: string) {
   const grid = masterGrid(page);
-  const header = grid.locator(`.ag-header-cell[col-id="${column}"]`);
+  const target = header(grid, column);
   await scrollToColumn(grid, column);
-  await header.hover();
-  await header.locator('.ag-header-cell-filter-button').click();
+  await target.hover();
+  await target.locator('.ag-header-cell-filter-button').click();
   const input = page.locator('.ag-filter input.ag-input-field-input').filter({ visible: true }).first();
   await expect(input).toBeVisible();
   const listed = page.waitForResponse(
@@ -673,73 +675,36 @@ export async function selectRow(page: Page, rowId: string, keyColumn = 'DOCID') 
   await expect(page.locator('.generic-page__empty')).toBeHidden();
 }
 
-/** 横向滚动，直到这一列出现在表格里（AG Grid 只渲染视野内的列；宽视口下一般不用滚） */
+/** 表头里这一列的列头（测试模式下全部列都已渲染；不可见的字段没有列头） */
+export function header(grid: Locator, column: string) {
+  return grid.locator(`.ag-header-row-column .ag-header-cell[col-id="${column}"]`).first();
+}
+
+/**
+ * 横向滚一次，让这一列的列头整个在表格视野内（悬停列头、点筛选按钮之前用）。测试模式下全部列都已渲染，直接按列头的位置滚；
+ * 固定在左侧的列不用滚。格子不用先滚：Playwright 点击、双击、悬停前自己把格子滚到可见。
+ */
 export async function scrollToColumn(grid: Locator, column: string) {
+  const target = header(grid, column);
+  await expect(target).toBeAttached();
   await grid
     .locator('.ag-body-horizontal-scroll-viewport')
     .first()
-    .evaluate(async (el, col) => {
+    .evaluate((el, col) => {
       const root = el.closest('.ag-root-wrapper') as HTMLElement;
-      const shown = () => root.querySelector(`.ag-header-cell[col-id="${col}"]`);
-      const frame = () =>
-        new Promise(resolve => {
-          requestAnimationFrame(() => requestAnimationFrame(resolve));
-        });
-      // 视野内渲染出的列：滚动后它变了，说明表格已按新位置画完
-      const rendered = () =>
-        Array.from(root.querySelectorAll('.ag-header-row-column .ag-header-cell[col-id]'))
-          .map(c => c.getAttribute('col-id'))
-          .join();
-      for (let left = 0; !shown() && left <= el.scrollWidth; left += el.clientWidth) {
-        const [before, from] = [rendered(), el.scrollLeft];
-        el.scrollLeft = left;
-        const moved = el.scrollLeft !== from;
-        // 逐段滚，每段等表格按新位置画完再看（机器忙时一帧画不完，最多等 10 次两帧）；位置没变就不用等
-        if (moved) {
-          for (let i = 0; i < 10 && !shown() && rendered() === before; i += 1)
-            // eslint-disable-next-line no-await-in-loop
-            await frame();
-          // 列变了以后再等两帧，免得只画了一部分
-          // eslint-disable-next-line no-await-in-loop
-          if (!shown()) await frame();
-        }
-      }
+      const center = root.querySelector<HTMLElement>(`.ag-header-viewport .ag-header-cell[col-id="${col}"]`);
+      if (!center) return;
+      const [left, right] = [center.offsetLeft, center.offsetLeft + center.offsetWidth];
+      if (left < el.scrollLeft || right > el.scrollLeft + el.clientWidth) el.scrollLeft = left;
     }, column);
+  await expect(target).toBeInViewport({ ratio: 0.9 });
 }
 
-/** 按 row-id 和 col-id 取格子（列不在视野内时先横向滚过去） */
+/** 按 row-id 和 col-id 取格子（测试模式下全部列都已渲染，不用横向滚；点击、双击前 Playwright 自己滚到可见） */
 export async function cell(grid: Locator, rowId: string, column: string): Promise<Locator> {
   const found = grid.locator(`.ag-row[row-id="${rowId}"] [col-id="${column}"]`).first();
-  if (!(await found.count())) await scrollToColumn(grid, column);
   await expect(found).toBeVisible();
   return found;
-}
-
-/** 表头中有没有这一列：从左到右横向滚一遍找（AG Grid 只渲染视野内的列），找完滚回最左边 */
-export async function headerShown(grid: Locator, column: string): Promise<boolean> {
-  return grid
-    .locator('.ag-body-horizontal-scroll-viewport')
-    .first()
-    .evaluate(async (el, col) => {
-      const root = el.closest('.ag-root-wrapper') as HTMLElement;
-      const found = () => Boolean(root.querySelector(`.ag-header-cell[col-id="${col}"]`));
-      const frame = () =>
-        new Promise(resolve => {
-          requestAnimationFrame(() => requestAnimationFrame(resolve));
-        });
-      let seen = found();
-      for (let left = 0; left <= el.scrollWidth && !seen; left += el.clientWidth) {
-        el.scrollLeft = left;
-        // 每段等表格画完再看（机器忙时一帧画不完，最多等 5 次两帧）
-        for (let i = 0; i < 5 && !seen; i += 1) {
-          // eslint-disable-next-line no-await-in-loop
-          await frame();
-          seen = found();
-        }
-      }
-      el.scrollLeft = 0;
-      return seen;
-    }, column);
 }
 
 export async function cellText(grid: Locator, rowId: string, column: string) {

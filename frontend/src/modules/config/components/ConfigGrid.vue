@@ -2,6 +2,7 @@
 /**
  * 配置用的可编辑表格，同旧系统 ApprovalConfigGrid.vue：单选或多选（复选框），双击单元格发出 edit，改值发出 change。
  * `problemOf` 给出某行某列的校验错误时，该格标红并在悬停时显示错误（FC-02、FC-05 的错误定位）。
+ * 列虚拟化只在测试模式下关掉（grid-columns.ts 的 suppressColumnVirtualisation，用户 2026-10-30 同意），正式模式不变。
  */
 import { computed, shallowRef } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
@@ -16,7 +17,7 @@ import type {
   RowSelectionOptions,
   SelectionChangedEvent
 } from 'ag-grid-community';
-import { configGridTheme } from './grid-columns';
+import { configGridTheme, suppressColumnVirtualisation } from './grid-columns';
 
 defineOptions({ name: 'ConfigGrid' });
 
@@ -121,6 +122,7 @@ defineExpose({
     :stop-editing-when-cells-lose-focus="true"
     :animate-rows="false"
     :tooltip-show-delay="300"
+    :suppress-column-virtualisation="suppressColumnVirtualisation"
     @grid-ready="ready"
     @selection-changed="select"
     @cell-value-changed="emit('change', $event)"

@@ -20,6 +20,14 @@ import type { GridRow, PageRuntime } from '../page-runtime';
 
 export const FORM_COLUMN = '__form';
 
+/**
+ * 测试模式专用：只在 `vite --mode test`（`pnpm dev`、`pnpm build:test`，端到端测试的开发方式和回归方式都用它）下
+ * 关掉 AG Grid 的列虚拟化，主表和明细（以及 Lookup 结果）一次渲染全部列，端到端用例按 col-id 直接取格子，不用横向逐段滚动。
+ * 来源：用户 2026-10-30 同意"只在 vite --mode test 下关掉列虚拟化"。正式模式（`pnpm build`，`--mode prod`）不变，
+ * 仍只渲染视野内的列。AG Grid 只在建表时读这个选项。
+ */
+export const suppressColumnVirtualisation = import.meta.env.MODE === 'test';
+
 function idOf(params: { data?: GridRow | undefined }) {
   return params.data?.__id ?? '';
 }

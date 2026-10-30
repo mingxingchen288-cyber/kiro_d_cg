@@ -30,7 +30,7 @@ import {
   detailGrid,
   edit,
   expect,
-  headerShown,
+  header,
   login,
   masterGrid,
   mustSave,
@@ -163,8 +163,9 @@ test(
     const viewer = await as('chengben01');
     const events = realtimeEvents(viewer);
     await openPage(viewer, 'COST_PINGGU');
-    const grid = masterGrid(viewer);
-    await expect(grid.locator('.ag-header-cell[col-id="GOODSNAME_EN"]')).toBeVisible();
+    // 测试模式下全部列都已渲染：列头在不在就是这一列显示没有
+    const english = header(masterGrid(viewer), 'GOODSNAME_EN');
+    await expect(english).toBeVisible();
     await viewer.evaluate(() => {
       (window as unknown as { e2eKept: string }).e2eKept = 'kept';
     });
@@ -177,11 +178,11 @@ test(
       await adminApi.ok('PUT', '/api/config/items/page/COST_PINGGU', { name: item.name, content: changed });
       // 经 WebSocket 收到 config.changed，重新读取页面视图，整张表都找不到这一列
       await expect.poll(() => events.some(e => e.topic === 'config.changed')).toBe(true);
-      await expect.poll(() => headerShown(grid, 'GOODSNAME_EN')).toBe(false);
+      await expect(english).toHaveCount(0);
     } finally {
       await adminApi.ok('PUT', '/api/config/items/page/COST_PINGGU', { name: item.name, content: item.content });
     }
-    await expect.poll(() => headerShown(grid, 'GOODSNAME_EN')).toBe(true);
+    await expect(english).toHaveCount(1);
     expect(await viewer.evaluate(() => (window as unknown as { e2eKept?: string }).e2eKept)).toBe('kept');
     expect((await adminApi.get('/api/config/items/page/COST_PINGGU')).content).toEqual(item.content);
   }

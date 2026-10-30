@@ -1,10 +1,12 @@
 /**
  * 端到端测试的 Playwright 配置，`playwright.config.ts`（回归）和 `playwright.dev.config.ts`（开发）共用。
  *
- * - build（回归）：先 `pnpm build`，后端 `create_app` 在 `/` 提供 `frontend/dist`（T-AS-7 的同源托管），页面和接口同源。
- *   运行：`pnpm test:e2e`（构建后跑全部用例）。
+ * - build（回归）：先 `pnpm build:test`（`vite build --mode test`），后端 `create_app` 在 `/` 提供 `frontend/dist`
+ *   （T-AS-7 的同源托管），页面和接口同源。运行：`pnpm test:e2e`（构建后跑全部用例）。
  * - dev（开发）：Vite 开发服务器（`--mode test`，`server.warmup` 预先转换页面组件），接口经 `/proxy-default` 代理到后端。
  *   运行：`pnpm test:e2e:dev`，只跑相关的加 `--grep <标题>` 或 `--only-changed`。
+ * 两种方式都是测试模式：表格关掉了列虚拟化（用户 2026-10-30 同意，src/modules/page/grid-adapter/columns.ts），
+ * 一次渲染全部列，用例按 col-id 直接取格子。正式构建（`pnpm build`，`--mode prod`）仍开着列虚拟化，不用来跑这些用例。
  * 两种方式都由 webServer 启动和停止服务（端口上已有服务时直接用它）。环境变量只经 webServer 的 `env` 给子进程，
  * 不写进终端：后端用独立的 Redis 命名空间，PLATFORM_ALLOWED_ORIGINS 只放这里的前端地址。
  * 端口默认后端 8090、开发服务器 9540；同时在别的 worktree 中跑时用 E2E_BACKEND_PORT、E2E_FRONTEND_PORT 改。
@@ -76,8 +78,8 @@ export function e2eConfig(mode: E2EMode) {
       apiPrefix: mode === 'build' ? '' : '/proxy-default',
       channel: 'chrome',
       headless: true,
-      // 2026-10-30 试过 5000×1200：主表 43 列只渲染 26 列（columns.spec.ts），明细 18 列全部渲染；
-      // 同一批用例 5000×1200 用 1.5 分钟、1600×900 用 1.3 分钟，所以仍用 1600×900，列不在视野内时 cell() 横向滚过去
+      // 测试模式下表格渲染全部列（columns.spec.ts 核对主表 43 列、明细 18 列），与窗口宽度无关；
+      // 视野外的格子由 Playwright 在点击、双击前滚到可见，列头要悬停、点筛选按钮时先用 scrollToColumn 滚过去
       viewport: { width: 1600, height: 900 },
       actionTimeout: 15_000,
       navigationTimeout: 30_000,

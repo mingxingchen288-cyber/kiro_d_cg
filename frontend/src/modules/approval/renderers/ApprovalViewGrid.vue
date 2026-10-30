@@ -5,12 +5,13 @@
  *   没有触发时显示"随审批等待"；新增行"变化"为绿色，删除行灰字。
  * - 受影响单据（kind 为 affected）最前面是勾选框，表头有全选；同一主键的几行合并勾选框和相同的格子（旧系统用 rowSpan，
  *   这里用 AG Grid 35 的 cell span）。记录已不存在的行整行红底，第一列前标"记录已不存在"，没有勾选框。
+ * - 列虚拟化只在测试模式下关掉（grid-theme.ts 的 suppressColumnVirtualisation，用户 2026-10-30 同意），正式模式不变。
  */
 import { computed, onBeforeUnmount, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { ColDef, ICellRendererParams, IHeaderComp, RowClassRules, SpanRowsParams } from 'ag-grid-community';
 import { type GridRowModel, type ViewRow, gridRows, triggerLabel, WAITING } from '../view-model';
-import { presentationTheme, HEADER_HEIGHT, ROW_HEIGHT } from './grid-theme';
+import { HEADER_HEIGHT, ROW_HEIGHT, presentationTheme, suppressColumnVirtualisation } from './grid-theme';
 
 defineOptions({ name: 'ApprovalViewGrid' });
 
@@ -247,6 +248,7 @@ const rowClassRules: RowClassRules<Row> = {
       :animate-rows="false"
       :row-class-rules="rowClassRules"
       :locale-text="{ noRowsToShow: '本区域没有展示数据' }"
+      :suppress-column-virtualisation="suppressColumnVirtualisation"
     />
   </div>
 </template>
