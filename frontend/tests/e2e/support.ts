@@ -422,7 +422,12 @@ export class TestData {
     for (const id of this.departments)
       await attempt(`删除部门 ${id}`, () => this.api.ok('DELETE', `/api/admin/departments/${id}`));
     for (const item of this.configItems)
-      await attempt(`删除配置项 ${item}`, () => this.api.ok('DELETE', `/api/config/items/${item}`));
+      await attempt(`删除配置项 ${item}`, async () => {
+        // 用例中途失败时配置项可能还没保存（404 就是没有要删的）
+        const result = await this.api.send('DELETE', `/api/config/items/${item}`);
+        if (result.status >= 300 && result.status !== 404)
+          throw new Error(`返回 ${result.status}：${JSON.stringify(result.body)}`);
+      });
     if (left.length || this.goodsIds.length || this.liquids.length) {
       // 平台删不了的（测试物料、液体成本单，以及中途失败留下的成本单）直接按主键删
       await attempt('删除测试物料', () =>
@@ -612,10 +617,10 @@ export async function nextFrame(page: Page) {
   );
 }
 
-/** 按页面编码打开通用页面（/page/<编码>），等主表第一行出现 */
+/** 按页面编码打开通用页面（/page/<编码>），等主表第一行数据出现（底部汇总行先于数据出现，不算） */
 export async function openPage(page: Page, code: string) {
   await page.goto(`/page/${code}`);
-  await expect(masterGrid(page).locator('.ag-row').first()).toBeVisible();
+  await expect(masterGrid(page).locator('.ag-center-cols-container .ag-row').first()).toBeVisible();
 }
 
 /**
@@ -644,6 +649,8 @@ export async function filterColumn(page: Page, column: string, value: string) {
 export async function openDoc(page: Page, docId: string, code = 'COST_PINGGU') {
   await openPage(page, code);
   await filterColumn(page, 'DOCID', docId);
+  // 筛选后表格换上新的一页之前，旧的同一行可能还在：等只剩筛出的这一行
+  await expect(masterGrid(page).locator('.ag-pinned-left-cols-container .ag-row')).toHaveCount(1);
   await selectRow(page, docId);
 }
 
