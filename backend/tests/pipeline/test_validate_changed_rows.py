@@ -6,9 +6,14 @@
 - 改 207577 的单价（空 → 12）：422 RULE_REJECTED，提示"每片含量必填且必须大于0"，定位到 207577 的 PER_HL，不写库。
 两个新单价都是假设的修改。
 
-C07 v7 起计算带出变化的行也校验（文件末尾两个测试，只改主表批量）：
+C07 v7 起计算带出变化的行也校验（文件末尾的测试，只改主表批量）：
 - 单据 2712（样例 31，明胶空心胶囊的每片含量假设为 0）：胶囊的每批数量按批量算，跟着变了，被拒绝；
 - 单据 2757（样例 33）：过氧化氢溶液的每批数量仍是 0，不检查，保存成功。
+
+WP-07（2026-10-30 起）计算带出变化的行也检查必填，同旧系统 useWorkingSetStore.ts 的 save 和 validator.ts：
+- 单据 2555（`data/doc-2555.json`，d_cg 只读查询 q02 的真实数据）：原料"马来酸氯苯那敏"（102126）每片含量 4、单价为空，
+  页面配了单价必填；只改批量 3500000 → 4000000，它的每批数量 14 → 16，保存被拒绝，指出单价不能为空；
+- 单据 2757 的保存仍成功：每批数量变了的原辅料单价、每片含量都有，没变的 207577 不检查。
 
 运行：`uv run --with <wheel> pytest tests/pipeline/test_validate_changed_rows.py`；没有装 wheel 时整个文件跳过。
 """
@@ -35,6 +40,7 @@ from tests.config.support import Env, seed_drafts  # noqa: E402
 
 ENGINE = RulesEngine()
 CASES = Path(__file__).resolve().parents[3] / "rules-core" / "fixtures" / "cases"
+DATA = Path(__file__).resolve().parent / "data"
 MASTER, MATERIAL, PACKAGE = "COST_PINGGU", "COST_MATERIAL", "COST_PACKAGE"
 PER_HL_MESSAGE = "每片含量必填且必须大于0"
 
@@ -74,9 +80,12 @@ def _snapshot() -> Any:
 
 
 def _rows_2757(snapshot: Any, case: str = "22") -> dict[str, dict[str, dict[str, Any]]]:
-    """单据在数据库中的值：取样例 `case`（默认 22，单据 2757）的请求，改过的行（含主表）用它的 `old` 还原。"""
-    path = next(p for p in CASES.glob(f"{case}-*.json"))
-    document = json.loads(path.read_text(encoding="utf-8"))["request"]["document"]
+    """单据在数据库中的值：取样例 `case`（默认 22，单据 2757）的请求，改过的行（含主表）用它的 `old` 还原。
+    `case` 为 `data/` 下的文件名时取那个文件（同样的写法：master、details，值为 C01 的文本）。"""
+    data = DATA / case
+    path = data if data.is_file() else next(p for p in CASES.glob(f"{case}-*.json"))
+    found = json.loads(path.read_text(encoding="utf-8"))
+    document = found["request"]["document"] if "request" in found else found
 
     def stored(entity: str, item: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         types = {f.name: f.type for f in snapshot.entity(entity).fields}
@@ -178,3 +187,34 @@ def test_2757_change_batch_saves() -> None:
     assert "207577" not in updated
     assert pipeline.store.rows[MASTER]["2757"]["APEX_PL"] == 1700000
     assert result.prompts == []
+
+
+# WP-07（2026-10-30）：计算带出变化的行也检查必填。旧系统 useCalcBroadcast.ts 把计算带出的变化记成修改，
+# useWorkingSetStore.ts 的 save 对有修改的行（去掉删除的行）调 validator.ts 的 validateRows，检查列的 required。
+
+
+def test_2555_change_batch_price_required_rejected() -> None:
+    """单据 2555（d_cg 真实数据）：只改批量 3500000 → 4000000，原料"马来酸氯苯那敏"（102126，单价为空）的每批数量
+    14 → 16，这一行计算带出了变化，单价必填（页面 COST_PINGGU 的原辅料 PRICE required），422 VALIDATION_FAILED，
+    只指出这一行的单价；不写库。"""
+    pipeline, engine, ctx, cmd = _save_batch("doc-2555.json", "2555", "4000000")
+    with pytest.raises(t.PlatformError) as caught:
+        pipeline.execute(cmd, ctx)
+    assert caught.value.code is t.ErrorCode.VALIDATION_FAILED
+    assert [(d.message, d.entity, d.row_key, d.field) for d in caught.value.details] == [
+        ("单价 不能为空", MATERIAL, "102126", "PRICE")]
+    [request] = engine.requests
+    assert request["changed"] == [{"entity": MASTER, "rowKey": "2555", "op": "modify", "fields": ["APEX_PL"]}]
+    assert pipeline.store.writes == []
+    assert pipeline.store.rows[MASTER]["2555"]["APEX_PL"] == 3500000
+
+
+def test_2757_change_batch_checks_changed_rows_required() -> None:
+    """单据 2757：改批量后每批数量变了的原辅料都检查必填（单价、每片含量都有），通过；207577（单价为空、每批数量仍是 0）
+    不检查。去掉 207584 的单价后再改批量，就因这一行单价为空被拒绝。"""
+    pipeline, engine, ctx, cmd = _save_batch("33", "2757", "1700000")
+    pipeline.store.rows[MATERIAL]["207584"]["PRICE"] = None
+    with pytest.raises(t.PlatformError) as caught:
+        pipeline.execute(cmd, ctx)
+    assert caught.value.code is t.ErrorCode.VALIDATION_FAILED
+    assert [(d.entity, d.row_key, d.field) for d in caught.value.details] == [(MATERIAL, "207584", "PRICE")]
