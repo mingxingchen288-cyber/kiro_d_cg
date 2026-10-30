@@ -3,7 +3,7 @@
  * 复制对话框（FP-13）：主表区复制一行时勾选主表字段，以及每个明细要复制的行和字段；明细区复制时勾选行（默认是表格中
  * 选中的行）和字段。默认全选，与旧系统相同。
  */
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, shallowRef, watch } from 'vue';
 import type { ViewRegion } from '../../../contracts/page-view';
 import { copyableFields } from '../copy';
 import { displayText } from '../fields';
@@ -14,8 +14,13 @@ defineOptions({ name: 'CopyDialog' });
 const props = defineProps<{ runtime: PageRuntime }>();
 const runtime = props.runtime;
 const copy = computed(() => runtime.ui.copy.value);
+/**
+ * 卡片显示的内容：关闭后保留最后一次的复制。NModal 关闭时有离场动画，动画期间仍渲染默认插槽，
+ * 卡片若随复制状态一起移除，naive-ui 会报"[naive/modal]: default slot is empty"。
+ */
+const shown = shallowRef(copy.value);
 const view = computed(() => runtime.view.value);
-const isMaster = computed(() => copy.value?.entity === view.value?.master.entity);
+const isMaster = computed(() => shown.value?.entity === view.value?.master.entity);
 
 const form = reactive({
   fields: [] as string[],
@@ -25,6 +30,7 @@ const form = reactive({
 
 watch(copy, value => {
   if (!value) return;
+  shown.value = value;
   form.fields = [...value.selection.fields];
   form.rows = [...value.rows];
   form.details = Object.fromEntries(
@@ -47,14 +53,14 @@ function rowLabel(region: ViewRegion, id: string) {
 }
 
 function detailRows(region: ViewRegion) {
-  const recordId = copy.value?.recordId;
+  const recordId = shown.value?.recordId;
   if (!recordId) return [];
   return runtime.model
     .detailIds(region.entity, recordId)
     .filter(id => !runtime.model.buffer.isDeleted(region.entity, id));
 }
 
-const region = computed(() => (copy.value ? runtime.model.region(copy.value.entity) : undefined));
+const region = computed(() => (shown.value ? runtime.model.region(shown.value.entity) : undefined));
 
 function confirm() {
   if (isMaster.value) void runtime.confirmCopy({ fields: form.fields, details: form.details });
@@ -65,7 +71,7 @@ function confirm() {
 <template>
   <NModal :show="Boolean(copy)" @update:show="(v: boolean) => !v && runtime.closeCopy()">
     <NCard
-      v-if="copy && region && view"
+      v-if="shown && region && view"
       class="copy-dialog"
       title="复制"
       :bordered="false"

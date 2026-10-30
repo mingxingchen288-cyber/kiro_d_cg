@@ -58,6 +58,11 @@ export default defineConfig(configEnv => {
       fs: {
         // 设置 allow 会替换默认值，所以保留默认放行的前端工程目录
         allow: [searchForWorkspaceRoot(process.cwd()), rulesCoreWeb]
+      },
+      // 启动后预先转换登录页入口和通用页面的路由组件（连同它们的导入），第一次打开时少等逐个文件转换。
+      // 预热全部 .vue 反而慢（与第一次打开登录页抢转换，2026-10-30 实测登录从 10s 变成 31s）
+      warmup: {
+        clientFiles: ['./src/main.ts', './src/modules/page/renderers/PageRoute.vue']
       }
     },
     preview: {

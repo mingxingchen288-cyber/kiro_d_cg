@@ -1,26 +1,11 @@
 /**
- * 系统管理（真实联调，浏览器 → 后端 → d_cg，只读）：admin 从左侧菜单打开"系统管理"，各功能用页签显示；
- * 人员管理、部门管理的表格占满页签下方的高度，能看到数据（2026-10-29 修复前表格只有 2px 高，什么都看不到）。
- * 左侧菜单默认收起、是盖在页面上的抽屉（与旧系统相同）：先点顶栏左上角的按钮展开，点完菜单项点遮罩收起。
+ * 系统管理（只读）：admin 从左侧菜单打开"系统管理"，各功能用页签显示；人员管理、部门管理的表格占满页签下方的高度，
+ * 能看到数据（2026-10-29 修复前表格只有 2px 高，什么都看不到）。
+ * 左侧菜单默认收起、是盖在页面上的抽屉（与旧系统相同）：先点顶栏左上角的按钮展开，点完菜单项点遮罩收起（openMenu）。
  */
-import { type Page, expect, test } from '@playwright/test';
+import { type Page, expect, openMenu, test } from './support';
 
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByPlaceholder('请输入用户名').fill('admin');
-  await page.getByPlaceholder('请输入密码').fill('admin123..');
-  await page.getByRole('button', { name: '确认' }).click();
-  await page.waitForURL('**/home');
-}
-
-async function openAdmin(page: Page) {
-  await page.locator('header button').first().click();
-  await page.locator('.n-menu-item-content', { hasText: '系统管理' }).click();
-  await page.waitForURL('**/admin');
-  await page.mouse.click(1200, 450);
-}
-
-/** 当前页签里的表格：高度和行数 */
+/** 当前页签里的表格：高度和所在的页签内容区 */
 async function visibleGrid(page: Page) {
   const pane = page.locator('.admin-tabs__pane').filter({ visible: true }).first();
   const grid = pane.locator('.ag-root-wrapper');
@@ -30,8 +15,9 @@ async function visibleGrid(page: Page) {
 }
 
 test('系统管理：人员管理、部门管理的表格占满页签高度，能看到 admin 账号和部门列表', async ({ page }) => {
-  await login(page);
-  await openAdmin(page);
+  await page.goto('/home');
+  await openMenu(page, '系统管理');
+  await page.waitForURL('**/admin');
 
   const accounts = await visibleGrid(page);
   expect(accounts.height).toBeGreaterThan(400);
