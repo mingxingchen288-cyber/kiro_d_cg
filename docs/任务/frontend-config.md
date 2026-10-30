@@ -36,10 +36,10 @@
 
 ### T-FC-4 新建页面向导与扩展配置的编辑
 
-- 归属与目标：实现 FC-07、FC-08。
+- 归属与目标：实现 FC-07、FC-08、FC-10（"表与列"的"求和"，2026-10-30 加入）。
 - 前置输入：开始前 T-FC-1。
 - 负责范围：config 模块中的向导和扩展配置表单。
 - 交付物：向导界面；必须审批规则、默认值、对比、SQL 审批人和动作参数的编辑。
 - 接入责任：真实联调在 T-AS-7。
 - 验收标准：模拟验证：按向导生成物料清单页的请求与 C09 样例一致；审计默认开启、明细显示方式默认多 Tab，管理员改为关闭审计后，请求中的 `audit` 为 false；单表页不显示明细显示方式，请求仍带 `detailMode`；序列不存在时提示先建序列，不能继续生成。
-- 状态与证据：待联调（模拟验证通过；界面没有在浏览器中运行）。2026-10-29：向导 `wizard/wizard-state.ts`、`WizardPanel.vue`、`WizardTableForm.vue`，步骤同旧 `WizardPanel.vue`（页面菜单 / 导入表与配置字段 / 确认生成），页面编码输入同旧 `handleCodeInput`；归属菜单取菜单配置的分组；导入列经 `POST /api/config/wizard/columns`，序列不存在时提示并不能进入下一步、不发生成请求。显示、编辑的调整随请求带 `fieldDefaults`，后端没有写进实体时生成后补存（contract-gaps 第 2 条）。扩展配置：实体的必须审批字段规则（`entity/ApprovalRequiredDialog.vue`，入口"页面行为 → 需审批的编辑字段"）、默认值和选项值、对比（`views/TableFieldsCard.vue` 的列、`CompareDialog.vue`），审批流的 SQL 审批人和参数（审批人弹窗、参数弹窗）。模拟验证：`tests/config/wizard.test.ts` 7 个用例通过——生成请求顶层与 C09 样例一致（parentMenu cost、GOODS_PRICE_MANAGE、物料清单及成本、single、tabs、audit true、details 空），`master` 为 wizard.py 的写法；关闭审计后 `audit` 为 false、单表页仍带 `detailMode`；序列 T_COST_GOODS_SEQ 不存在时提示、不能继续、没有生成请求；调整显示、编辑后实体补存 `fieldDefaults`；物料实体保存必须审批规则、选项默认值、对比；审批流保存 SQL 审批人的绑定变量和最终批准时填写的参数。
+- 状态与证据：待联调（模拟验证通过；界面没有在浏览器中运行）。2026-10-29：向导 `wizard/wizard-state.ts`、`WizardPanel.vue`、`WizardTableForm.vue`，步骤同旧 `WizardPanel.vue`（页面菜单 / 导入表与配置字段 / 确认生成），页面编码输入同旧 `handleCodeInput`；归属菜单取菜单配置的分组；导入列经 `POST /api/config/wizard/columns`，序列不存在时提示并不能进入下一步、不发生成请求。显示、编辑的调整随请求带 `fieldDefaults`，后端没有写进实体时生成后补存（contract-gaps 第 2 条）。扩展配置：实体的必须审批字段规则（`entity/ApprovalRequiredDialog.vue`，入口"页面行为 → 需审批的编辑字段"）、默认值和选项值、对比（`views/TableFieldsCard.vue` 的列、`CompareDialog.vue`），审批流的 SQL 审批人和参数（审批人弹窗、参数弹窗）。模拟验证：`tests/config/wizard.test.ts` 7 个用例通过——生成请求顶层与 C09 样例一致（parentMenu cost、GOODS_PRICE_MANAGE、物料清单及成本、single、tabs、audit true、details 空），`master` 为 wizard.py 的写法；关闭审计后 `audit` 为 false、单表页仍带 `detailMode`；序列 T_COST_GOODS_SEQ 不存在时提示、不能继续、没有生成请求；调整显示、编辑后实体补存 `fieldDefaults`；物料实体保存必须审批规则、选项默认值、对比；审批流保存 SQL 审批人的绑定变量和最终批准时填写的参数。2026-10-30（丙组，`batch1/summary`）：FC-10，`views/TableFieldsCard.vue` 的列表格在"不能修改的原因"后加"求和"勾选列（非数值字段不能勾，悬停提示"只有数值字段能求和"），`table-fields.ts` 读写页面字段设置的 `aggregate`。模拟验证：`tests/config/table-fields.test.ts` 新增 1 个通过（seed 成本核算主表的总成本、原辅料金额显示已勾选；勾选主表批量 APEX_PL 并保存，页面只多写 `APEX_PL: {aggregate: "sum"}`）。界面没有在浏览器中运行。
