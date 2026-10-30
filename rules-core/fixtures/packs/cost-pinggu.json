@@ -421,22 +421,32 @@
       "jdm": "R_PKG_BATCH_QTY"
     },
     {
-      "id": "R_V_PRICE",
+      "id": "R_MAT_PER_HL_GT0",
       "layer": "entity",
       "entity": "COST_MATERIAL",
       "category": "validate",
       "order": 100,
       "serverOnly": false,
-      "jdm": "R_V_PRICE"
+      "jdm": "R_MAT_PER_HL_GT0"
     },
     {
-      "id": "R_UI_ERP",
+      "id": "R_MAT_PRICE_GE0",
+      "layer": "entity",
+      "entity": "COST_MATERIAL",
+      "category": "validate",
+      "order": 101,
+      "serverOnly": false,
+      "jdm": "R_MAT_PRICE_GE0"
+    },
+    {
+      "id": "R_MASTER_NO_BOM_RED",
       "layer": "page",
+      "entity": "COST_PINGGU",
       "page": "COST_PINGGU",
       "category": "ui",
       "order": 200,
       "serverOnly": false,
-      "jdm": "R_UI_ERP"
+      "jdm": "R_MASTER_NO_BOM_RED"
     }
   ],
   "jdm": {
@@ -1154,7 +1164,7 @@
         }
       ]
     },
-    "R_V_PRICE": {
+    "R_MAT_PER_HL_GT0": {
       "nodes": [
         {
           "id": "in",
@@ -1164,14 +1174,29 @@
         },
         {
           "id": "expr",
-          "name": "R_V_PRICE",
+          "name": "R_MAT_PER_HL_GT0",
           "type": "expressionNode",
           "content": {
             "expressions": [
               {
                 "id": "e1",
                 "key": "matched",
-                "value": "PRICE < 0"
+                "value": "PER_HL <= 0"
+              },
+              {
+                "id": "e2",
+                "key": "field",
+                "value": "'PER_HL'"
+              },
+              {
+                "id": "e3",
+                "key": "level",
+                "value": "'reject'"
+              },
+              {
+                "id": "e4",
+                "key": "message",
+                "value": "'每片含量必填且必须大于0'"
               }
             ]
           }
@@ -1196,7 +1221,7 @@
         }
       ]
     },
-    "R_UI_ERP": {
+    "R_MAT_PRICE_GE0": {
       "nodes": [
         {
           "id": "in",
@@ -1206,14 +1231,76 @@
         },
         {
           "id": "expr",
-          "name": "R_UI_ERP",
+          "name": "R_MAT_PRICE_GE0",
           "type": "expressionNode",
           "content": {
             "expressions": [
               {
                 "id": "e1",
                 "key": "matched",
-                "value": "DTL_USEFLAG == '原料'"
+                "value": "PRICE < 0"
+              },
+              {
+                "id": "e2",
+                "key": "field",
+                "value": "'PRICE'"
+              },
+              {
+                "id": "e3",
+                "key": "level",
+                "value": "'reject'"
+              },
+              {
+                "id": "e4",
+                "key": "message",
+                "value": "'单价必填且不能为负数'"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MASTER_NO_BOM_RED": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MASTER_NO_BOM_RED",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "(MEMO == 'ERP未搭建BOM')"
+              },
+              {
+                "id": "e2",
+                "key": "rowStyle",
+                "value": "'{\"backgroundColor\":\"#ffcccc\"}'"
               }
             ]
           }

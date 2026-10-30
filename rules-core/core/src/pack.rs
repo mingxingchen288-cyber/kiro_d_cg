@@ -1,11 +1,13 @@
-//! C07 第 1 节：规则包的解析、JDM 检查和编译、计算规则的依赖排序（RC-03、RC-09）。
+//! C07 第 1 节：规则包的解析、JDM 检查和编译、计算规则的依赖排序（RC-03、RC-09），校验和界面规则的条件与效果。
 
-use crate::scan::scan;
+use crate::scan::{conditional, scan, strip_parens};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use zen_engine::model::GraphContent;
 use zen_engine::Decision;
+use zen_expression::expression::Standard;
+use zen_expression::{compile_expression, Expression, Variable};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -107,13 +109,74 @@ pub struct CalcRule {
     /// `/`、`%` 右边的操作数：求值出错时据此判断是不是除以 0（模块说明第 8 节）。
     pub divisors: Vec<String>,
     pub decision: Decision,
+    /// 表达式拆成的各段：`when`、`branches` 编成的条件表达式按分支拆开，其他表达式只有最后一段。
+    /// zen-engine 求值出错时给出的错误不带原因（表达式节点只写"Failed to evaluate expression"），这时逐段直接求值：
+    /// 得到原因，判断溢出和除以 0，条件出错按成立处理（模块说明第 8 节）。
+    pub branches: Option<Branches>,
 }
 
-/// load_pack 的结果：编译好的规则（RC-03），计算规则已按依赖排好序（RC-09）。
+/// 表达式的一段：编译好的表达式和它的除数。
+pub struct Part {
+    pub expression: Expression<Standard>,
+    pub divisors: Vec<String>,
+}
+
+/// `(w1) ? (e1) : ((w2) ? (e2) : 字段)` 拆成 `[(w1, e1), (w2, e2)]` 和最后的 `字段`；不是条件写法时 arms 为空。
+pub struct Branches {
+    pub arms: Vec<(Expression<Standard>, Part)>,
+    pub otherwise: Part,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Level {
+    Reject,
+    Prompt,
+}
+
+impl Level {
+    pub fn kind(self) -> &'static str {
+        match self {
+            Level::Reject => "reject",
+            Level::Prompt => "prompt",
+        }
+    }
+}
+
+/// 界面规则的效果（C06 第 5 节 `effect`）。
+pub struct UiEffect {
+    pub editable: Option<bool>,
+    pub required: Option<bool>,
+    pub row_style: Option<Map<String, Value>>,
+    pub cell_style: Option<Map<String, Value>>,
+}
+
+pub enum CheckKind {
+    Validate { level: Level, message: String },
+    Ui(UiEffect),
+}
+
+/// 一条校验或界面规则：计算规则全部执行完后执行，用计算后的最终值（C06 第 5 节执行顺序 3）。
+/// `condition` 为 JDM 中的 `matched`，`field` 为空时界面规则作用于整行、校验结果只定位到行。
+pub struct CheckRule {
+    pub id: String,
+    pub layer: Layer,
+    pub operation: Option<String>,
+    pub page: Option<String>,
+    pub entity: String,
+    pub is_master: bool,
+    pub field: Option<String>,
+    pub server_only: bool,
+    pub plain_refs: Vec<String>,
+    pub condition: Expression<Standard>,
+    pub kind: CheckKind,
+}
+
+/// load_pack 的结果：编译好的规则（RC-03），计算规则已按依赖排好序（RC-09），校验和界面规则按 order、规则编码排序。
 pub struct Pack {
     pub master: String,
     pub fields: HashMap<String, HashMap<String, FieldType>>,
     pub calc: Vec<CalcRule>,
+    pub checks: Vec<CheckRule>,
 }
 
 const ALLOWED_NODES: [&str; 5] = ["inputNode", "outputNode", "expressionNode", "decisionTableNode", "switchNode"];
@@ -139,16 +202,20 @@ pub fn load(bytes: &[u8]) -> Result<Pack, String> {
 
     let mut calc = Vec::new();
     let mut orders = Vec::new();
-    for rule in pack.rules.iter().filter(|r| r.category == Category::Calc) {
+    let mut checks = Vec::new();
+    for rule in &pack.rules {
         let graph = graphs[&rule.jdm].clone();
-        let (field, expression) = single_expression(&rule.id, &graph)?;
         let entity = rule.entity.clone().unwrap_or_else(|| master.clone());
         let is_master = entity == master;
+        if rule.category != Category::Calc {
+            checks.push((rule.order, rule.id.clone(), check_rule(rule, &graph, entity, is_master)?));
+            continue;
+        }
+        let (field, expression) = single_expression(&rule.id, &graph)?;
         let s = scan(&expression);
-        let plain_refs = s.chains.iter().filter(|c| c.len() == 1 && !c[0].starts_with(['#', '$'])).map(|c| c[0].clone()).collect();
         let mut decision = Decision::from(graph);
         decision.compile();
-        orders.push((rule.order, rule.id.clone(), s.chains));
+        orders.push((rule.order, rule.id.clone(), s.chains.clone()));
         calc.push(CalcRule {
             id: rule.id.clone(),
             layer: rule.layer,
@@ -158,15 +225,110 @@ pub fn load(bytes: &[u8]) -> Result<Pack, String> {
             is_master,
             field,
             server_only: rule.server_only,
-            plain_refs,
+            plain_refs: plain_refs(&s.chains),
             divisors: s.divisors,
             decision,
+            branches: branches(&expression),
         });
     }
     let order = sort(&calc, &orders, &fields, &master)?;
     let mut slots: Vec<Option<CalcRule>> = calc.into_iter().map(Some).collect();
     let calc = order.into_iter().map(|i| slots[i].take().expect("每条规则只排一次")).collect();
-    Ok(Pack { master, fields, calc })
+    // 校验、界面规则之间没有依赖（它们不改字段的值）：按 order、规则编码执行（C06 第 5 节执行顺序 2、3）
+    checks.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
+    let checks = checks.into_iter().map(|(_, _, c)| c).collect();
+    Ok(Pack { master, fields, calc, checks })
+}
+
+/// 表达式引用、但行中可能没有的字段名（`#`、`$` 开头的不算）。
+fn plain_refs(chains: &[Vec<String>]) -> Vec<String> {
+    chains.iter().filter(|c| c.len() == 1 && !c[0].starts_with(['#', '$'])).map(|c| c[0].clone()).collect()
+}
+
+/// config 编出的条件表达式拆成各个分支（README 第 2 节）；不是条件写法、或某段不能单独编译时，整条表达式作为最后一段。
+/// 整条表达式也不能编译时为 None。
+fn branches(expression: &str) -> Option<Branches> {
+    let part = |text: &str| -> Option<Part> {
+        Some(Part { expression: compile_expression(text).ok()?, divisors: scan(text).divisors })
+    };
+    let whole = || part(expression).map(|otherwise| Branches { arms: Vec::new(), otherwise });
+    let mut arms = Vec::new();
+    let mut rest = expression.to_string();
+    while let Some((cond, then, other)) = conditional(strip_parens(&rest)) {
+        let (Ok(condition), Some(then)) = (compile_expression(&cond), part(&then)) else { return whole() };
+        arms.push((condition, then));
+        rest = other;
+    }
+    match part(strip_parens(&rest)) {
+        Some(otherwise) => Some(Branches { arms, otherwise }),
+        None => whole(),
+    }
+}
+
+/// 校验、界面规则的 JDM（config `packs.py` 生成）：表达式节点依次为 `matched`（条件，空为 `true`）、`field`（作用的字段，
+/// 整行时没有）；校验另有 `level`、`message`，界面另有 `editable`、`required`、`rowStyle`、`cellStyle`（样式 JSON 文本）。
+/// 除 `matched` 外都是常量，在 load_pack 时求出；`matched` 编译一次，求值时对每行执行。
+fn check_rule(rule: &PackRuleJson, graph: &GraphContent, entity: String, is_master: bool) -> Result<CheckRule, String> {
+    let items: HashMap<String, String> = expressions(graph).into_iter().collect();
+    let matched = items.get("matched").map(String::as_str).unwrap_or("true");
+    let condition = compile_expression(matched).map_err(|e| format!("规则 {} 的条件 \"{matched}\" 不能编译：{e}", rule.id))?;
+    let constant = |key: &str| -> Result<Option<Variable>, String> {
+        let Some(text) = items.get(key) else { return Ok(None) };
+        let value = compile_expression(text)
+            .and_then(|e| e.evaluate(Variable::empty_object()))
+            .map_err(|e| format!("规则 {} 的 {key} \"{text}\" 不是常量：{e}", rule.id))?;
+        Ok(Some(value))
+    };
+    let text = |key: &str| -> Result<Option<String>, String> {
+        match constant(key)? {
+            None | Some(Variable::Null) => Ok(None),
+            Some(Variable::String(s)) => Ok(Some(s.to_string())),
+            Some(other) => Err(format!("规则 {} 的 {key} 应当是文本，实际为 {}", rule.id, other.type_name())),
+        }
+    };
+    let flag = |key: &str| -> Result<Option<bool>, String> {
+        match constant(key)? {
+            None | Some(Variable::Null) => Ok(None),
+            Some(Variable::Bool(b)) => Ok(Some(b)),
+            Some(other) => Err(format!("规则 {} 的 {key} 应当是 true 或 false，实际为 {}", rule.id, other.type_name())),
+        }
+    };
+    let style = |key: &str| -> Result<Option<Map<String, Value>>, String> {
+        let Some(json) = text(key)? else { return Ok(None) };
+        match serde_json::from_str::<Value>(&json) {
+            Ok(Value::Object(map)) => Ok(Some(map)),
+            _ => Err(format!("规则 {} 的 {key} 应当是样式对象的 JSON 文本：{json}", rule.id)),
+        }
+    };
+    let kind = if rule.category == Category::Validate {
+        // 没写 level 时为 reject，同 config（C06 第 5 节）
+        let level = match text("level")?.as_deref() {
+            None | Some("reject") => Level::Reject,
+            Some("prompt") => Level::Prompt,
+            Some(other) => return Err(format!("规则 {} 的 level 应当是 reject 或 prompt，实际为 {other}", rule.id)),
+        };
+        CheckKind::Validate { level, message: text("message")?.unwrap_or_default() }
+    } else {
+        CheckKind::Ui(UiEffect {
+            editable: flag("editable")?,
+            required: flag("required")?,
+            row_style: style("rowStyle")?,
+            cell_style: style("cellStyle")?,
+        })
+    };
+    Ok(CheckRule {
+        id: rule.id.clone(),
+        layer: rule.layer,
+        operation: rule.operation.clone(),
+        page: rule.page.clone(),
+        entity,
+        is_master,
+        field: text("field")?,
+        server_only: rule.server_only,
+        plain_refs: plain_refs(&scan(matched).chains),
+        condition,
+        kind,
+    })
 }
 
 fn parse_graph(key: &str, value: &Value) -> Result<GraphContent, String> {
@@ -181,8 +343,8 @@ fn parse_graph(key: &str, value: &Value) -> Result<GraphContent, String> {
     serde_json::from_value(value.clone()).map_err(|e| format!("JDM \"{key}\" 不合法：{e}"))
 }
 
-/// 计算规则的 JDM 约定：只有一个表达式节点、一个表达式，key 为作用的字段。
-fn single_expression(rule: &str, graph: &GraphContent) -> Result<(String, String), String> {
+/// JDM 中全部表达式节点的表达式（key、value），按出现顺序。
+fn expressions(graph: &GraphContent) -> Vec<(String, String)> {
     let mut found = Vec::new();
     for node in &graph.nodes {
         if let zen_engine::model::DecisionNodeKind::ExpressionNode { content } = &node.kind {
@@ -191,6 +353,12 @@ fn single_expression(rule: &str, graph: &GraphContent) -> Result<(String, String
             }
         }
     }
+    found
+}
+
+/// 计算规则的 JDM 约定：只有一个表达式节点、一个表达式，key 为作用的字段。
+fn single_expression(rule: &str, graph: &GraphContent) -> Result<(String, String), String> {
+    let mut found = expressions(graph);
     match found.len() {
         1 => Ok(found.remove(0)),
         n => Err(format!("计算规则 {rule} 的 JDM 应当只有一个表达式（key 为作用的字段），实际有 {n} 个")),

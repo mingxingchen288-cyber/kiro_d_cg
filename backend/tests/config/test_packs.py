@@ -32,9 +32,11 @@ from cost_rules_core import RulesEngine  # noqa: E402
 ENGINE = RulesEngine()
 
 
-def test_seed_cost_rules_compile_and_compute_case_09() -> None:
-    """backend/seed/config 的成本核算配置（含 17 条计算规则）生成的规则包能 load_pack，对样例 09（cmx 单据 200726）算出相同结果。"""
-    item = _case("09-")
+@pytest.mark.parametrize("prefix", ["09-", "17-", "18-"])
+def test_seed_cost_rules_compile_and_compute_case(prefix: str) -> None:
+    """backend/seed/config 的成本核算配置（17 条计算规则、两条校验、整行红底）生成的规则包能 load_pack，与样例集的规则包
+    算出相同结果：样例 09（cmx 单据 200726）；17、18（d_cg 单据 2919 的两条校验拒绝和整行红底，preview 和 commit）。"""
+    item = _case(prefix)
     pack = build_pack(Catalog({}).merged(seed_drafts()), "COST_PINGGU", 1, ENGINE.core_version())
     handle = ENGINE.load_pack(pack_bytes(pack))
     result = ENGINE.evaluate(handle, json.dumps(item["request"], ensure_ascii=False))
@@ -74,18 +76,27 @@ def test_c06_calc_rule_sample_e02() -> None:
     assert batch == {"1": "1020", "2": "5.1"}
 
 
-def test_c06_ui_rule_sample_compiles() -> None:
-    """C06 第 5 节的界面规则（ERP 来的物料整行不能编辑）编进物料管理页的规则包，能编译（rules-core 还没有界面规则的求值）。"""
+def test_c06_ui_rule_sample_whole_row() -> None:
+    """C06 第 5 节的界面规则（ERP 来的物料整行不能编辑，field 为空）编进物料管理页的规则包：preview 时 ERP 行的每个字段
+    都不可编辑，自建的行不受影响。"""
     items = goods_price_items()
     page = next(d for d in items if d.type == "page")
     catalog = Catalog({}).merged([*items, draft("page", "GOODS_MANAGE", {**page.content, "title": "物料管理"}),
                                   draft("rule", "R_GOODS_ERP_LOCK", doc_json("C06", 5))])
     pack = build_pack(catalog, "COST_GOODS_PRICE", 1, ENGINE.core_version())
-    ENGINE.load_pack(pack_bytes(pack))
+    handle = ENGINE.load_pack(pack_bytes(pack))
     rule = next(r for r in pack.rules if r.id == "R_GOODS_ERP_LOCK")
     assert (rule.layer, rule.page, rule.entity, rule.category) == ("page", "GOODS_MANAGE", "COST_GOODS_PRICE", "ui")
     expressions = pack_json(pack)["jdm"]["R_GOODS_ERP_LOCK"]["nodes"][1]["content"]["expressions"]
     assert [(e["key"], e["value"]) for e in expressions] == [("matched", "(ISERP == 1)"), ("editable", "false")]
+    context = {"userId": "1", "departmentId": "10", "role": "ADMIN", "today": "2026-10-30", "origin": "user"}
+    fields = [f.name for f in Catalog({}).merged(items).entity("COST_GOODS_PRICE").fields]
+    for iserp, locked in (("1", True), ("0", False)):
+        request = {"purpose": "operation", "page": "GOODS_MANAGE", "phase": "preview", "context": context,
+                   "document": {"entity": "COST_GOODS_PRICE", "master": {"rowKey": "115", "values": {"GOODSID": "115", "ISERP": iserp}},
+                                "details": {}}, "changed": [], "data": {}}
+        row = json.loads(ENGINE.evaluate(handle, json.dumps(request, ensure_ascii=False)))["rows"][0]
+        assert row["fields"] == ({f: {"editable": False} for f in fields} if locked else {})
 
 
 def test_dependency_cycle_rejects_save() -> None:

@@ -114,6 +114,26 @@
       "order": 50,
       "serverOnly": true,
       "jdm": "R_NET"
+    },
+    {
+      "id": "R_UI_ROW_LOCK",
+      "layer": "page",
+      "entity": "DEMO_ORDER",
+      "page": "DEMO_ORDER",
+      "category": "ui",
+      "order": 300,
+      "serverOnly": false,
+      "jdm": "R_UI_ROW_LOCK"
+    },
+    {
+      "id": "R_UI_PRICE_REQUIRED",
+      "layer": "page",
+      "entity": "DEMO_ORDER",
+      "page": "DEMO_ORDER",
+      "category": "ui",
+      "order": 301,
+      "serverOnly": false,
+      "jdm": "R_UI_PRICE_REQUIRED"
     }
   ],
   "jdm": {
@@ -345,6 +365,110 @@
                 "id": "e1",
                 "key": "NET",
                 "value": "AMOUNT * (1 - data.discountRate)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_UI_ROW_LOCK": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_UI_ROW_LOCK",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "QTY >= 100"
+              },
+              {
+                "id": "e2",
+                "key": "editable",
+                "value": "false"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_UI_PRICE_REQUIRED": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_UI_PRICE_REQUIRED",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "QTY >= 100"
+              },
+              {
+                "id": "e2",
+                "key": "field",
+                "value": "'PRICE'"
+              },
+              {
+                "id": "e3",
+                "key": "required",
+                "value": "true"
+              },
+              {
+                "id": "e4",
+                "key": "cellStyle",
+                "value": "'{\"color\":\"#999999\"}'"
               }
             ]
           }

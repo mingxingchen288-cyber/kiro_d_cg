@@ -57,14 +57,11 @@ fn skip_spaces(chars: &[char], mut i: usize) -> usize {
     i
 }
 
+/// ZEN 的字符串没有转义：到下一个同样的引号为止（zen-expression 2.1.6 lexer 的 `string`）。
 fn skip_string(chars: &[char], start: usize) -> usize {
     let quote = chars[start];
     let mut i = start + 1;
     while i < chars.len() {
-        if chars[i] == '\\' {
-            i += 2;
-            continue;
-        }
         if chars[i] == quote {
             return i + 1;
         }
@@ -127,6 +124,68 @@ fn matching_paren(chars: &[char], open: usize) -> usize {
     i
 }
 
+/// `open` 处的左括号对应的右括号位置；没有配对时为 None。
+fn closing(chars: &[char], open: usize) -> Option<usize> {
+    let mut depth = 0;
+    let mut i = open;
+    while i < chars.len() {
+        match chars[i] {
+            '\'' | '"' | '`' => {
+                i = skip_string(chars, i);
+                continue;
+            }
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// 去掉包住整个表达式的一层括号，例如 `(A + B)` 为 `A + B`；`(A) + (B)` 不变。
+pub fn strip_parens(expr: &str) -> &str {
+    let text = expr.trim();
+    let chars: Vec<char> = text.chars().collect();
+    if chars.first() == Some(&'(') && closing(&chars, 0) == Some(chars.len() - 1) {
+        // 首尾的括号都是单字节字符
+        return text[1..text.len() - 1].trim();
+    }
+    text
+}
+
+/// 拆开 config 生成的条件表达式 `(条件) ? (值) : 其余`（C07 第 1 节、README 第 2 节），返回三段；
+/// 条件和值都必须各自用一层括号包住，其他写法返回 None。
+pub fn conditional(expr: &str) -> Option<(String, String, String)> {
+    let chars: Vec<char> = expr.trim().chars().collect();
+    let group = |start: usize| -> Option<(String, usize)> {
+        let i = skip_spaces(&chars, start);
+        if chars.get(i) != Some(&'(') {
+            return None;
+        }
+        let end = closing(&chars, i)?;
+        Some((chars[i + 1..end].iter().collect(), end + 1))
+    };
+    let (cond, after_cond) = group(0)?;
+    let q = skip_spaces(&chars, after_cond);
+    // `??`（空值合并）、`?.` 不是条件运算
+    if chars.get(q) != Some(&'?') || matches!(chars.get(q + 1), Some('?') | Some('.')) {
+        return None;
+    }
+    let (then, after_then) = group(q + 1)?;
+    let c = skip_spaces(&chars, after_then);
+    if chars.get(c) != Some(&':') {
+        return None;
+    }
+    let rest: String = chars[c + 1..].iter().collect();
+    (!rest.trim().is_empty()).then(|| (cond, then, rest.trim().to_string()))
+}
+
 /// 除号右边紧跟的一个操作数：括号、名称链（可带调用）或数字，前面可有一元负号。
 fn operand_end(chars: &[char], start: usize) -> usize {
     let mut i = start;
@@ -164,6 +223,17 @@ mod tests {
         let chains: Vec<String> = s.chains.iter().map(|c| c.join(".")).collect();
         assert_eq!(chains, ["master.APEX_PL", "master.P_PERPACK", "master.S_PERBACK", "EXADD_MATER"]);
         assert_eq!(s.divisors, ["(master.P_PERPACK * master.S_PERBACK)", "100"]);
+    }
+
+    #[test]
+    fn conditional_chain() {
+        let text = "(matches(GOODSNAME, '胶囊')) ? (master.APEX_PL / 10000) : ((DTL_USEFLAG == '原料') ? (PER_HL * 2) : (BATCH_QTY))";
+        let (c1, t1, rest) = conditional(text).unwrap();
+        assert_eq!((c1.as_str(), t1.as_str()), ("matches(GOODSNAME, '胶囊')", "master.APEX_PL / 10000"));
+        let (c2, t2, rest) = conditional(strip_parens(&rest)).unwrap();
+        assert_eq!((c2.as_str(), t2.as_str(), strip_parens(&rest)), ("DTL_USEFLAG == '原料'", "PER_HL * 2", "BATCH_QTY"));
+        assert!(conditional("(A) + (B)").is_none());
+        assert_eq!(strip_parens("(A) + (B)"), "(A) + (B)");
     }
 
     #[test]

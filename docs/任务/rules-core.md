@@ -28,7 +28,15 @@
 - 交付物：C07 的完整实现（preview 和 commit 阶段，计算、校验、界面规则，出错处理；审批流的入口条件是 SQL，由 approval 执行，不在 rules-core 中，C07 v4）；C01 判定的 Rust 实现；Python 包 `cost_rules_core`；`rules-core/dist/web/`：WASM ES 模块、Worker 脚本和 `createCalcWorkerClient`；覆盖每种规则和每种错误的样例集。
 - 接入责任：后端由 T-AS-5 注入 write-pipeline、approval、config；前端由 T-AS-3 创建 Worker 客户端实例，T-AS-7 联调。
 - 验收标准：样例集在两个产物上全部通过且结果一致，浏览器中经 `createCalcWorkerClient` 运行（Playwright、Chromium）；proptest：同一请求求值两次结果相同，上游结果按全部精度参与下游计算（例如 1/3 再乘 3，结果与按 28 位有效数字计算的值一致，不因中间舍入改变）；同一规则包重复求值不重新编译；跨实体依赖（明细引用主表、主表汇总明细）一次求值得到最终值，与按依赖顺序逐条手算的结果相同；依赖成环的规则包 `load_pack` 返回 `PACK_INVALID`（Python 包中抛 C08 第 8 节的 `PackInvalidError`）；`old` 只给出改过的字段时，其余字段的 `old` 等于当前值；Python 包通过 `RulesEngine` 的契约测试（C08 第 14 节）。
-- 状态与证据：进行中。计算部分已完成（用户 2026-10-28 指定的范围）：`load_pack`、`evaluate`、`core_version`，`calc` 规则的单个表达式、`branches`、`master.字段`、主表汇总明细（含按条件求和）、依赖排序和成环检查、preview 和 commit 两个阶段，第 8 节的空值按 0、除以 0 为 0、分支都不匹配保持原值、不舍入；Python 包 `cost_rules_core` 和 `rules-core/dist/web/`（WASM、`index.js`、`worker.js`、`createCalcWorkerClient`）已交付。校验、界面规则先按 C07 返回合法的空结果（没有提示和效果）。
+- 状态与证据：待联调（T-AS-7）。自身的验收标准已满足；完成前的独立复核待做（`.reports/review/T-RC-2.md`）。计算部分（用户 2026-10-28 指定的范围）：`load_pack`、`evaluate`、`core_version`，`calc` 规则的单个表达式、`branches`、`master.字段`、主表汇总明细（含按条件求和）、依赖排序和成环检查、preview 和 commit 两个阶段，第 8 节的数值处理；Python 包 `cost_rules_core` 和 `rules-core/dist/web/`（WASM、`index.js`、`worker.js`、`createCalcWorkerClient`）已交付。校验、界面规则（2026-10-30）：计算规则全部执行完后，按 order、规则编码执行；校验成立时给出 reject 或 prompt，定位到实体、行和字段；界面规则写进行结果的 `fields`（editable、required）和 `style`（row、cells），field 为空时作用于整行；写法见 `rules-core/README.md` 第 2 节。没有样例的错误：`EVAL_FAILED`（只在内核 panic 时出现），按工程约定第 5 节上线后再补。
+  - 校验、界面规则和 T-RC-3 的验证（2026-10-30，worktree `batch1/rules-core`，输出在 `.reports/batch1-20261029/rules-core/`）：
+    - 构建：`pwsh -NoProfile -File tools/build-rules-core.ps1`，Python 包 562.1 秒、wheel 9,501,526 字节；WASM 271.2 秒、`rules_core.wasm` 13,056,776 字节；`Cargo.lock` 前后 SHA256 相同，编译无警告（`build.log`）。
+    - 原生：`cargo test -p rules-core --locked --manifest-path rules-core/Cargo.toml`，单元测试 3 passed，样例集 22 个全部通过，失败 0（`cargo-test.log`）。
+    - 浏览器：`rules-core/web/test/run-browser.ps1`，23 passed、0 failed（22 个样例和 1 条跨源隔离检查；`playwright.log`、`browser-results.json`）。
+    - Python 包：`rules-core/tests/run-python.ps1`，40 passed、0 failed（`python.log`）；两端 22 个样例按 C01 一致 22、不一致 0，逐字节相同 22，`core_version` 都是 0.1.0（`python-results.json`）。
+    - 后端：在 backend 目录 `uv run --with <wheel> pytest -q -p no:cacheprovider -m "not oracle and not redis" tests/rules_core tests/config tests/contracts/test_rules_engine.py tests/pipeline`，287 passed（`pytest-rules.log`）；同一命令不带路径（非真实库全量）1183 passed、157 deselected、失败 0（`pytest-all.log`）。
+    - 前端：`pnpm typecheck` 通过；`pnpm test` 29 个文件 495 passed（`frontend-typecheck.log`、`frontend-test.log`）。
+    - 新样例：17、18 为 d_cg 单据 2919（MEMO 为 ERP未搭建BOM，两行原辅料的每片含量为空）在 preview 和 commit 的两条校验拒绝和整行红底（红底只在 preview）；19 为界面规则整行不可编辑、单价必填和单元格样式；20 为 T-RC-3。seed 的三条规则（`backend/seed/config/rule.R_MAT_PER_HL_GT0.json`、`rule.R_MAT_PRICE_GE0.json`、`rule.R_MASTER_NO_BOM_RED.json`）经 config 生成的规则包对 17、18 算出相同结果（`tests/config/test_packs.py`），JDM 与样例集的规则包逐个相同（`tests/config/test_packs_jdm.py`）。
   - C07 v4 复验（2026-10-29）：去掉规则类别 `approvalTrigger`、规则包的 `approvalEntries`、求值目的 `approvalEntry`，删去样例"审批入口-以后实现"，样例集 18 个；重新生成 `fixtures/`，`tools/build-rules-core.ps1` 重建两个产物（`Cargo.lock` 前后 SHA256 相同，编译无警告）。输出在 `.reports/rc-c07v4/`：
     - 原生：`cargo test -p rules-core --locked`，单元测试 2 passed，样例集测试 1 passed（遍历 `fixtures/cases/` 全部 18 个），失败 0（`cargo-test.log`）。
     - 浏览器：`run-browser.ps1`，19 passed、0 failed（18 个样例和 1 条跨源隔离检查；`playwright.log`、`browser-results.json`）。
@@ -42,7 +50,7 @@
     - 两端：`rules-core/tests/cross_check.py`，19 个样例按 C01 一致 19、不一致 0，逐字节相同 19，`core_version` 相同（`python-results.json`）。
     - 样例覆盖：E02（preview 和 commit 结果相同）、E03、E04（正负数都不舍入）；cmx 单据 200726 的 11 条真实明细，重算的 BATCH_QTY、COST_BATCH 与 cmx 虚拟列相同，主表 13 个计算字段按用户公式；新增行计入、删除行不计入汇总；胶囊和中盒分支；分支都不匹配保持原值（cmx 200203 的"PVC 250μm"）；`old` 只给出改过的字段；serverOnly 规则只在 commit 执行；审批入口（C07 v4 已删去）；INPUT_INVALID；跨实体依赖成环。期望值由 `rules-core/fixtures/oracle.py` 按用户公式逐步手算（每步按 28 位有效数字）。
     - 求值耗时：成本核算单据 200726（17 条计算规则、11 条明细），每次 Python 1.29 毫秒、浏览器经 Worker 2.26 毫秒、浏览器主线程直接调用 1.74 毫秒（各 200 次平均）。
-  - 未做：校验、界面规则的求值，结果中行的 `fields` 和 `style`；第 8 节中求值出错、条件出错、溢出的样例（T-RC-3）。
+  - 修正（2026-10-30）：zen-engine 表达式节点求值出错时只给"Failed to evaluate expression"，不带原因，原来按"Number overflow"判断溢出的写法因此不生效（之前没有溢出样例）；现在出错时对表达式逐段直接求值，取得原因后判断溢出、除以 0 和空数组。
 
 ### T-RC-3 数值处理规则表的样例
 
@@ -52,4 +60,8 @@
 - 交付物：第 8 节每一行至少一个样例，并附上旧系统前端计算引擎对同一输入的结果。
 - 接入责任：样例供 T-RC-2 和 T-MG-3 的对账使用。
 - 验收标准：每个样例在两个产物上通过；与旧系统结果不同的只有浮点误差一类，逐条列出。
-- 状态与证据：未开始。
+- 状态与证据：进行中——样例和验证已完成，等独立复核（工程约定第 7 节，`.reports/review/T-RC-3.md`）后改为完成。
+  - 样例：`rules-core/fixtures/cases/20-T-RC-3-数值处理规则表.json`（规则包 `fixtures/packs/numeric.json`），第 8 节每一行一条规则：空值和缺失字段按 0、除以 0 和 0/0 为 0、溢出为 0、求值出错为 0 并给出 prompt、条件出错按成立（计算规则和校验规则各一条）、汇总时空值按 0、没有行时 sum/count/avg/max/min 为 0、分支都不匹配保持原值、不舍入。已有样例另外覆盖：除以 0（04、08）、汇总没有行（06、07 的原辅料明细为空）、分支都不匹配（11）、不舍入（12、13）。
+  - 旧系统结果：样例中的 `oldSystem`，2026-10-30 用 node 24 直接运行旧 `cost-web/src/v3/logic/calc-engine/calculator.ts`（mathjs 15.1.0）得到，脚本和原始输出在 `.reports/batch1-20261029/rules-core/old-engine/`（`run-old.mts`、`old-results.json`）。
+  - 与旧系统不同的：① `5 / 3` 旧系统 1.6666666666666667、新平台 1.6666666666666666666666666667，浮点误差，按 C01 一致（Rust 版判定已核对）；② `1e28 * 10` 旧系统 1e29、新平台 0：浮点到 1.8e308 才溢出，新平台超出 28 位有效数字按第 8 节为 0，这一条不属于浮点误差，是两者能表示的范围不同。其余 12 个字段相同。求值出错时新平台另给一条 prompt，旧系统只在控制台告警。
+  - 两个产物上的运行：同 T-RC-2 的 2026-10-30 验证（原生、浏览器、Python 包都通过，两端逐字节相同）。

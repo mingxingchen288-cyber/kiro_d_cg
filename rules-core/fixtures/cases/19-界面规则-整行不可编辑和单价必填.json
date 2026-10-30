@@ -1,0 +1,102 @@
+{
+  "kind": "evaluate",
+  "name": "界面规则-整行不可编辑和单价必填",
+  "source": "C06 第 5 节：ui 规则的 field 为空时作用于整行；指定字段的 required 和 cellStyle（假设的规则）",
+  "pack": "packs/demo-order.json",
+  "match": "full",
+  "request": {
+    "purpose": "operation",
+    "operation": "DEMO_ORDER.save",
+    "page": "DEMO_ORDER",
+    "phase": "preview",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "DEMO_ORDER",
+      "master": {
+        "rowKey": "1",
+        "values": {
+          "ID": "1",
+          "QTY": "100",
+          "PRICE": "2.5",
+          "AMOUNT": null,
+          "THIRD": null,
+          "BACK": null,
+          "PRICE_DELTA": null,
+          "QTY_DELTA": null,
+          "NET": null
+        }
+      },
+      "details": {}
+    },
+    "changed": [
+      {
+        "entity": "DEMO_ORDER",
+        "rowKey": "1",
+        "op": "modify",
+        "fields": []
+      }
+    ],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "DEMO_ORDER",
+        "rowKey": "1",
+        "computed": {
+          "BACK": "100",
+          "THIRD": "33.333333333333333333333333333",
+          "AMOUNT": "250",
+          "PRICE_DELTA": "0",
+          "QTY_DELTA": "0"
+        },
+        "fields": {
+          "AMOUNT": {
+            "editable": false
+          },
+          "BACK": {
+            "editable": false
+          },
+          "ID": {
+            "editable": false
+          },
+          "NET": {
+            "editable": false
+          },
+          "PRICE": {
+            "editable": false,
+            "required": true
+          },
+          "PRICE_DELTA": {
+            "editable": false
+          },
+          "QTY": {
+            "editable": false
+          },
+          "QTY_DELTA": {
+            "editable": false
+          },
+          "THIRD": {
+            "editable": false
+          }
+        },
+        "style": {
+          "row": null,
+          "cells": {
+            "PRICE": {
+              "color": "#999999"
+            }
+          }
+        }
+      }
+    ],
+    "effects": []
+  }
+}

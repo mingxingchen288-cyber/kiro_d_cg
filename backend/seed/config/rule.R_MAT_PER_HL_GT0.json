@@ -1,0 +1,15 @@
+{
+  "type": "rule",
+  "key": "R_MAT_PER_HL_GT0",
+  "name": "原辅料每片含量必须大于0",
+  "content": {
+    "layer": "entity",
+    "target": "COST_MATERIAL",
+    "category": "validate",
+    "field": "PER_HL",
+    "order": 100,
+    "when": "PER_HL <= 0",
+    "level": "reject",
+    "message": "每片含量必填且必须大于0"
+  }
+}

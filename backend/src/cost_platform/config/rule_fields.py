@@ -37,9 +37,10 @@ def name_chains(expression: str) -> list[list[str]]:
     while i < n:
         c = expression[i]
         if c in "'\"`":
+            # ZEN 的字符串没有转义：到下一个同样的引号为止
             i += 1
             while i < n and expression[i] != c:
-                i += 2 if expression[i] == "\\" else 1
+                i += 1
             i += 1
         elif c.isascii() and c.isdigit():
             while i < n and (expression[i].isdigit() or expression[i] in "._"):

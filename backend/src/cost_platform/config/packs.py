@@ -9,9 +9,9 @@
 
 JDM 的写法（rules-core README 第 2 节，与 `rules-core/fixtures/gen_packs.py` 相同）：输入 → 表达式 → 输出。
 - 计算规则：表达式节点只有一个表达式，`key` 是作用的字段，`value` 是 `expressions.calc_expression` 的结果。
-- 校验、界面规则：rules-core 还没有约定写法（C07 只写了计算规则），这里的表达式节点依次为 `matched`（条件，为空时 `true`）；
-  校验规则另有 `level`、`message`（字符串常量）；界面规则另有 `effect` 中写了的 `editable`、`required`（true/false）和
-  `rowStyle`、`cellStyle`（样式的 JSON 文本作字符串常量）。rules-core 现在只检查它们能编译（见 contract-gaps）。
+- 校验、界面规则（rules-core README 第 2 节）：表达式节点依次为 `matched`（条件，为空时 `true`）、`field`（作用的字段，
+  字符串常量；为空时不写，界面规则作用于整行）；校验规则另有 `level`、`message`（字符串常量）；界面规则另有 `effect` 中写了的
+  `editable`、`required`（true/false）和 `rowStyle`、`cellStyle`（样式的 JSON 文本作字符串常量）。
 """
 
 from __future__ import annotations
@@ -80,6 +80,8 @@ def _rule_graph(catalog: Catalog, code: str, rule: RuleConfig, entity_code: str,
     if rule.category == "calc":
         return _graph(code, [(rule.field or "", calc_expression(rule, types))])
     expressions = [("matched", condition_text(rule.when, types) or "true")]
+    if rule.field is not None:
+        expressions.append(("field", literal_text(rule.field)))
     if rule.category == "validate":
         expressions += [("level", literal_text(rule.level or "reject")), ("message", literal_text(rule.message or ""))]
     elif rule.effect is not None:

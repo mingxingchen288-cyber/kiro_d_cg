@@ -1,0 +1,15 @@
+{
+  "type": "rule",
+  "key": "R_MAT_PRICE_GE0",
+  "name": "原辅料单价不能为负数",
+  "content": {
+    "layer": "entity",
+    "target": "COST_MATERIAL",
+    "category": "validate",
+    "field": "PRICE",
+    "order": 101,
+    "when": "PRICE < 0",
+    "level": "reject",
+    "message": "单价必填且不能为负数"
+  }
+}
