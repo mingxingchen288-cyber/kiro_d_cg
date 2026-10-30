@@ -18,6 +18,7 @@ dependencies = [
     "redis==7.1.0",
     "argon2-cffi==25.1.0",
     "bcrypt==5.0.0",
+    "websockets==17.3",
 ]
 
 [dependency-groups]

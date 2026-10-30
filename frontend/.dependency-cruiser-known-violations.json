@@ -1,0 +1,36 @@
+[
+  {
+    "type": "dependency",
+    "from": "src/views/page/[pageCode].vue",
+    "to": "src/modules/page/index.ts",
+    "unresolvedTo": "@/modules/page",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "shell-not-to-modules"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/views/page/[pageCode].vue",
+    "to": "src/modules/page/renderers/PageRoute.vue",
+    "unresolvedTo": "@/modules/page/renderers/PageRoute.vue",
+    "dependencyTypes": [
+      "aliased",
+      "aliased-tsconfig",
+      "aliased-tsconfig-paths",
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "shell-not-to-modules"
+    }
+  }
+]

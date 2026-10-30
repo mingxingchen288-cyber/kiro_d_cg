@@ -8,9 +8,14 @@ import { networkError, parseErrorResponse } from '@/contracts/errors';
 import type { HttpClient, HttpRequestOptions } from '@/contracts/shell';
 
 const isHttpProxy = import.meta.env.DEV && import.meta.env.VITE_HTTP_PROXY === 'Y';
-const { baseURL } = getServiceBaseURL(import.meta.env, isHttpProxy);
 
-/** 后端服务地址（开发时为代理前缀） */
+/**
+ * 后端服务地址。开发服务器上为代理前缀（`VITE_HTTP_PROXY=Y`，代理到 `VITE_SERVICE_BASE_URL`）或 `VITE_SERVICE_BASE_URL`；
+ * 构建产物由后端以静态文件提供，与 `/api`、`/ws` 同源（T-AS-7），为页面的 origin。
+ */
+const baseURL = import.meta.env.DEV ? getServiceBaseURL(import.meta.env, isHttpProxy).baseURL : window.location.origin;
+
+/** 后端服务地址（开发时为代理前缀，构建产物为页面的 origin） */
 export const serviceBaseURL = baseURL;
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';

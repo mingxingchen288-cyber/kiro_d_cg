@@ -2,10 +2,10 @@
 .env
 .env.*
 !.env.example
-# 前端的 Vite 环境文件只有公开配置，没有密钥（AG Grid 授权放在根目录 .env）
-!frontend/.env
-!frontend/.env.prod
-!frontend/.env.test
+# 前端的公开配置（只有 VITE_ 开头的变量，没有密钥；AG Grid 授权放在 .env），前端只读根目录的环境文件（assembly 的 AS-09）。
+# .env.test.local、.env.prod.local 是本机覆盖，仍被上面的 .env.* 忽略。
+!/.env.test
+!/.env.prod
 
 # Python
 __pycache__/

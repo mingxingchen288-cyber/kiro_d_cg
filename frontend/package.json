@@ -31,8 +31,8 @@
     "pnpm": ">=10.5.0"
   },
   "scripts": {
-    "build": "vite build --mode prod",
-    "build:test": "vite build --mode test",
+    "build": "pnpm lint:deps && vite build --mode prod",
+    "build:test": "pnpm lint:deps && vite build --mode test",
     "cleanup": "sa cleanup",
     "commit": "sa git-commit",
     "commit:zh": "sa git-commit -l=zh-cn",
@@ -40,6 +40,7 @@
     "dev:prod": "vite --mode prod",
     "gen-route": "sa gen-route",
     "lint": "eslint . --fix",
+    "lint:deps": "depcruise src --config .dependency-cruiser.cjs --ignore-known",
     "preview": "vite preview",
     "release": "sa release",
     "test": "vitest run",
@@ -99,6 +100,7 @@
     "@vitejs/plugin-vue": "6.0.2",
     "@vitejs/plugin-vue-jsx": "5.1.2",
     "consola": "3.4.2",
+    "dependency-cruiser": "18.7.0",
     "eslint": "9.39.1",
     "eslint-plugin-vue": "10.6.2",
     "fast-check": "4.10.2",

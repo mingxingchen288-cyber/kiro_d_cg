@@ -9,6 +9,8 @@
 - 关闭：先取消还没结束的启动任务，再按相反顺序调用 `stop`。只 stop 已经 start 成功的插件，以及没有 start、只有 stop 的
   插件（例如 db-core 释放连接池）。
 - 就绪后每个响应带 `X-Config-Version`（当前配置代号）；`PlatformError` 按 C03 转成错误响应。
+- 前端（T-AS-7）：`frontend/dist` 有构建产物（`pnpm build`）时，`create_app` 把它挂在 `/` 下，在各模块的路由之后，
+  与 `/api`、`/ws` 同源；这些响应带 COOP、COEP（`FrontendFiles`）。没有构建产物时不提供，开发时用 Vite 开发服务器。
 
 启动：`uv run --with <rules-core wheel> uvicorn cost_platform.assembly.app:create_app --factory --port 8080`。
 """
@@ -20,12 +22,16 @@ import json
 import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from cost_platform.contracts.registry import Plugin, Registry
 from cost_platform.contracts.types import (
@@ -40,9 +46,35 @@ from cost_platform.contracts.types import (
 )
 
 from .plugins import AppPlugin, oracle_plugins
-from .settings import Settings
+from .settings import FRONTEND_DIST, Settings
 
 _log = logging.getLogger("cost_platform.assembly")
+
+CROSS_ORIGIN_ISOLATION = {
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Embedder-Policy": "require-corp",
+}
+"""rules-core 的 WASM 要求页面跨源隔离（AS-06）；开发服务器在 `frontend/vite.config.ts` 中加同样的头。"""
+
+_NOT_CLIENT_ROUTES = frozenset({"api", "assets", "ws", "health"})
+
+
+class FrontendFiles(StaticFiles):
+    """前端构建产物（T-AS-7）。每个响应带 COOP、COEP。
+
+    前端路由是 history 模式：找不到文件、又不在 `/api/`、`/assets/` 下的路径返回 `index.html`，交给前端路由，
+    所以直接打开或刷新 `/page/COST_PINGGU` 也能显示页面。"""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            parts = Path(path).parts
+            if exc.status_code != 404 or (parts and parts[0] in _NOT_CLIENT_ROUTES):
+                raise
+            response = await super().get_response("index.html", scope)
+        response.headers.update(CROSS_ORIGIN_ISOLATION)
+        return response
 
 
 def _show_platform_logs() -> None:
@@ -57,15 +89,20 @@ def _show_platform_logs() -> None:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     _show_platform_logs()
-    return build_app([*oracle_plugins(settings or Settings.load()), AppPlugin()])
+    return build_app([*oracle_plugins(settings or Settings.load()), AppPlugin()], frontend_dist=FRONTEND_DIST)
 
 
-def build_app(plugins: Sequence[Plugin]) -> FastAPI:
-    """按插件清单 boot 注册表，把 `app` 插件（清单中的 `AppPlugin`）取到的东西挂到 FastAPI 上。"""
+def build_app(plugins: Sequence[Plugin], frontend_dist: Path | None = None) -> FastAPI:
+    """按插件清单 boot 注册表，把 `app` 插件（清单中的 `AppPlugin`）取到的东西挂到 FastAPI 上。
+    `frontend_dist` 中有 `index.html` 时，在各模块的路由之后把它挂在 `/` 下（`FrontendFiles`）。"""
     ordered = Registry().boot(plugins)
     _log.info("插件 setup 顺序：%s", " → ".join(p.name for p in ordered))
     wired = next(p for p in ordered if isinstance(p, AppPlugin))
-    return _build(wired, _Startup(ordered))
+    app = _build(wired, _Startup(ordered))
+    if frontend_dist is not None and (frontend_dist / "index.html").is_file():
+        app.mount("/", FrontendFiles(directory=frontend_dist, html=True), name="frontend")
+        _log.info("提供前端构建产物：%s", frontend_dist)
+    return app
 
 
 class _Startup:

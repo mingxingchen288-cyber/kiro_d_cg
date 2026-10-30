@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import re
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -177,3 +178,26 @@ def test_platform_help_lists_only_db_and_migrate(capsys: pytest.CaptureFixture[s
     assert found is not None
     groups = found.group(1).split(",")
     assert "db" in groups and set(groups) <= {"db", "migrate"}
+
+
+def test_frontend_files_are_served_with_cross_origin_isolation(fakes: Fakes, tmp_path: Path) -> None:
+    """T-AS-7：后端提供前端构建产物，与 `/api` 同源。页面、Worker 脚本和 WASM 的响应带 COOP、COEP（AS-06），
+    前端路由的路径（刷新 `/page/COST_PINGGU`）返回 index.html；`/api` 仍由各模块的路由处理。"""
+    index = "<!doctype html><title>华益低代码平台</title>"
+    (tmp_path / "index.html").write_text(index, encoding="utf-8")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "worker-C2mHxibJ.js").write_text("self.onmessage = () => {};", encoding="utf-8")
+    (tmp_path / "assets" / "rules_core-yCn4y0VT.wasm").write_bytes(b"\0asm\x01\0\0\0")
+    fakes.warmed.set()
+    with TestClient(build_app(memory_plugins(fakes), frontend_dist=tmp_path), headers={"Origin": ORIGIN}) as client:
+        client.cookies.set(SESSION_COOKIE, fakes.session)
+        for path, media_type in [("/", "text/html"), ("/page/COST_PINGGU", "text/html"),
+                                 ("/assets/worker-C2mHxibJ.js", "text/javascript"),
+                                 ("/assets/rules_core-yCn4y0VT.wasm", "application/wasm")]:
+            response = client.get(path)
+            assert response.status_code == 200, path
+            assert response.headers["content-type"].split(";")[0] == media_type, path
+            assert response.headers["Cross-Origin-Opener-Policy"] == "same-origin", path
+            assert response.headers["Cross-Origin-Embedder-Policy"] == "require-corp", path
+        assert client.get("/page/COST_PINGGU").text == index
+        assert client.get("/api/ping").json() == {"userId": "112", "roleCode": "COST_ACCOUNTANT"}

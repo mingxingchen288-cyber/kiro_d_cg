@@ -11,14 +11,21 @@ import { createViteProxy, getBuildTime } from './build/config';
  */
 const rulesCoreWeb = fileURLToPath(new URL('../rules-core/dist/web', import.meta.url));
 
+/**
+ * 前端只读仓库根目录的环境文件（assembly 的 AS-09）：`.env`（不进版本库，含 AG Grid 授权）和 `.env.test`、`.env.prod`。
+ * `envDir` 和 `loadEnv()` 都指向这里；保留 Vite 默认的 `VITE_` 前缀，根目录 `.env` 中的 `PLATFORM_*` 不进浏览器和产物。
+ */
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+
 export default defineConfig(configEnv => {
-  const viteEnv = loadEnv(configEnv.mode, process.cwd()) as unknown as Env.ImportMeta;
+  const viteEnv = loadEnv(configEnv.mode, repoRoot) as unknown as Env.ImportMeta;
 
   const buildTime = getBuildTime();
 
   const enableProxy = configEnv.command === 'serve' && !configEnv.isPreview;
 
   return {
+    envDir: repoRoot,
     base: viteEnv.VITE_BASE_URL,
     resolve: {
       alias: {
@@ -43,7 +50,7 @@ export default defineConfig(configEnv => {
       port: 9527,
       open: true,
       proxy: createViteProxy(viteEnv, enableProxy),
-      // rules-core 的 WASM 要求页面跨源隔离（AS-06）；生产环境由后端提供前端静态文件时加同样的头（T-AS-7，还没做）
+      // rules-core 的 WASM 要求页面跨源隔离（AS-06）；生产环境由后端提供前端静态文件，加同样的头（T-AS-7，assembly/app.py 的 FrontendFiles）
       headers: {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp'
