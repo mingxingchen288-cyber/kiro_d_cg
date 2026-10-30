@@ -194,9 +194,8 @@ def cost_2919(phase: str) -> dict[str, Any]:
     mat = [row(dtl("100713", "2919", "4726", "比沙可啶", "原料", None, None, "2489.725"), key="100713"),
            row(dtl("100714", "2919", "311", "一水乳糖（200目）", "辅料", None, None, "-1"), key="100714", old={"PRICE": "26"})]
     changed = [{"entity": "COST_MATERIAL", "rowKey": "100714", "op": "modify", "fields": ["PRICE"]}]
-    # 校验规则按 order 执行，每条规则逐行检查：先两行的每片含量，再一水乳糖的单价
-    effects = [effect("reject", "R_MAT_PER_HL_GT0", PER_HL_MESSAGE, "COST_MATERIAL", "100713", "PER_HL"),
-               effect("reject", "R_MAT_PER_HL_GT0", PER_HL_MESSAGE, "COST_MATERIAL", "100714", "PER_HL"),
+    # 校验规则按 order 执行，只检查本次修改的一水乳糖（C07 v5）：先每片含量，再单价；比沙可啶没有修改，不检查
+    effects = [effect("reject", "R_MAT_PER_HL_GT0", PER_HL_MESSAGE, "COST_MATERIAL", "100714", "PER_HL"),
                effect("reject", "R_MAT_PRICE_GE0", PRICE_MESSAGE, "COST_MATERIAL", "100714", "PRICE")]
     # 整行红底是页面规则，只在 preview 执行（C07 第 2 节）
     style = {"backgroundColor": "#ffcccc"} if phase == "preview" else None
@@ -205,6 +204,50 @@ def cost_2919(phase: str) -> dict[str, Any]:
                         "d_cg 单据 2919 的真实主表和原辅料（PER_HL 为空），单价改成 -1 为假设的修改",
                         cost_master("2919", **M2919), {"COST_MATERIAL": mat, "COST_PACKAGE": []}, phase=phase, changed=changed,
                         effects=effects, master_style=style)
+
+
+# d_cg 单据 2757 的真实主表、9 行原辅料和 4 行包材（.reports/batch2-20261030/g1-rules-ui/01-单据2757.out.txt）：
+# 30%过氧化氢溶液（207577）的每片含量为 0、单价为空，其余 8 行每片含量都大于 0。
+# 校验只检查本次新增、修改的行（C07 v5，旧系统 useWorkingSetStore.ts 保存时只校验有修改、没有删除的行）：
+# 改硬脂酸镁的单价（54 → 55）能保存；改过氧化氢溶液的单价（空 → 12）被拒绝"每片含量必填且必须大于0"。两个新单价都是假设的修改。
+M2757 = dict(GOODSNAME="60mg单硝酸异山梨酯缓释片", MEMO=None, APEX_PL="1600000", P_PERPACK="98", S_PERBACK="126", X_PERBACK="16",
+             M_PERPACK=None, OUT_PRICE_F="31.02", FMRATE="1", YIELD="94", COST_PERQP=None, ANNUAL_QTY="12000000")
+MAT2757 = [("207576", "3763", "乙醇", "辅料", "0.68125", "18.3333333333", "1.09", "19.983333333297"),
+           ("207577", "4268", "30%过氧化氢溶液", "辅料", "0", None, "0", "0"),
+           ("207578", "4338", "胶态二氧化硅", "辅料", "0.0375", "160", "0.06", "9.6"),
+           ("207579", "4339", "薄膜包衣预混剂（胃溶型）", "辅料", "0.15", "357", "0.24", "85.68"),
+           ("207580", "5388", "单硝酸异山梨酯", "原料", "0.78125", "1932.486", "1.25", "2415.6075"),
+           ("207581", "5452", "硅酸铝钠", "辅料", "0.39375", "500", "0.63", "315"),
+           ("207582", "6549", "石蜡", "辅料", "1.9625", "180.147", "3.14", "565.66158"),
+           ("207583", "7695", "羟丙纤维素", "辅料", "0.4875", "540", "0.78", "421.2"),
+           ("207584", "8289", "硬脂酸镁", "辅料", "0.3", "54", "0.48", "25.92")]
+PKG2757 = [("207572", "4419", "60mg单硝酸异山梨酯缓释片（挪威、丹麦、冰岛）药品包装用铝箔", "印字包材", None, "62", "0", "0"),
+           ("207573", "6041", "聚氯乙烯固体药用硬片", "非印字包材", None, "12.5", "0", "0"),
+           ("207574", "7102", "药品包装小盒（非印字）", "非印字包材", None, "0.24", "16326.530612244898", "3918.3673469387754"),
+           ("207575", "7482", "大纸箱", "非印字包材", None, "4.5", "130", "585")]
+
+
+def cost_2757(edited: str, price: str, phase: str) -> dict[str, Any]:
+    """成本单 2757 只改 `edited` 这一行原辅料的单价，其余行照数据库原样。"""
+    def build(spec: list[tuple]) -> list[dict[str, Any]]:
+        out = []
+        for dtlid, gid, name, flag, per_hl, old_price, q, c in spec:
+            values = dtl(dtlid, "2757", gid, name, flag, per_hl, None, old_price, q, c)
+            if dtlid != edited:
+                out.append(row(values, key=dtlid))
+                continue
+            out.append(row({**values, "PRICE": price}, key=dtlid, old={"PRICE": old_price}))
+        return out
+    mat, pkg = build(MAT2757), build(PKG2757)
+    changed = [{"entity": "COST_MATERIAL", "rowKey": edited, "op": "modify", "fields": ["PRICE"]}]
+    bad = edited == "207577"
+    effects = [effect("reject", "R_MAT_PER_HL_GT0", PER_HL_MESSAGE, "COST_MATERIAL", "207577", "PER_HL")] if bad else []
+    what = "改每片含量为0那一行的单价" if bad else "改另一行的单价"
+    source = ("d_cg 单据 2757 的真实主表和明细（30%过氧化氢溶液的每片含量为 0）；校验只检查本次修改的行（C07 v5，旧系统 "
+              "useWorkingSetStore.ts）：" + ("改过氧化氢溶液的单价（空 → 12，假设的修改）被拒绝" if bad else
+                                            "改硬脂酸镁的单价（54 → 55，假设的修改），没有修改的过氧化氢溶液不检查，能保存"))
+    return cost_fixture(f"成本核算-单据2757-{what}-{phase}", source, cost_master("2757", **M2757),
+                        {"COST_MATERIAL": mat, "COST_PACKAGE": pkg}, phase=phase, changed=changed, effects=effects)
 
 
 # ---------------------------------------------------------------- 单表演示
@@ -257,7 +300,9 @@ def numeric() -> dict[str, Any]:
     effects = [{"kind": "prompt", "rule": "R_BAD", "message": BAD_MESSAGE, "entity": "NUM_DEMO", "rowKey": "1", "field": "BAD"},
                {"kind": "prompt", "rule": "R_V_COND", "message": "名称含胶囊", "entity": "NUM_DEMO", "rowKey": "1", "field": "NAME"}]
     rows = [result_row("NUM_DEMO", master, computed)] + [result_row("NUM_DTL", r, {}) for r in dtl_rows]
-    req = request("NUM_DEMO", master, {"NUM_DTL": dtl_rows, "NUM_EMPTY": []})
+    # 校验只检查本次修改的行（C07 v5）：主表行标为修改，R_V_COND 才执行
+    changed = [{"entity": "NUM_DEMO", "rowKey": "1", "op": "modify", "fields": ["NAME"]}]
+    req = request("NUM_DEMO", master, {"NUM_DTL": dtl_rows, "NUM_EMPTY": []}, changed=changed)
     item = fixture("T-RC-3-数值处理规则表", "模块说明第 8 节每一行一条规则：空值和缺失字段按 0、除以 0 和 0/0 为 0、溢出为 0、"
                    "求值出错为 0 并提示、条件出错按成立（计算和校验）、汇总时空值按 0、没有行时汇总为 0、分支都不匹配保持原值、不舍入",
                    "packs/numeric.json", req, ok(rows, effects))
@@ -297,6 +342,8 @@ def main() -> None:
                          {"ok": False, "error": {"code": "INPUT_INVALID"}}, match="errorCode"))
     # T-RC-2 的校验、界面规则和 T-RC-3（接在后面，前面的编号不变）
     items += [cost_2919("preview"), cost_2919("commit"), demo_ui(), numeric()]
+    # C07 v5：校验只检查本次新增、修改的行（d_cg 单据 2757）
+    items += [cost_2757(edited, price, phase) for edited, price in (("207584", "55"), ("207577", "12")) for phase in ("preview", "commit")]
     for i, item in enumerate(items, 1):
         write(HERE / "cases" / f"{i:02d}-{item['name']}.json", item)
     write(HERE / "cases" / "90-依赖成环.json", {"kind": "packInvalid", "name": "依赖成环", "source": "RC-09：跨实体成环，load_pack 返回 PACK_INVALID",

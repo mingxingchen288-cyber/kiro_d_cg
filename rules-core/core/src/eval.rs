@@ -172,6 +172,18 @@ pub fn evaluate(pack: &Pack, request_text: &str) -> Result<Value, Failure> {
         .filter(|c| c.op == RowOp::Delete)
         .filter_map(|c| row_id(c.row_key.clone(), c.client_row_id.clone()).ok().map(|id| (c.entity.clone(), id)))
         .collect();
+    // 本次新增、修改的行：校验规则只检查这些行，主表行也一样（C07 第 2 节；旧系统 useWorkingSetStore.ts 保存时只校验
+    // 有修改、没有删除的行）。界面规则和计算规则照常对所有行执行。
+    let touched: HashSet<(String, RowId)> = request
+        .changed
+        .iter()
+        .filter(|c| c.op != RowOp::Delete)
+        .filter_map(|c| row_id(c.row_key.clone(), c.client_row_id.clone()).ok().map(|id| (c.entity.clone(), id)))
+        .collect();
+    let checked = |rule: &CheckRule, row: &Row| {
+        !matches!(rule.kind, CheckKind::Validate { .. }) || touched.contains(&(row.entity.clone(), row.id.clone()))
+    };
+
 
     let master_entity = request.document.entity.clone();
     let mut master = parse_row(&master_entity, request.document.master, types_of(&master_entity))?;
@@ -218,16 +230,18 @@ pub fn evaluate(pack: &Pack, request_text: &str) -> Result<Value, Failure> {
         }
     }
 
-    // 校验和界面规则用计算后的最终值（C06 第 5 节执行顺序 3）
+    // 校验和界面规则用计算后的最终值（C06 第 5 节执行顺序 3）；校验只检查本次新增、修改的行（checked）
     for rule in pack.checks.iter().filter(|r| picked(r.layer, &r.operation, &r.page, r.server_only)) {
         if rule.is_master {
-            let scope = env.master_scope(&master, &details, &rule.plain_refs);
-            check(rule, &mut master, scope, env.types(&master_entity), &mut effects);
+            if checked(rule, &master) {
+                let scope = env.master_scope(&master, &details, &rule.plain_refs);
+                check(rule, &mut master, scope, env.types(&master_entity), &mut effects);
+            }
         } else {
             let master_var = env.row_variable(&master);
             let types = env.types(&rule.entity);
             if let Some((_, rows)) = details.iter_mut().find(|(e, _)| *e == rule.entity) {
-                for row in rows.iter_mut() {
+                for row in rows.iter_mut().filter(|row| checked(rule, row)) {
                     let scope = env.detail_scope(row, &master_var, &rule.plain_refs);
                     check(rule, row, scope, types, &mut effects);
                 }

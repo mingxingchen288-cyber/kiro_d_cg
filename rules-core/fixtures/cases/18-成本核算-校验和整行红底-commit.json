@@ -160,14 +160,6 @@
         "rule": "R_MAT_PER_HL_GT0",
         "message": "每片含量必填且必须大于0",
         "entity": "COST_MATERIAL",
-        "rowKey": "100713",
-        "field": "PER_HL"
-      },
-      {
-        "kind": "reject",
-        "rule": "R_MAT_PER_HL_GT0",
-        "message": "每片含量必填且必须大于0",
-        "entity": "COST_MATERIAL",
         "rowKey": "100714",
         "field": "PER_HL"
       },
