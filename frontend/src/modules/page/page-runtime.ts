@@ -1276,6 +1276,7 @@ export class PageRuntime {
       title: meta.label,
       fillBack: true,
       multiple,
+      columns: meta.lookup.columns ?? [],
       keyword: '',
       keywordSearch: true,
       rows: [],

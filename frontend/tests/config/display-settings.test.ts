@@ -29,7 +29,7 @@ describe('表与列：千分位、字典可填写', () => {
     expect([row('PINGGU_CLASS').dictType, row('PINGGU_CLASS').dictFreeText]).toEqual(['pingguClass', true]);
   });
 
-  it('给包装规格勾上千分位、取消批量的千分位：实体中前者写 grouping，后者去掉；分类取消可填写后页面只留 dictType', () => {
+  it('给包装规格勾上千分位、取消批量的千分位：实体中前者写 grouping，后者去掉；分类取消可填写后页面只留 dictType 和查询', () => {
     const entity = seed<EntityContent>('entity', 'COST_PINGGU');
     const page = seed<PageContent>('page', 'COST_PINGGU');
     const rows = fieldRows(entity, page.master.fields ?? {}, 'page');
@@ -41,7 +41,8 @@ describe('表与列：千分位、字典可填写', () => {
     expect(field('P_PERPACK').grouping).toBe(true);
     expect('grouping' in field('APEX_PL')).toBe(false);
     expect(field('TOTAL_COST').grouping).toBe(true);
-    expect(applied.settings.PINGGU_CLASS).toEqual({ dictType: 'pingguClass' });
+    // seed 中分类同时勾了"查询"（第 7 批 QS 组，旧系统 cost-pinggu 的列配置）
+    expect(applied.settings.PINGGU_CLASS).toEqual({ dictType: 'pingguClass', searchable: true });
   });
 });
 
