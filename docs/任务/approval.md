@@ -66,3 +66,21 @@
 - 接入责任：assembly 不用改插件清单（approval 插件多要一个端口，由 pipeline 插件提供）。
 - 验收标准：成本单改价（COST_TO_GOODS）先锁成本单、冻结前再锁物料清单；物料清单改价（GOODS_TO_COST）把含这个物料的成本单和物料清单一次锁完；物料清单在加锁前读取和加锁之间被改时整个回滚、重来一次；最终通过时审批记录、来源单据、受影响行所属的单据和没注册表的行都在开头锁住，之后不再追加；d_cg 上并发时冻结生效后别人的修改提交不了。
 - 状态与证据：进行中（2026-10-30，L 组，`batch4/lock-order`），模拟验证和真实验证通过，合并后没有联调。模拟验证：`tests/approval/test_lock_order.py` 7 个（审批流只在内存配置中），`tests/approval` 其余用例照常通过。真实验证：write-pipeline 的 `tests/pipeline/test_oracle_lock_order.py`（经 approval 的真实阶段和 PF_APPROVAL*，见 T-WP-7）；`tests/approval` 的 oracle 用例照常通过。中途某一级通过也先锁住最终可能要写的单据（不确定是不是最终通过），命令结束即释放。
+
+### T-AP-7 复制出的行进入审批后按提交时的值写
+
+- 归属与目标：AP-02、AP-10 中复制出的行（C02 `copyOf`，write-pipeline WP-21）。来源：`.reports/batch4-20261030/p-pipeline-fixes/findings.md` 最后一节：复制出的行提交审批后，最终通过按原来的 Patch 重放，不可写的复制字段按命令中的值写，还会补默认值；用户 2026-10-30 同意下一批直接做。旧系统送审时把待审数据存下、通过时按它写入（`ConfiguredApprovalRuntime.java` 第 108–113 行、第 674–688 行），写入不补默认值（`DynamicDataService.java` 第 272–327 行）。
+- 前置输入：T-AP-2、T-AP-3；write-pipeline 的 T-WP-10。
+- 负责范围：`approval/patch.py`（`resolved_patch`：提交时把复制行的值换成 `CommandState.changes` 中 write-pipeline 解出的、能写进表的字段；`patch_intents` 给复制行的意图带 `copy_of`）、`trigger.py`（存待审修改时调用）；contracts 的 `RowIntent.copy_of`（C08 v20）；write-pipeline 的 `IntentMerger._add`（带 `copy_of` 时不补默认值）。
+- 交付物：上述功能。
+- 验收标准：复制成本单 2550 带明细（含一行单价与执行价不同的明细，进入 COST_TO_GOODS），保存提交审批；审批详情中新单据的值是保存那一刻按源单据解出的值；admin 通过后，新单据复制的字段与源单据相同，没复制的字段为空（不补默认值），与不进审批直接保存的复制结果相同。
+- 状态与证据：模拟验证和真实验证通过（2026-10-30，B2 组，`batch5/approval-copy-skip`），没有和 B1 组的 `IntentMerger._add` 改动合并验证。模拟验证：`tests/approval/test_new_document.py::test_copied_document_approved_with_values_resolved_at_submission`（复制 2550 后源单据的币种在保存前、审批中各被改一次，待审修改存保存那一刻的"美元"，不含物料名称、每批数量；通过后新单据币种"美元"；写入管道由 `support.Pipeline` 替身按 WP-21 代替）；`tests/pipeline/test_copy.py::test_approved_copied_rows_are_written_as_resolved_without_defaults`（带 `copy_of` 的意图只写给出的列，不是复制的新增明细照常补默认值）。真实验证（d_cg + Redis，`tests/e2e/test_copy_approval.py`，`.reports/batch5-20261030/b2-approval/`）：admin 复制 2550 的主表和单价等于执行价的 10 行明细，再复制 206325 硬脂酸镁一行、把物料换成测试物料（参考价 10、执行价空，单价 63），进入 COST_TO_GOODS，冻结新单据和测试物料；这一行命令中 13 个字段（含只在视图中的物料名称等），待审修改中 6 个；详情中复制的 11 行都是"新增"、物料名称按 Lookup 查出；admin 通过后，新单据与同样复制、直接保存的另一张逐列相同（计算字段、主键、默认 SYSDATE 的两列除外），币种与 2550 相同、项目号为空；两张单据经平台删除，测试物料、审批、命令记录删掉。触发审批的那一行没有用 2550 自己单价与执行价不同的四行：通过时会把真实物料清单的执行价、修改人改掉，经平台改不回。d_cg 上 chengben01 没有成本核算的新增行权限，复制由 admin 做。浏览器（`frontend/tests/e2e/batch5-copy-approval.spec.ts`，开发方式，后端 8092、前端 9542）：测试源单据为 2550 的复制（单价等于执行价的 10 行）加一行测试物料（单价 10）；admin 在成本核算页点"复制"、默认全选确定，把新单据中测试物料那一行的单价改成 12 保存，提交成本明细改价审批；待办中打开详情，原辅料 7 行都是新增、显示 12.00，通过；新单据主表、明细复制的字段与源单据相同（计算字段、主键除外，测试物料那一行单价 12、参考采购价随执行价为 12），物料清单中测试物料的执行价为 12；单据、测试物料、审批、命令记录用例结束时删掉。
+
+### T-AP-8 或签一人通过后其余审批人显示已跳过
+
+- 归属与目标：AP-04 中或签节点的进度（C09 v12 `members[].status` 的 `skipped`）。来源：`.reports/batch4-20261030/ra-rules-approval/findings.md`"没有处理的"：或签节点配了两个人，一人通过后另一人仍显示"（待处理）"；旧系统为 SKIPPED"已跳过"（`docs/approval-refactor-20261026-ordinary-install.sql` 第 911 行、第 1601–1607 行，`ApprovalDetailDialog.vue` 第 302–315 行）；用户 2026-10-30 同意下一批直接做。
+- 前置输入：T-AP-1、T-AP-3；frontend-approval 的详情页、frontend-page 的审批进度弹窗（FP-16）。
+- 负责范围：`approval/routing.py`（`skip_unprocessed`，通过时调用）、`service.py`（`_steps` 显示时换算之前的记录）；contracts 的 `StepMember.status`（后端 `types.py`、前端 `contracts/http.ts`）；前端 `modules/approval/view-model.ts` 的 `MEMBER_STATUS`、`modules/page/approval-progress.ts`（审批进度弹窗的文字，从 `ApprovalProgressDialog.vue` 移出以便测试）。
+- 交付物：上述功能。
+- 验收标准：或签节点配了两个人，一人通过后，审批详情和页面上的审批进度弹窗中另一人显示"已跳过"，不能再处理；会签节点一人通过后另一人仍待处理；之前通过的或签节点显示时同样换算。
+- 状态与证据：模拟验证和真实验证通过，浏览器没有核对（2026-10-30，B2 组，`batch5/approval-copy-skip`）。模拟验证：`tests/approval/test_routing.py` 2 个（或签李四通过后张三已跳过、不能再处理；会签不跳过），`test_view.py` 2 个（系统管理员通过后采购员已跳过、审批进入第 2 级；进度中还记着 pending 的显示为 skipped，存下的不变）；前端 `tests/approval/e37.test.ts`（详情的审批人"第二审批人（已跳过）"）、`tests/page/approval-progress.test.ts`（弹窗的审批人文字）。真实验证（d_cg）：`tests/approval/test_oracle_or_sign.py`，进程内接真实的权限、写入管道、审批阶段和服务，配置为 seed 加测试审批流 PF_TEST_OR_SIGN（只在内存中，d_cg 的 PF_CONFIG_ITEM 不动）：第 1 级"两人或签"配 admin 和 chengben01，admin 新建测试成本单、改原辅料备注提交审批，admin 通过后详情为"系统管理员 passed、成本会计一 skipped"，PF_APPROVAL.PROGRESS 中存的也是 skipped，chengben01 不能再通过；驳回后第 1 级不变；成本单、审批、命令记录都删掉。浏览器核对要在 d_cg 的共用配置里建一个或签配两个人的审批流（会发 config.changed，别组同时在跑前端端到端用例），这次没有做。

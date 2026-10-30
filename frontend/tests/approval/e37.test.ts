@@ -6,7 +6,13 @@
 import { describe, expect, it } from 'vitest';
 import { createPlatformApi } from '../../src/contracts/api';
 import { ApprovalDetailRuntime } from '../../src/modules/approval/detail-runtime';
-import { type ApprovalStep, gridRows, statusLabel, stepRows, triggerLabel } from '../../src/modules/approval/view-model';
+import {
+  type ApprovalStep,
+  gridRows,
+  statusLabel,
+  stepRows,
+  triggerLabel
+} from '../../src/modules/approval/view-model';
 import { ADMIN, BUYER, E37Backend, MAKER, ROLES, shellFor } from './support';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -141,7 +147,15 @@ describe('撤回、驳回后的审批进度', () => {
         mode: 'or',
         status: 'withdrawn',
         members: [
-          { type: 'role', id: 'ADMIN', name: '系统管理员', status: 'withdrawn', processedBy: null, processedAt: null, comment: null }
+          {
+            type: 'role',
+            id: 'ADMIN',
+            name: '系统管理员',
+            status: 'withdrawn',
+            processedBy: null,
+            processedAt: null,
+            comment: null
+          }
         ]
       }
     ];
@@ -155,6 +169,53 @@ describe('撤回、驳回后的审批进度', () => {
         status: '已撤回',
         time: '—',
         comment: '—'
+      }
+    ]);
+  });
+});
+
+describe('或签一人通过后的审批进度', () => {
+  it('或签节点配了两个人，一人通过后另一人显示已跳过，不显示待处理（同旧系统 SKIPPED）', () => {
+    const steps: ApprovalStep[] = [
+      {
+        level: 1,
+        flow: 'COST_TO_GOODS',
+        flowName: '成本明细改价审批',
+        node: '管理员审批',
+        mode: 'or',
+        status: 'passed',
+        members: [
+          {
+            type: 'user',
+            id: '1',
+            name: '系统管理员',
+            status: 'passed',
+            processedBy: { userId: '1', displayName: '系统管理员' },
+            processedAt: '2026-10-30T10:00:00',
+            comment: '同意'
+          },
+          {
+            type: 'user',
+            id: '200',
+            name: '第二审批人',
+            status: 'skipped',
+            processedBy: null,
+            processedAt: null,
+            comment: null
+          }
+        ]
+      }
+    ];
+    expect(stepRows(steps)).toEqual([
+      {
+        level: 1,
+        node: '管理员审批',
+        mode: '或签',
+        approvers: '系统管理员（已通过，系统管理员）、第二审批人（已跳过）',
+        flowName: '成本明细改价审批',
+        status: '已通过',
+        time: '2026-10-30 10:00:00',
+        comment: '系统管理员：同意'
       }
     ]);
   });

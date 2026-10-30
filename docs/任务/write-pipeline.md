@@ -117,7 +117,7 @@
 - 负责范围：`pipeline/copies.py`（`OracleCopySources`：按主键读源行，每个实体一条，不加锁，带行权限）；`pipeline/merge.py` 中 `_Rows.new_values` 的 `source`、`_copied_values` 和 `DocumentMerger` 的接线（小改动，IntentMerger 没动）；`pipeline/stages.py` 的 `MergePatchesStage`、`plugin.py`。
 - 验收标准：模拟验证：复制成本单时不可写的产品名称、创建人取源行的值（命令中的伪造值不用），计算字段不写，没复制的字段不补默认值；没有 `copyOf` 的新增行照旧拒绝不可写字段；源行超出行权限时 409 ROW_NOT_FOUND；明细复制只在视图中的物料名称、计算字段不写。业务例子（浏览器）：复制 200721 只复制主表，保存后新单据的币种为"人民币"、项目号与源单据相同（源为空则为空），产品等字段照旧；之后删掉这张单据。
 - 状态与证据：模拟验证和浏览器业务例子通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/pipeline/test_copy.py` 4 个；前端 `tests/page/copy-lookup.test.ts`、`product-lookup.test.ts` 的命令带 `copyOf` 和不可编辑的复制字段。浏览器（后端 8084 + d_cg，`.reports/batch4-20261030/p-pipeline-fixes/e2e/p2.out.json`）：复制 200721 只复制主表，命令带 `copyOf: 200721` 和币种"人民币"，保存后新单据 200834 的币种"人民币"、项目号为空（与源相同）、产品ID 392，随后删掉。
-  - 没做：复制出的行提交审批后，审批通过按原来的 Patch 重放（approval `patch.py` 的 `patch_intents` 不看 `copyOf`），不可写的复制字段按命令中的值写；只有复制带明细且触发审批时走到，在 approval 的文件里。
+  - 复制出的行提交审批后最终通过时的写法（原来按 Patch 重放，不可写的复制字段按命令中的值写、补默认值）：2026-10-30 B2 组改为按提交时解出的值写、不补默认值，本模块只改 `IntentMerger._add`（意图带 `copy_of` 时 `_Rows.new_values(defaults=False)`），见 approval 的 T-AP-7。
 
 ### T-WP-11 按钮新增的明细不补默认值
 

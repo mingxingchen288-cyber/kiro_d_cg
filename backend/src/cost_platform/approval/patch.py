@@ -2,12 +2,14 @@
 写入意图交给 write-pipeline（AP-10，C08 第 6 节 `RowIntent`）。
 
 待审修改就是本命令中这张单据的 `DocumentPatch`（C02 第 1 节），新增行的临时编号对应提交时取得的主键（`key_map`）。
+复制出的行（`copyOf`）的值换成提交那一刻 write-pipeline 按源行解出的值（`resolved_patch`）。
 对照旧系统 `ConfiguredApprovalRuntime.reserveNewIds`（送审时按序列给新增行取号）和 `applyPending`（批准时按快照应用）。
 """
 
 from __future__ import annotations
 
 import copy
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -25,11 +27,12 @@ from cost_platform.contracts.types import (
     MasterDelete,
     MasterModify,
     Row,
+    RowChange,
     RowIntent,
     RowOp,
     Value,
 )
-from cost_platform.contracts.values import from_wire
+from cost_platform.contracts.values import from_wire, to_wire
 
 from .sql import KeyAllocator
 
@@ -49,6 +52,50 @@ def assign_keys(uow: UnitOfWork, keys: KeyAllocator, config: ConfigSnapshot, pat
         if isinstance(detail, DetailAdd):
             found[detail.client_row_id] = keys.next_key(uow, config.entity(detail.entity).table)
     return found
+
+
+def _insertable(entity: EntityConfig, parent_key: str | None) -> set[str]:
+    """新增行能写进表的字段：C02 第 1 节、C06 第 2 节中不可写的字段（主键、主从关联字段、`erpRow.column`、计算字段、
+    只在视图中的字段、没有 `erpRow` 的实体的 ERP 列）以外的字段。"""
+    erp = entity.erp_row
+    erp_names = {f.name for f in entity.fields if erp is not None and erp.column in (f.name, f.column)}
+    return {f.name for f in entity.fields
+            if f.column is not None and f.role != "calculated" and f.name not in {entity.primary_key, parent_key, *erp_names}
+            and not (f.source == "erp" and erp is None)}
+
+
+def resolved_patch(patch: DocumentPatch, changes: Sequence[RowChange], config: ConfigSnapshot) -> DocumentPatch:
+    """要存为待审修改的 Patch：复制出的行（`copyOf`，C02 第 1 节、write-pipeline WP-21）的值换成提交这一刻 write-pipeline
+    按源行解出的值，其余原样。
+
+    触发审批在合并、计算之后执行，`changes` 中新增行的值 = 合并时解出的值（可写的取命令中的值，不可写、可见、能写进表的
+    取源行的值，没复制的字段不在其中）+ 关联字段、`erpRow.column` + 计算带出的计算字段。这里只留能写进表的字段
+    （`_insertable`），即合并时解出的那部分；关联字段和 `erpRow.column` 在最终通过时由 write-pipeline 照常填上。
+    审批详情（`apply_patch`）显示的、最终通过（`patch_intents`）写入的都是这些值，不在通过时再读源行：源行在审批期间
+    可能被改，旧系统复制在复制那一刻就取定了值，送审时随待审数据存下（`ConfiguredApprovalRuntime` 的 `records.patch`、
+    `applyPending`）。"""
+    master = patch.master
+    copies = isinstance(master, MasterAdd) and master.copy_of is not None or any(
+        isinstance(d, DetailAdd) and d.copy_of is not None for d in patch.details)
+    if not copies:
+        return patch
+    added = {(c.entity, c.client_row_id): c for c in changes if c.op == "add" and c.client_row_id is not None}
+    parent_keys = {link.entity: link.parent_key for link in config.entity(patch.entity).details}
+
+    def resolve(code: str, client_row_id: str, values: FieldValues) -> FieldValues:
+        change = added.get((code, client_row_id))
+        if change is None:
+            return values
+        entity = config.entity(code)
+        types = {f.name: f.type for f in entity.fields}
+        keep = _insertable(entity, parent_keys.get(code))
+        return {name: to_wire(types[name], value) for name, value in change.values.items() if name in keep}
+
+    if isinstance(master, MasterAdd) and master.copy_of is not None:
+        master = master.model_copy(update={"values": resolve(patch.entity, master.client_row_id, master.values)})
+    details = [d.model_copy(update={"values": resolve(d.entity, d.client_row_id, d.values)})
+               if isinstance(d, DetailAdd) and d.copy_of is not None else d for d in patch.details]
+    return patch.model_copy(update={"master": master, "details": details})
 
 
 def bill_key(patch: DocumentPatch, key_map: dict[str, str]) -> str:
@@ -144,7 +191,8 @@ def apply_patch(current: DocumentData | None, patch: DocumentPatch, key_map: dic
 
 def patch_intents(patch: DocumentPatch, key_map: dict[str, str], config: ConfigSnapshot) -> list[RowIntent]:
     """最终批准时，待审修改展开为写入意图（AP-10 第一步）：新增行用提交时取得的主键（`row_key`），审批通过时用它写入
-    （WP-09）。主表为 `none` 时只有明细的意图。"""
+    （WP-09）。复制出的行带上 `copy_of`：值是提交时解出的（`resolved_patch`），write-pipeline 不补默认值。
+    主表为 `none` 时只有明细的意图。"""
     master_entity = config.entity(patch.entity)
     key = bill_key(patch, key_map)
     ref = DocumentRef(patch.entity, key)
@@ -152,7 +200,8 @@ def patch_intents(patch: DocumentPatch, key_map: dict[str, str], config: ConfigS
     intents: list[RowIntent] = []
     master = patch.master
     if isinstance(master, MasterAdd):
-        intents.append(RowIntent(ref, patch.entity, "add", key, master.client_row_id, values_of(master_entity, master.values)))
+        intents.append(RowIntent(ref, patch.entity, "add", key, master.client_row_id, values_of(master_entity, master.values),
+                                 copy_of=master.copy_of))
     elif isinstance(master, MasterModify):
         intents.append(RowIntent(ref, patch.entity, "modify", key, None, values_of(master_entity, master.changes)))
     elif isinstance(master, MasterDelete):
@@ -162,7 +211,8 @@ def patch_intents(patch: DocumentPatch, key_map: dict[str, str], config: ConfigS
         entity = config.entity(detail.entity)
         if isinstance(detail, DetailAdd):
             values = {**values_of(entity, detail.values), parent_keys[detail.entity]: master_key}
-            intents.append(RowIntent(ref, detail.entity, "add", key_map[detail.client_row_id], detail.client_row_id, values))
+            intents.append(RowIntent(ref, detail.entity, "add", key_map[detail.client_row_id], detail.client_row_id, values,
+                                     copy_of=detail.copy_of))
         elif isinstance(detail, DetailModify):
             intents.append(RowIntent(ref, detail.entity, "modify", detail.row_key, None, values_of(entity, detail.changes)))
         elif isinstance(detail, DetailDelete):

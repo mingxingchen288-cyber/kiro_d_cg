@@ -1720,7 +1720,7 @@ class StepMember(Wire):
     type: Literal["user", "role"]
     id: Key
     name: str
-    status: Literal["pending", "passed", "rejected", "withdrawn"]
+    status: Literal["pending", "passed", "rejected", "withdrawn", "skipped"]
     processed_by: UserBrief | None
     processed_at: DateTimeText | None
     comment: str | None
@@ -2282,7 +2282,11 @@ class RowIntent:
     values: dict[str, Value] = dc_field(hash=False)
     fill_defaults: bool = True
     """新增行没有写的字段是否按 WP-16 补默认值。按钮 `replaceDetails` 新增的行为 False：只写 SQL 给出的字段、关联字段、
-    主键和计算字段，其余列不写，取数据库的列默认值（旧 P_COST_BOM_INSERT）；审批通过时写入的新增行为 True。"""
+    主键和计算字段，其余列不写，取数据库的列默认值（旧 P_COST_BOM_INSERT）；审批通过时写入的新增行为 True
+    （复制出的行除外，见 `copy_of`）。"""
+    copy_of: str | None = None
+    """新增行是复制出来的（C02 `copyOf`）：源行的主键。approval 展开的待审新增行带它时，`values` 是提交审批那一刻
+    write-pipeline 按源行解出的值（approval AP-10）；合并时不再读源行，也不补默认值（WP-16、WP-21）。"""
 
 
 @dataclass

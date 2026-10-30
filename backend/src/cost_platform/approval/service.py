@@ -48,7 +48,7 @@ from .approvers import Directory
 from .deps import ApprovalDeps
 from .model import ApprovalRecord
 from .process import NextLevels, apply_checked, editable_blocks, load, manual_for
-from .routing import Action, Node, can_withdraw, close_unprocessed, decide, pending_nodes
+from .routing import Action, Node, can_withdraw, close_unprocessed, decide, pending_nodes, skip_unprocessed
 from .view import Evaluator, view_fingerprint
 
 Box = Literal["todo", "mine"]
@@ -145,11 +145,12 @@ class ApprovalService:
         """`upcoming` 为推算后面会进入的节点，只用于待审的审批；已结束的审批为 None。"""
         order = {f.code: i for i, f in enumerate(record.flows)}
         role_name = functools.cache(self.deps.catalog(ctx).role_name)
-        progress = record.progress
+        # 或签通过时同一节点其余审批人记为已跳过（routing.skip_unprocessed），撤回、驳回时还没处理的节点和审批人记为已撤回
+        # （routing.close_unprocessed）；在这之前处理的审批（例如 d_cg 的审批 23、29）进度中仍记着待处理，显示时同样换算，
+        # 不改存下的进度
+        progress = copy.deepcopy(record.progress)
+        skip_unprocessed(progress)
         if progress.status in ("withdrawn", "rejected"):
-            # 撤回、驳回时会把还没处理的节点和审批人记为已撤回（routing.close_unprocessed）；在那之前结束的审批
-            # （例如 d_cg 的审批 23、29）进度中仍记着待处理，显示时同样换算，不改存下的进度
-            progress = copy.deepcopy(progress)
             close_unprocessed(progress)
         items = [(n.level, order[n.flow], n.index, step(record, n, role_name)) for n in progress.nodes]
         if record.progress.status == "pending" and upcoming is not None:

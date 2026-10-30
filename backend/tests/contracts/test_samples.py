@@ -712,7 +712,8 @@ def _ast_classes(sources: list[str]) -> dict[str, Any]:
 
 
 # 实现中允许带默认值的字段：dataclass 的 field() 只设 repr/hash/compare 时没有默认值；CommandState、ChangePlan 的初始值见 C08 第 6 节的注释。
-_ALLOWED_DEFAULTS = {"CommandState", "ChangePlan"}
+# RowIntent.copy_of（C08 v20）默认为 None：只有 approval 展开的复制出的待审新增行带它，其余意图不用写
+_ALLOWED_DEFAULTS = {"CommandState", "ChangePlan", "RowIntent"}
 
 
 def test_c04_c08_annotations_and_defaults_match() -> None:

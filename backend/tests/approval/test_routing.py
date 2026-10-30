@@ -145,6 +145,28 @@ def test_reject_in_countersign_marks_other_member_withdrawn() -> None:
         "rejected", [("李四", "rejected"), ("张三", "withdrawn")])
 
 
+def test_or_sign_pass_marks_other_member_skipped() -> None:
+    """或签节点配了两个人，李四通过：节点已通过，李四已通过，还没处理的张三已跳过（旧系统 `PREPARE_APPROVE_DETAIL` 把同级
+    其余 PENDING 改为 SKIPPED），不再是待处理；进入第 2 级。"""
+    progress = start(["F"], {"F": [node("F", 1, "一级或签", "or", user("10", "李四"), user("11", "张三"))]})
+    passed = decide(progress, act("pass", "10", "李四"), applicant_id="112", is_member=is_member, next_nodes=answers(TWO_LEVELS))
+    assert passed.allowed and passed.destination == "next"
+    first = passed.progress.nodes[0]
+    assert (first.status, [(m.name, m.status, m.processed_by) for m in first.members]) == (
+        "passed", [("李四", "passed", "10"), ("张三", "skipped", None)])
+    zhang = decide(passed.progress, act("pass", "11", "张三"), applicant_id="112", is_member=is_member,
+                   next_nodes=answers(TWO_LEVELS))
+    assert not zhang.allowed  # 已跳过的不能再处理
+
+
+def test_countersign_other_member_stays_pending_after_one_pass() -> None:
+    """会签节点李四通过后，张三仍待处理（会签要组内都通过，不跳过）。"""
+    progress = decide(two_level_start(), act("pass", "10"), applicant_id="112", is_member=is_member,
+                      next_nodes=answers(TWO_LEVELS)).progress
+    [first] = progress.nodes
+    assert (first.status, [m.status for m in first.members]) == ("pending", ["passed", "pending"])
+
+
 def test_only_applicant_can_withdraw() -> None:
     """AP-12：只有发起人能撤回。"""
     decision = decide(two_level_start(), act("withdraw", "10"), applicant_id="112", is_member=is_member,

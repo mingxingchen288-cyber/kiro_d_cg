@@ -29,11 +29,13 @@ export const STEP_STATUS: Record<ApprovalStep['status'], string> = {
   withdrawn: '已撤回'
 };
 
+// skipped：或签节点有人通过后，同一节点其余还没处理的审批人，同旧系统 SKIPPED 显示"已跳过"（C09 第 6 节）
 export const MEMBER_STATUS: Record<StepMember['status'], string> = {
   passed: '已通过',
   pending: '待处理',
   rejected: '已驳回',
-  withdrawn: '已撤回'
+  withdrawn: '已撤回',
+  skipped: '已跳过'
 };
 
 export const MODE: Record<ApprovalStep['mode'], string> = { or: '或签', and: '会签' };
@@ -173,7 +175,10 @@ export function stepRows(steps: readonly ApprovalStep[]): StepRow[] {
   return steps.map(step => {
     const passed = step.members.filter(m => m.status === 'passed').length;
     // 会签进行中：显示已通过几人
-    const progress = step.mode === 'and' && step.status === 'pending' && step.members.length > 1 ? `（已通过 ${passed}/${step.members.length}）` : '';
+    const progress =
+      step.mode === 'and' && step.status === 'pending' && step.members.length > 1
+        ? `（已通过 ${passed}/${step.members.length}）`
+        : '';
     return {
       level: step.level,
       node: step.node,

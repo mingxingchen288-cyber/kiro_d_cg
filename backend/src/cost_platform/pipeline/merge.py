@@ -102,8 +102,8 @@ class _Rows:
                    readable: Collection[str] = (), defaults: bool = True) -> dict[str, Value]:
         """新增行要写入的值：填写的值、默认值（WP-16）、erpRow 列设为 localValue（WP-14）。不含主键和关联字段。
         不可编辑字段的 builtin 默认值按执行上下文取，前端传来的值不用（E28）。复制出的行（`source` 为源行）见
-        `_copied_values`。`defaults` 为 False 时不补默认值（按钮 `replaceDetails` 新增的行，`RowIntent.fill_defaults`），
-        没写的列取数据库的列默认值。"""
+        `_copied_values`。`defaults` 为 False 时不补默认值：按钮 `replaceDetails` 新增的行（`RowIntent.fill_defaults`），
+        没写的列取数据库的列默认值；审批通过时写入的复制出的行（`RowIntent.copy_of`），值已在提交时解出。"""
         if source is not None:
             return self._copied_values(provided, writable, source, readable, client_row_id, row_key, wire=wire)
         builtin_locked = {n for n in self.rules.builtin_names() if writable is not None and n not in writable}
@@ -308,10 +308,11 @@ class IntentMerger:
         """新增行：审批通过时写入的新增行带着提交审批时取得的主键（`row_key`，AP-02）。明细的关联字段取所属单据的主键
         （`add_detail`）：approval 展开的待审新增明细在值中也带着它（AP-10、E24），这里不用意图中的这个值。
         `fill_defaults` 为 False 的（按钮 `replaceDetails` 新增的行）不补默认值（WP-16）；审批通过时写入的照旧补，
-        待审修改是页面保存的 Patch，没写的字段靠这里补。"""
+        待审修改是页面保存的 Patch，没写的字段靠这里补。复制出的行（`copy_of`）例外：值是提交审批时按源行解出的
+        （AP-10），只按实体规则检查，不再读源行、不补默认值（WP-16、WP-21），写入的列与直接保存这一行时相同。"""
         given = {name: value for name, value in intent.values.items() if name != rules.parent_key}
         values = rows.new_values(given, None, ctx, intent.client_row_id, intent.row_key, wire=False,
-                                 defaults=intent.fill_defaults)
+                                 defaults=intent.fill_defaults and intent.copy_of is None)
         ref = intent.document
         if intent.entity == ref.entity:
             row = Row(entity=ref.entity, row_key=intent.row_key, client_row_id=intent.client_row_id,
