@@ -6,6 +6,10 @@
 - 改 207577 的单价（空 → 12）：422 RULE_REJECTED，提示"每片含量必填且必须大于0"，定位到 207577 的 PER_HL，不写库。
 两个新单价都是假设的修改。
 
+C07 v7 起计算带出变化的行也校验（文件末尾两个测试，只改主表批量）：
+- 单据 2712（样例 31，明胶空心胶囊的每片含量假设为 0）：胶囊的每批数量按批量算，跟着变了，被拒绝；
+- 单据 2757（样例 33）：过氧化氢溶液的每批数量仍是 0，不检查，保存成功。
+
 运行：`uv run --with <wheel> pytest tests/pipeline/test_validate_changed_rows.py`；没有装 wheel 时整个文件跳过。
 """
 
@@ -13,6 +17,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +26,7 @@ import pytest
 from cost_platform.contracts import types as t
 from cost_platform.contracts.values import from_wire
 
-from .support import MemoryStore, Pipeline, Setup, command, master_none
+from .support import MemoryStore, Pipeline, Setup, command, master_modify, master_none
 
 cost_rules_core = pytest.importorskip("cost_rules_core", reason="需要 rules-core 的 wheel：uv run --with <wheel> pytest tests/pipeline")
 from cost_rules_core import RulesEngine  # noqa: E402
@@ -68,9 +73,9 @@ def _snapshot() -> Any:
     return env.reader.read("ADMIN")
 
 
-def _rows_2757(snapshot: Any) -> dict[str, dict[str, dict[str, Any]]]:
-    """单据 2757 在数据库中的值：取样例 22 的请求，改过的那一行用它的 `old` 还原。"""
-    path = next(p for p in CASES.glob("22-*.json"))
+def _rows_2757(snapshot: Any, case: str = "22") -> dict[str, dict[str, dict[str, Any]]]:
+    """单据在数据库中的值：取样例 `case`（默认 22，单据 2757）的请求，改过的行（含主表）用它的 `old` 还原。"""
+    path = next(p for p in CASES.glob(f"{case}-*.json"))
     document = json.loads(path.read_text(encoding="utf-8"))["request"]["document"]
 
     def stored(entity: str, item: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -97,6 +102,16 @@ def _save_price(row_key: str, price: str) -> tuple[Pipeline, RecordingEngine, t.
     entities = {code: snapshot.entity(code) for code in (MASTER, MATERIAL, PACKAGE)}
     pipeline = Pipeline(setup=Setup(engine=engine), store=SeedStore(entities, _rows_2757(snapshot)))  # type: ignore[arg-type]
     cmd = command([master_none("2757", [{"entity": MATERIAL, "op": "modify", "rowKey": row_key, "changes": {"PRICE": price}}])])
+    return pipeline, engine, _context(snapshot), cmd
+
+
+def _save_batch(case: str, record_key: str, batch: str) -> tuple[Pipeline, RecordingEngine, t.ExecutionContext, t.Command]:
+    """页面保存只改主表批量（APEX_PL），数据库中的值取样例 `case` 的请求。"""
+    snapshot = _snapshot()
+    engine = RecordingEngine()
+    entities = {code: snapshot.entity(code) for code in (MASTER, MATERIAL, PACKAGE)}
+    pipeline = Pipeline(setup=Setup(engine=engine), store=SeedStore(entities, _rows_2757(snapshot, case)))  # type: ignore[arg-type]
+    cmd = command([master_modify(record_key, {"APEX_PL": batch})])
     return pipeline, engine, _context(snapshot), cmd
 
 
@@ -127,3 +142,39 @@ def test_2757_change_zero_per_hl_row_price_rejected() -> None:
     assert request["changed"] == [{"entity": MATERIAL, "rowKey": "207577", "op": "modify", "fields": ["PRICE"]}]
     assert pipeline.store.writes == []
     assert pipeline.store.rows[MATERIAL]["207577"]["PRICE"] is None
+
+
+# C07 v7：计算带出变化的行也校验（旧系统 useCalcBroadcast.ts 把计算带出的变化记成修改，useWorkingSetStore.ts 保存时校验有修改的行）。
+# 页面保存只改主表批量，changed 只有主表行；每批数量因此变化的原辅料行由 rules-core 按 old 判断为有修改。
+
+
+def test_2712_change_batch_capsule_zero_per_hl_rejected() -> None:
+    """单据 2712（样例 31，明胶空心胶囊 104679 的每片含量假设为 0）：批量 20000 → 30000，胶囊的每批数量按批量算 2 → 3，
+    这一行计算带出了变化，按 R_MAT_PER_HL_GT0 拒绝，定位到它的每片含量，不写库。"""
+    pipeline, engine, ctx, cmd = _save_batch("31", "2712", "30000")
+    with pytest.raises(t.PlatformError) as caught:
+        pipeline.execute(cmd, ctx)
+    assert caught.value.code is t.ErrorCode.RULE_REJECTED
+    assert caught.value.message == PER_HL_MESSAGE
+    assert [(d.message, d.entity, d.row_key, d.field) for d in caught.value.details] == [
+        (PER_HL_MESSAGE, MATERIAL, "104679", "PER_HL")]
+    [request] = engine.requests
+    assert request["changed"] == [{"entity": MASTER, "rowKey": "2712", "op": "modify", "fields": ["APEX_PL"]}]
+    assert request["document"]["master"]["old"] == {"APEX_PL": "20000"}
+    assert pipeline.store.writes == []
+    assert pipeline.store.rows[MASTER]["2712"]["APEX_PL"] == 20000
+
+
+def test_2757_change_batch_saves() -> None:
+    """单据 2757（样例 33）：批量 1600000 → 1700000，过氧化氢溶液（207577，每片含量为 0）的每批数量仍是 0、没有变化，不检查；
+    每批数量变了的原辅料都检查并通过，保存成功，207577 不写。"""
+    pipeline, engine, ctx, cmd = _save_batch("33", "2757", "1700000")
+    result = pipeline.execute(cmd, ctx)
+    assert result.outcome == "saved"
+    [request] = engine.requests
+    assert request["changed"] == [{"entity": MASTER, "rowKey": "2757", "op": "modify", "fields": ["APEX_PL"]}]
+    updated = {r["rowKey"]: r for w in pipeline.store.writes if w.op == "update" and w.entity == MATERIAL for r in w.rows}
+    assert updated["207584"]["BATCH_QTY"] == Decimal("0.51")
+    assert "207577" not in updated
+    assert pipeline.store.rows[MASTER]["2757"]["APEX_PL"] == 1700000
+    assert result.prompts == []
