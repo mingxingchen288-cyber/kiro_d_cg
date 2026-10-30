@@ -96,6 +96,9 @@
 - 交付物：新增行用产品 Lookup 选产品后保存，产品ID、产品名称等写库；复制出的成本单保存后产品ID 不变；已保存的成本单换产品时回填的字段一起保存。
 - 接入责任：d_cg 要先建三个 Lookup 数据源视图（`.reports/batch3-20261030/h3-new-doc/建Lookup视图-待人工审核.sql`），再按合并后的代码把配置项写进 d_cg（同目录 `save_config.py`）。
 - 验收标准：模拟验证：新增一行、产品 Lookup 选产品 392，命令的 `values` 带产品ID 和不可编辑的回填目标；复制 200721 只复制主表，命令带产品ID 392、产品名称；明细的物料名称照旧不进命令。真实验证（浏览器、d_cg）：新增成本单选产品 392 保存后库里产品ID 为 392，"由BOM生成明细"生成 BOM 的 11 行；复制 200721 保存后产品ID 仍是 392。
+- 状态与证据：进行中（模拟验证通过；真实验证没做）。2026-10-30（H3，`batch3/new-doc`，输出在 `.reports/batch3-20261030/h3-new-doc/`）：
+  - 模拟验证：前端 `tests/page/product-lookup.test.ts` 4 个（新增选产品 392、复制 200721、已保存的单据重新选产品、明细物料名称不进命令），`tests/config/table-fields.test.ts` 改用不是回填目标的字段并加 1 个回填目标用例；后端 `tests/config/test_views.py` 2 个（seed 的 fillWritable、角色锁住产品ID 时回填目标不可写），authz、config 的用例按新 seed 更新。前端 34 个文件 526 passed，后端 not oracle and not redis 1209 passed，lint-imports 5 kept。
+  - 没有在浏览器验证：d_cg 中没有 V_COST_GOODS_LOOKUP、V_COST_CUSTOMER_LOOKUP、V_COST_USER（只在 cmx），按 d_cg 表结构校验 seed 时这三个 Lookup 报"表或视图不存在"（`validate_seed.out.txt`；另一条"部门 18 不存在"是 d_cg 已有的审批流，main 的 seed 同样报，`validate_seed_main.out.txt`）；另外 C05 改了，页面视图是存进 PF_CONFIG_ITEM 的派生项，用新代码保存配置后 main 的后端读不了。所以配置没有写进 d_cg。
 
 ### T-FP-10 成本核算页的显示问题（批次 2 核对时记下的 5 处）
 
@@ -108,3 +111,10 @@
   4. 业务按钮返回 `unchanged` 时提示"<按钮名称>：没有需要修改的数据"；
   5. 配置变更后列的先后按页面视图（与刷新后相同），重新显示的列不再跑到最右边。
 - 验收标准：模拟验证：`save.test.ts`（2919 那样同一条规则拒绝两行、两种文字和主表行）、`buttons-config.test.ts`（按钮 unchanged；QTY 设为不显示再改回后按页面视图重排；有个人列配置时按个人配置）、`summary.test.ts`（汇总行的布尔列）。真实验证（浏览器）：5 处都在成本核算页上看到。
+- 状态与证据：模拟验证和真实浏览器验证都通过，待独立复核。2026-10-30（H3，`batch3/new-doc`，后端 8085 + d_cg、前端 9533、本机 Chrome，脚本和结果在 `.reports/batch3-20261030/h3-new-doc/e2e/`）：
+  - 第 1 处：2919 原辅料比沙可啶、一水乳糖（200目）单价都改后保存，422 RULE_REJECTED 两条明细，顶部提示"每片含量必填且必须大于0（原料/辅料 比沙可啶、一水乳糖（200目））"，两格标红（`t2b.out.json`、`t2b-reject-two.png`）；只改一行时提示"…（原料/辅料 一水乳糖（200目））"（`t2a`）。都刷新放弃，没有写库。
+  - 第 2 处：2919 原辅料汇总行的"客户指定"格为空、没有复选框，普通行有复选框（`t2a.out.json`、`t2b.out.json`）。
+  - 第 3 处：打开成本核算、选单据、保存的全程，控制台没有"is not supported with the … row model"（`t2a.out.json` 的 console；只剩 AG Grid 授权过期的提示）。
+  - 第 4 处：200204（产品ID 0、没有明细）点"由BOM生成明细"，返回 unchanged，提示"由BOM生成明细：没有需要修改的数据"（`t2c.out.json`、`t2c-bom-unchanged.png`）。
+  - 第 5 处：配置变更是模拟的——没有改 d_cg 的配置，Playwright 接管页面的实时连接，注入两条 config.changed，第一次把页面视图中年需求量设为不可见再交给页面，第二次原样交给页面；页面走真实的重新读取路径。年需求量先消失，再回到第 8 列（注册证号之后），与开始时、刷新后都相同，没有到最后一列（第 44 列）（`t2d.out.json`、`t2d-2-restored.png`）。
+  - 核对后只读查询（`q09-浏览器核对后.out.txt`）：T_COST_PINGGU 700 行、最大 200726，明细 7926 行、最大 208527，2919 两行单价仍为 2489.725、26，200204 仍没有明细，冻结 0 条，配置代号 4225 没变。
