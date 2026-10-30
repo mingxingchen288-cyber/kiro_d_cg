@@ -14,6 +14,9 @@ from collections.abc import Iterator
 import pytest
 from sqlalchemy import Engine
 
+from cost_platform.contracts import types as t
+from cost_platform.pipeline.tracing import SqlTracer
+
 from .lock_order_support import (
     CLEANUP,
     COST_PAGE,
@@ -44,6 +47,7 @@ from .lock_order_support import (
 
 pytestmark = pytest.mark.oracle
 _log = logging.getLogger(__name__)
+_tracer = SqlTracer()
 
 
 @pytest.fixture(scope="module")
@@ -244,3 +248,42 @@ def test_d_own_document_changed_between_read_and_lock_runs_again(platform: Platf
     rows = fetch(p.engine, "SELECT COUNT(*) AS N FROM pf_command WHERE user_id = :u AND request_key = :k", u=WANG, k=command.request_key)
     assert rows[0]["n"] == 1
     assert p.problems(retried=frozenset({command.request_key})) == []
+
+
+# ---------------------------------------------------------------- (e) 往前冻结的页面保存的 SQL 条数（WP-10）
+
+def _traced(p: Platform, user: str, command: t.Command) -> tuple[t.CommandResult, list[str]]:
+    """在当前线程执行命令（SQL 追踪按线程记），返回结果和每条 SQL 的文本。"""
+    with _tracer.capture() as trace:
+        result = p.runner.execute(command, p.context(user))
+    return result, trace.texts
+
+
+def _kinds(sql: list[str]) -> list[str]:
+    """每条 SQL 的种类：加锁（带 FOR UPDATE）、入口条件（FROM DUAL）、其余按第一个词。"""
+    return ["LOCK" if "FOR UPDATE" in s else "DUAL" if " FROM DUAL" in s else s.split(" ")[0] for s in sql]
+
+
+def test_e1_goods_page_save_locks_and_reads_in_one_statement(platform: Platform) -> None:
+    """物料清单页配了往前冻结的审批流（L_GOODS_TO_COST，同 d_cg 的 GOODS_TO_COST），保存推迟加锁（规则 3）。李四只改物料 3 的
+    名称、不触发审批：插入命令记录、加锁前普通读取、入口条件、锁住物料 3 并读出数据（一条，锁住后用它核对，规则 4）、
+    查冻结、改物料、完成命令记录，共 7 条。原来锁和核对重读是两条，共 8 条（`.reports/batch5-20261030/b1-pipeline/`）。"""
+    result, sql = _traced(platform, LI, save(GOODS_PAGE, [goods(3, NAME="W（李四改名）")]))
+    _log.info("e1：%s 条：%s", len(sql), sql)
+    assert result.outcome == "saved"
+    assert _kinds(sql) == ["INSERT", "SELECT", "DUAL", "LOCK", "SELECT", "UPDATE", "UPDATE"], sql
+    assert f"FROM {TABLE_GOODS}" in sql[3] and "NAME" in sql[3]  # 加锁语句同时读出物料的数据
+    assert fetch(platform.engine, f"SELECT NAME FROM {TABLE_GOODS} WHERE GOODSID = 3")[0]["name"] == "W（李四改名）"
+
+
+def test_e2_goods_price_change_freezing_cost_saves_one_statement(platform: Platform) -> None:
+    """王五改物料 3 的执行价，进入审批、冻结含物料 3 的成本单 2551：按顺序锁 2551（只锁，一条）、物料 3（锁并读出数据，
+    一条，锁住后用它核对），锁后不再整批重读。加锁语句只有这两条，后面没有再读物料 3 的普通查询。"""
+    result, sql = _traced(platform, WANG, save(GOODS_PAGE, [goods(3, ZX_PRICE="31")]))
+    _log.info("e2：%s 条：%s", len(sql), sql)
+    assert result.outcome == "approvalSubmitted"
+    locks = [i for i, s in enumerate(sql) if "FOR UPDATE" in s]
+    assert [sql[i].split(" FROM ")[1].split(" ")[0] for i in locks] == [TABLE_DOC, TABLE_GOODS], sql
+    assert "ZX_PRICE" in sql[locks[1]]
+    assert not any(f"FROM {TABLE_GOODS}" in s and "FOR UPDATE" not in s for s in sql[locks[1] + 1:]), sql
+    assert frozen(platform.engine) == {(TABLE_GOODS, "3"), (TABLE_DOC, "2551")}

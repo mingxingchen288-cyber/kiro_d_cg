@@ -3,6 +3,7 @@
 - 读取：有 readView 时经视图按字段名读取，否则按 `column` 读表（C06 第 2 节）。
 - 加锁（加锁的顺序和 SQL 见 `locks.py`）：只锁一张单据时一条 `SELECT … FOR UPDATE WAIT n` 加锁并读出主表行；一个实体
   锁多行时按主键顺序每行一条加锁语句，再一条普通查询读出数据。用户发起时把行权限条件作为判断列一起查出（C08 第 7 节）。
+  推迟加锁的单据锁住后核对（`lock_document`）用同一条加锁并读出的语句，不另外重读。
 - 明细：一次读出若干张单据在若干个明细实体中的全部行，一条语句（多个明细实体用 UNION ALL），不加锁：
   单据锁在主表行上；多表视图加 FOR UPDATE 会锁住关联表的行（C08 第 5a 节）。
 - 写入：只写有变化的列；同一实体的同一种操作按写入的列分组，每组一条批量语句；新增行的主键取序列 `<表名>_SEQ`，
@@ -15,7 +16,7 @@ SQL 文本中的表名、列名来自已发布的配置（config 保存时已核
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Protocol
@@ -147,6 +148,19 @@ class OracleDocumentStore:
     def lock_key(self, uow: UnitOfWork, table: str, key_column: str, key: str, numeric: bool) -> None:
         """锁一行，不读数据（`BusinessLocker.lock`，一行一条）；行不存在时没有锁可加。"""
         uow.connection.execute(text(lock_key_sql(table, key_column, self._wait)), {"k": Decimal(key) if numeric else key})
+
+    def lock_document(self, uow: UnitOfWork, ctx: ExecutionContext, ref: DocumentRef,
+                      details: Collection[str]) -> DocumentData | None:
+        """锁住一张单据的主表行并读出数据（`BusinessLocker.lock` 核对加锁前读到的本命令单据，规则 4）：与普通保存的加锁读取
+        同一条语句（`lock_load` 只有一个主键时）；`details` 中的明细实体再一条普通查询读出（不加锁）。单据已不存在时为 None。"""
+        entity = ctx.config.entity(ref.entity)
+        master = self.lock_load(uow, ref.entity, entity, [ref.record_key]).get(ref.record_key)
+        if master is None:
+            return None
+        sources = [DetailSource(link.entity, ctx.config.entity(link.entity), link.parent_key)
+                   for link in entity.details if link.entity in details]
+        rows = self.load_details_many(uow, sources, [ref.record_key]) if sources else {}
+        return DocumentData(ref=ref, master=master, details={s.entity_code: rows[s.entity_code][ref.record_key] for s in sources})
 
     def read_documents(self, uow: UnitOfWork, ctx: ExecutionContext,
                        refs: Sequence[DocumentRef]) -> dict[DocumentRef, DocumentData]:
