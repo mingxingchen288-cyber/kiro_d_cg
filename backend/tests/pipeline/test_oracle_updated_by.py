@@ -38,8 +38,10 @@ from cost_platform.identity.accounts import OracleAccounts
 from cost_platform.orchestration.runner import CommandRunner
 from cost_platform.pipeline.calc import Recalculator
 from cost_platform.pipeline.command_log import OracleCommandRecorder
+from cost_platform.pipeline.copies import OracleCopySources
 from cost_platform.pipeline.document_store import OracleDocumentStore
 from cost_platform.pipeline.loader import DocumentLoader, PageSaveInvolved
+from cost_platform.pipeline.locks import LockBook, PipelineLocks
 from cost_platform.pipeline.merge import DocumentMerger, IntentMerger
 from cost_platform.pipeline.stages import LockStage, MergeIntentsStage, MergePatchesStage, RecalculateStage, WriteChangesStage
 from cost_platform.pipeline.table_writer import OracleTableWriter
@@ -85,16 +87,19 @@ class Platform:
                                         ("COST_PINGGU", "COST_MATERIAL", "COST_PACKAGE", ENTITY)})
         self.uow = OracleUnitOfWorkFactory(engine)
         schema = OracleSchemaInspector(engine)
-        tables = OracleTableWriter(5, schema)
+        book = LockBook()  # 同 pipeline 插件：加锁读取、TableWriter、BusinessLocker 共用（固定加锁层级）
+        tables = OracleTableWriter(5, schema, book)
         self.accounts = OracleAccounts(self.uow)
         permission = RolePermissionChecker()
         scales = ColumnScales(schema)
         store = OracleDocumentStore(5)
-        loader = DocumentLoader(store, permission)
+        loader = DocumentLoader(store, permission, book)
         deps = ApprovalDeps(catalog=catalog_of(entities, self.config), schema=schema, directory=self.accounts,
-                            documents=OracleDocumentReader(self.uow, entities), rules=rules, tables=tables)
+                            documents=OracleDocumentReader(self.uow, entities), rules=rules, tables=tables,
+                            locks=PipelineLocks(book, store, schema))
         stages = [OperationPermissionStage(permission), PageSaveInvolved(), LockStage(loader),
-                  MergePatchesStage(DocumentMerger(permission, scales)), MergeIntentsStage(IntentMerger(loader, scales)),
+                  MergePatchesStage(DocumentMerger(permission, scales), OracleCopySources(permission)),
+                  MergeIntentsStage(IntentMerger(scales)),
                   RecalculateStage(Recalculator(rules, scales)), WriteChangesStage(ChangeWriter(store)),
                   *create_approval(deps).stages()]
         self.executor = CommandRunner(self.uow, OracleCommandRecorder(5, tables), FakeCommandMonitor(), FakeDeliveryDispatcher(),
