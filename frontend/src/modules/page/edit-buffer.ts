@@ -28,6 +28,17 @@ export interface BufferSchema {
    * `current` 为这一行的当前值，`isNew` 表示新增行。
    */
   writable(entity: string, field: string, current: FieldValues, isNew: boolean): boolean;
+  /**
+   * 复制出的行中不可写的复制字段能否写进命令（可见、能写进表的字段），后端按 `copyOf` 取源行的值（C02 第 1 节）。
+   * 不给时只写可写的字段。
+   */
+  copyable?(entity: string, field: string): boolean;
+}
+
+/** 复制出的新增行的来源（FP-13）：`copyOf` 为源行的主键（源行也是没保存的复制行时，沿用它的来源），`fields` 为复制的字段 */
+export interface CopyOrigin {
+  copyOf: string | null;
+  fields: string[];
 }
 
 export interface RowId {
@@ -55,6 +66,11 @@ interface PendingRow {
    * 复制时没勾的字段保存后为空。不写时后端把为空的数值字段补成 0。
    */
   copied?: boolean;
+  /**
+   * 复制出的行的来源（FP-13，C02 `copyOf`）：命令中带上源行主键，不可写、但复制了的字段（例如成本单的币种、项目号）也写进
+   * 命令，后端取源行的值写进新行（WP-21）。同旧系统复制源行全部字段、新增行提交全部字段。
+   */
+  origin?: CopyOrigin;
 }
 
 type Step = Map<string, { before: PendingRow | undefined; after: PendingRow | undefined }>;
@@ -232,14 +248,14 @@ export class EditBuffer {
 
   /**
    * 新增一行，返回它的 clientRowId。主表行 `recordId` 传 null（单据就是它自己）；`after` 为插在哪一行之后。
-   * `values` 由调用方按默认值或复制的内容给出；复制出的行 `copied` 为 true（见 PendingRow.copied）。
+   * `values` 由调用方按默认值或复制的内容给出；复制出的行 `copied` 为 true、`origin` 为来源（见 PendingRow.copied、origin）。
    */
   addRow(
     entity: string,
     recordId: string | null,
     values: FieldValues,
     after: string | null,
-    options: { copied?: boolean } = {}
+    options: { copied?: boolean; origin?: CopyOrigin } = {}
   ): string {
     const id = this.newId();
     this.batch(() => {
@@ -251,10 +267,17 @@ export class EditBuffer {
         values: { ...values },
         deleted: false,
         after,
-        ...(options.copied ? { copied: true } : {})
+        ...(options.copied ? { copied: true } : {}),
+        ...(options.origin ? { origin: { copyOf: options.origin.copyOf, fields: [...options.origin.fields] } } : {})
       });
     });
     return id;
+  }
+
+  /** 没保存的复制行的来源；不是复制出的新增行为 undefined */
+  copyOrigin(entity: string, id: string): CopyOrigin | undefined {
+    const row = this.pending.get(keyOf(entity, id));
+    return row?.isNew ? row.origin : undefined;
   }
 
   /** 删除一行：已保存的行标为删除；新增行直接去掉（主表的新增行连同它的明细） */
@@ -346,7 +369,12 @@ export class EditBuffer {
       const masterRow = rows.find(r => r.entity === master);
       let masterChange: MasterChange;
       if (masterRow?.isNew) {
-        masterChange = { op: 'add', clientRowId: recordId, values: this.writableValues(masterRow, true) };
+        masterChange = {
+          op: 'add',
+          clientRowId: recordId,
+          ...copyOfField(masterRow),
+          values: this.writableValues(masterRow, true)
+        };
       } else if (masterRow?.deleted) {
         result.push({ entity: master, master: { op: 'delete', rowKey: recordId }, details: [] });
         continue;
@@ -360,7 +388,13 @@ export class EditBuffer {
       for (const row of rows) {
         if (row.entity === master) continue;
         if (row.isNew) {
-          details.push({ entity: row.entity, op: 'add', clientRowId: row.id, values: this.writableValues(row, true) });
+          details.push({
+            entity: row.entity,
+            op: 'add',
+            clientRowId: row.id,
+            ...copyOfField(row),
+            values: this.writableValues(row, true)
+          });
         } else if (row.deleted) {
           details.push({ entity: row.entity, op: 'delete', rowKey: row.id });
         } else {
@@ -379,6 +413,7 @@ export class EditBuffer {
   private writableValues(row: PendingRow, isNew: boolean): FieldValues {
     const current = this.current(row.entity, row.id) ?? {};
     const types = this.schema.entities[row.entity]?.fieldTypes ?? {};
+    const copiedFields = new Set(isNew && row.origin?.copyOf ? row.origin.fields : []);
     const result: FieldValues = {};
     for (const [field, value] of Object.entries(row.values)) {
       // 新增行中为空的字段不写，由后端按默认值补（WP-16）。两种例外照写 null：
@@ -386,7 +421,12 @@ export class EditBuffer {
       //   旧系统新增时同样写入空值；
       // - 复制出的行：WP-16 规定复制出的行不补默认值，复制时没勾的字段保存后为空。
       if (isNew && value === null && types[field] !== 'number' && !row.copied) continue;
-      if (!this.schema.writable(row.entity, field, current, isNew)) continue;
+      if (!this.schema.writable(row.entity, field, current, isNew)) {
+        // 复制出的行：不可写、但复制了的字段也写进命令（有值时），后端按 copyOf 取源行的值（C02 第 1 节、WP-21）
+        if (value !== null && copiedFields.has(field) && this.schema.copyable?.(row.entity, field))
+          result[field] = value;
+        continue;
+      }
       result[field] = value;
     }
     return result;
@@ -417,6 +457,11 @@ export class EditBuffer {
     if (row) this.pending.set(key, copyRow(row)!);
     else this.pending.delete(key);
   }
+}
+
+/** 复制出的新增行在命令中带上源行主键（C02 `copyOf`）；源行也没保存、又不是复制来的时不带 */
+function copyOfField(row: PendingRow): { copyOf?: string } {
+  return row.origin?.copyOf ? { copyOf: row.origin.copyOf } : {};
 }
 
 function sameRow(a: PendingRow | undefined, b: PendingRow | undefined) {

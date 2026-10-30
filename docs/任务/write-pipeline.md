@@ -96,3 +96,11 @@
 - 负责范围：`pipeline/writer.py` 的 `_stamped`、`_write_stamped`（写入时在实体和变更计划的副本上加修改人字段，不改 `document_store.py`）；seed 的 `entity.COST_GOODS_PRICE.json` 配 `"updatedByColumn": "UPDATE_BY"`。成本核算的表在 d_cg 没有 UPDATE_BY 列（DB-03），不配。
 - 验收标准：模拟验证：改本地物料、新增物料时同一条语句写修改人，命令结果中没有它，没配的实体不写，来源为审批时写审批人的登录名。真实验证（业务例子）：测试自己建一个 ERP 物料（ISERP = 1、UPDATE_BY = `ERP_SYNC`），admin 在物料清单页改它的单价，提交审批 GOODS_TO_COST，admin 通过后 T_COST_GOODS 的 UPDATE_BY 为 admin、单价写入，视图 T_COST_GOODS_PRICE_V 的 ROW_CLASS_FLAG 为 `erp-updated`（黄底）；测试结束删掉这个物料、审批和命令记录。
 - 状态与证据：见 `.reports/batch4-20261030/p-pipeline-fixes/`（2026-10-30，P 组，`batch4/pipeline-fixes`）。模拟验证 `tests/pipeline/test_updated_by.py`；真实验证 `tests/pipeline/test_oracle_updated_by.py`（标 oracle，测试的内存配置取 seed）。d_cg 的配置在合并后由主代理经配置接口写入。
+
+### T-WP-9 复制出的行写入复制的全部字段
+
+- 归属与目标：实现 WP-21（C02 v8 的 `copyOf`）：复制出的行保存时，复制对话框里勾选的字段都写进新行，不论能不能编辑；后端按源行核对，不信前端给的不可写字段的值。来源：旧系统 `copy-row-fields.ts` 第 23–29 行、`useWorkingSetStore.ts` 第 834–876 行、`DynamicDataService.java` 第 274–327 行；现象见 `.reports/batch3-20261030/h3-new-doc/findings.md`、`v3-verify/findings.md` 观察 2-1（复制 200721 后币种、项目号为空）；用户 2026-10-30 同意按旧系统做。
+- 前置输入：T-WP-2；contracts 的 `MasterAdd.copy_of`、`DetailAdd.copy_of`。
+- 负责范围：`pipeline/copies.py`（`OracleCopySources`：按主键读源行，每个实体一条，不加锁，带行权限）；`pipeline/merge.py` 中 `_Rows.new_values` 的 `source`、`_copied_values` 和 `DocumentMerger` 的接线（小改动，IntentMerger 没动）；`pipeline/stages.py` 的 `MergePatchesStage`、`plugin.py`。
+- 验收标准：模拟验证：复制成本单时不可写的产品名称、创建人取源行的值（命令中的伪造值不用），计算字段不写，没复制的字段不补默认值；没有 `copyOf` 的新增行照旧拒绝不可写字段；源行超出行权限时 409 ROW_NOT_FOUND；明细复制只在视图中的物料名称、计算字段不写。业务例子（浏览器）：复制 200721 只复制主表，保存后新单据的币种为"人民币"、项目号与源单据相同（源为空则为空），产品等字段照旧；之后删掉这张单据。
+- 状态与证据：模拟验证通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/pipeline/test_copy.py` 4 个；前端 `tests/page/copy-lookup.test.ts`、`product-lookup.test.ts` 的命令带 `copyOf` 和不可编辑的复制字段。浏览器核对见 `.reports/batch4-20261030/p-pipeline-fixes/`。

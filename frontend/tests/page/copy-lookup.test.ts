@@ -48,15 +48,18 @@ describe('复制（FP-13）', () => {
     ]);
     const [document] = runtime.model.buffer.documents().filter(d => d.master.op === 'add');
     expect(array(DocumentPatch).parse([document])).toEqual([document]);
-    // 没勾的备注写成 null：复制出的行后端不补默认值（WP-16），保存后为空
+    // 没勾的备注写成 null：复制出的行后端不补默认值（WP-16），保存后为空。
+    // 带 copyOf：勾了的不可编辑字段（创建人、明细的物料名称）也写进命令，后端取源行的值（C02 第 1 节、WP-21）；
+    // 计算字段（总成本、金额）和没有 erpRow 的实体的 ERP 列（产品名称）不写
     expect(document.master).toEqual({
       op: 'add',
       clientRowId: newId,
-      values: { MEMO: null, QTY: '10', STATUS: '评估中' }
+      copyOf: '2550',
+      values: { MEMO: null, QTY: '10', STATUS: '评估中', CREATE_BY: '杨娜' }
     });
-    expect(document.details.map(d => (d.op === 'add' ? d.values : null))).toEqual([
-      { GOODSID: '25', PRICE: '75', USAGE: '10', MEMO: null },
-      { GOODSID: '115', PRICE: '72', USAGE: '10', MEMO: null }
+    expect(document.details.map(d => (d.op === 'add' ? [d.copyOf, d.values] : null))).toEqual([
+      ['206323', { GOODSID: '25', GOODSNAME: '聚维酮K30', PRICE: '75', USAGE: '10', MEMO: null }],
+      ['206324', { GOODSID: '115', GOODSNAME: '硬脂酸镁', PRICE: '72', USAGE: '10', MEMO: null }]
     ]);
     // 撤销一次撤回整个复制（源单据的改价还在）
     runtime.undo();

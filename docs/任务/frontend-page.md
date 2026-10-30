@@ -118,3 +118,11 @@
   - 第 4 处：200204（产品ID 0、没有明细）点"由BOM生成明细"，返回 unchanged，提示"由BOM生成明细：没有需要修改的数据"（`t2c.out.json`、`t2c-bom-unchanged.png`）。
   - 第 5 处：配置变更是模拟的——没有改 d_cg 的配置，Playwright 接管页面的实时连接，注入两条 config.changed，第一次把页面视图中年需求量设为不可见再交给页面，第二次原样交给页面；页面走真实的重新读取路径。年需求量先消失，再回到第 8 列（注册证号之后），与开始时、刷新后都相同，没有到最后一列（第 44 列）（`t2d.out.json`、`t2d-2-restored.png`）。
   - 核对后只读查询（`q09-浏览器核对后.out.txt`）：T_COST_PINGGU 700 行、最大 200726，明细 7926 行、最大 208527，2919 两行单价仍为 2489.725、26，200204 仍没有明细，冻结 0 条，配置代号 4225 没变。
+
+### T-FP-11 复制时勾选的字段都写进新行
+
+- 归属与目标：FP-13 中"勾选的字段不论能不能编辑都写进新行"一项（C02 v8 的 `copyOf`，后端 WP-21）。来源：旧系统 `copy-row-fields.ts` 第 23–29 行复制源行全部字段、`useWorkingSetStore.ts` 第 834–876 行新增行提交全部字段；现象见 `.reports/batch3-20261030/v3-verify/findings.md` 观察 2-1（复制 200721 后币种、项目号为空）；用户 2026-10-30 同意按旧系统做。
+- 前置输入：contracts 的 `MasterAdd`、`DetailAdd` 加 `copyOf`；write-pipeline 的 T-WP-9。
+- 负责范围：page 的 `copy.ts`（`originOf`）、`edit-buffer.ts`（`PendingRow.origin`、`copyOrigin`、命令中的 `copyOf` 和不可写的复制字段）、`fields.ts`（`fieldCopyable`）、`view-model.ts`（`createBuffer` 的 `copyable`）。
+- 验收标准：模拟验证：E09 复制 2550 时命令带 `copyOf` 和不可编辑的创建人、明细的物料名称，不带计算字段和产品名称（没有 `erpRow` 的实体的 ERP 列）；复制 200721 只复制主表时命令带 `copyOf: 200721` 和项目号。业务例子（浏览器、d_cg）：复制 200721 只复制主表，保存后新单据的币种是"人民币"、项目号与源单据相同（源为空则为空），产品等字段照旧；删掉这张单据。
+- 状态与证据：模拟验证通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/page/copy-lookup.test.ts`、`tests/page/product-lookup.test.ts`。浏览器核对见 `.reports/batch4-20261030/p-pipeline-fixes/`。

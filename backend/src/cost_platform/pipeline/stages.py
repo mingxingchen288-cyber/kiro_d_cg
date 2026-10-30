@@ -6,7 +6,7 @@
 |---|---|---|---|
 | 确定涉及的单据 | `loader.PageSaveInvolved` | `command.documents` 不为空 | 每张单据一项 |
 | 加锁读取 | `LockStage` | `involved` 或 `intents` 所属单据中有还没读入 `current` 的已有单据 | `DocumentLoader.lock` |
-| 合并修改 | `MergePatchesStage` | `command.documents` 不为空 | `DocumentMerger.merge_patches` |
+| 合并修改 | `MergePatchesStage` | `command.documents` 不为空 | `copies.CopySources.read`（有复制出的行时）+ `DocumentMerger.merge_patches` |
 | 合并意图 | `MergeIntentsStage` | `intents` 不为空 | `IntentMerger.absorb`（不再加锁、不再做冻结检查） |
 | 计算与规则 | `RecalculateStage` | `changes.rows` 不为空 | `lookups.fill_lookup_fields` + `Recalculator.run` + `check_required`（`required_rows`） |
 | 写入变更 | `WriteChangesStage` | `changes.rows` 不为空 | `ChangeWriter.apply` |
@@ -33,6 +33,7 @@ from cost_platform.contracts.types import (
 )
 
 from .calc import Recalculator, check_required, patch_needs_details
+from .copies import CopySources, wanted_sources
 from .loader import DocumentLoader, document_ref, is_new_document, known_missing, sort_key
 from .lookups import fill_lookup_fields
 from .merge import DocumentMerger, IntentMerger, RowRef
@@ -74,18 +75,21 @@ class LockStage:
 
 
 class MergePatchesStage:
-    """合并修改（WP-04–WP-06、WP-14–WP-16）：把 `command.documents` 合并进 `candidate`，写入 `changes`。"""
+    """合并修改（WP-04–WP-06、WP-14–WP-16、WP-21）：把 `command.documents` 合并进 `candidate`，写入 `changes`。
+    命令中有复制出的行（`copyOf`）时，先经 `copies` 读出源行（每个实体一条语句，不加锁），不可写的复制字段取源行的值。"""
 
     name = "合并修改"
 
-    def __init__(self, merger: DocumentMerger) -> None:
+    def __init__(self, merger: DocumentMerger, copies: CopySources | None = None) -> None:
         self._merger = merger
+        self._copies = copies
 
     def applies(self, state: CommandState, ctx: ExecutionContext) -> bool:
         return bool(state.command.documents)
 
     def run(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> None:
-        self._merger.merge_patches(state, ctx)
+        sources = self._copies.read(uow, state, ctx) if self._copies is not None and wanted_sources(state)[0] else {}
+        self._merger.merge_patches(state, ctx, sources)
 
 
 class MergeIntentsStage:

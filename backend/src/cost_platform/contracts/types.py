@@ -302,6 +302,8 @@ class PlatformError(Exception):
 class MasterAdd(Wire):
     op: Literal["add"]
     client_row_id: ClientRowId
+    copy_of: Key | None = None
+    """复制出的行：源行（同一实体）的主键。不可写的复制字段由后端取源行的值，不补默认值（C02 第 1 节）。"""
     values: FieldValues
 
 
@@ -332,6 +334,8 @@ class DetailAdd(Wire):
     entity: Code
     op: Literal["add"]
     client_row_id: ClientRowId
+    copy_of: Key | None = None
+    """同 `MasterAdd.copy_of`：源行为同一明细实体的行。"""
     values: FieldValues
 
 

@@ -8,7 +8,7 @@ import type { CompareResult, DataRow, RecordResponse } from '../../contracts/htt
 import type { PageView, ViewRegion } from '../../contracts/page-view';
 import type { EvalRowResult, RuleEffect } from '../../contracts/rules';
 import { EditBuffer, type RowId } from './edit-buffer';
-import { fieldEditable, fieldOf, fieldWritable, regionOf } from './fields';
+import { fieldCopyable, fieldEditable, fieldOf, fieldWritable, regionOf } from './fields';
 
 interface RowExtras {
   frozen: FrozenMark | null;
@@ -50,6 +50,11 @@ export function createBuffer(view: PageView) {
       const region = regionOf(view, entity);
       const meta = region && fieldOf(view, entity, field);
       return Boolean(region && meta && fieldWritable(region, meta, current, isNew));
+    },
+    copyable(entity, field) {
+      const region = regionOf(view, entity);
+      const meta = region && fieldOf(view, entity, field);
+      return Boolean(region && meta && fieldCopyable(region, meta));
     }
   });
 }

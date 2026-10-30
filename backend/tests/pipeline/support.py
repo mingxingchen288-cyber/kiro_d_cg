@@ -312,6 +312,15 @@ class MemoryStore:
             del self.rows[code][key]
         self.writes.append(Write("deleteChildren", code, [{"parent": k} for k in record_keys]))
 
+    def read(self, uow: UnitOfWork, state: t.CommandState, ctx: t.ExecutionContext) -> dict[tuple[str, str], dict[str, Any]]:
+        """`copies.CopySources`：复制出的行的源行，按主键从内存中的表取（`denied` 中的行算超出行权限，读不到）。"""
+        from cost_platform.pipeline.copies import wanted_sources
+
+        self.copy_reads = getattr(self, "copy_reads", 0) + 1
+        wanted, _ = wanted_sources(state)
+        return {(code, key): copy.deepcopy(self.rows[code][key]) for code, keys in wanted.items() for key in keys
+                if key in self.rows[code] and (code, key) not in self.denied}
+
 
 # ---------------------------------------------------------------- 命令记录表（SQLite，模拟验证判重和回滚）
 
@@ -443,8 +452,13 @@ class Pipeline:
         self.intents = IntentMerger(self.loader, scales)
         self.calc = Recalculator(self.setup.engine, scales)
         self.writer = ChangeWriter(self.store)
+        copies = self.store if isinstance(self.store, MemoryStore) else None
+        if copies is None:
+            from cost_platform.pipeline.copies import OracleCopySources
+
+            copies = OracleCopySources(self.setup.permission)
         self.stages: list[PipelineStage] = [
-            PageSaveInvolved(), LockStage(self.loader), MergePatchesStage(self.merger), MergeIntentsStage(self.intents),
+            PageSaveInvolved(), LockStage(self.loader), MergePatchesStage(self.merger, copies), MergeIntentsStage(self.intents),
             RecalculateStage(self.calc), WriteChangesStage(self.writer)]
 
     def execute(self, cmd: t.Command, ctx: t.ExecutionContext) -> t.CommandResult:
