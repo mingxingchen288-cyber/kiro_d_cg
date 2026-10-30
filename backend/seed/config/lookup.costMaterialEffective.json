@@ -5,15 +5,47 @@
   "content": {
     "table": "T_COST_GOODS_PRICE_V",
     "columns": [
-      "GOODSID",
-      "GOODSNAME",
-      "ZX_PRICE",
-      "USEFLAG",
-      "GOODSTYPE",
-      "PACKTYPE",
-      "FACTORYNAME",
-      "STANDARDTYPE",
-      "GOODSNAME_EN"
+      {
+        "column": "GOODSID",
+        "label": "物料ID"
+      },
+      {
+        "column": "GOODSNAME",
+        "label": "物料名称",
+        "width": 200
+      },
+      {
+        "column": "ZX_PRICE",
+        "label": "单价",
+        "width": 100
+      },
+      {
+        "column": "USEFLAG",
+        "label": "用途",
+        "width": 80
+      },
+      {
+        "column": "GOODSTYPE",
+        "label": "规格",
+        "width": 150
+      },
+      {
+        "column": "PACKTYPE",
+        "label": "包装规格"
+      },
+      {
+        "column": "FACTORYNAME",
+        "label": "供应商",
+        "width": 150
+      },
+      {
+        "column": "STANDARDTYPE",
+        "label": "质量标准"
+      },
+      {
+        "column": "GOODSNAME_EN",
+        "label": "英文名"
+      }
     ],
     "keywordColumns": [
       "GOODSID",

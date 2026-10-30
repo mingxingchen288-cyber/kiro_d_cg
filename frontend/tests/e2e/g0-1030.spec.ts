@@ -6,7 +6,7 @@
  * 写数据的用自己的测试成本单（data），只读的直接看 d_cg 已有的单据（2919、200721、审批 13、14）。
  */
 import type { Locator } from '@playwright/test';
-import { formatScale } from '../../src/modules/page/fields';
+import { formatNumber } from '../../src/modules/page/fields';
 import { summaryTexts } from './data';
 import {
   DIALOG_SLOT_WARNINGS,
@@ -115,7 +115,14 @@ test('场景 2 明细汇总行：标删除后汇总行和主表合计跟着变�
   const doc = await data.copyDoc('2550');
   const k30 = doc.row('206323');
   const record = await api.record(doc.docId);
+  const view = await api.view();
   const sum = (entity: string) => record.details[entity].reduce((s, r) => s + num(r.values.COST_BATCH), 0);
+  /** 明细汇总行中每批成本应显示的文字：按页面视图这一列的小数位和千分位 */
+  const sumText = (entity: string, value: number) =>
+    formatNumber(
+      view.details.find(d => d.entity === entity)!.fields.find(f => f.name === 'COST_BATCH')!,
+      String(value)
+    );
   const commands: string[] = [];
   page.on('request', r => {
     if (r.url().endsWith('/api/commands')) commands.push(r.url());
@@ -126,11 +133,11 @@ test('场景 2 明细汇总行：标删除后汇总行和主表合计跟着变�
   const master = masterGrid(page);
   const materialSum = () => summaryValues(materials, ['COST_BATCH']);
   // 原辅料每批成本 0 位小数，包材 2 位（页面视图）
-  await expect.poll(materialSum).toEqual({ COST_BATCH: formatScale(String(sum('COST_MATERIAL')), 0) });
+  await expect.poll(materialSum).toEqual({ COST_BATCH: sumText('COST_MATERIAL', sum('COST_MATERIAL')) });
   await showDetail(page, '包材');
   await expect
     .poll(() => summaryValues(detailGrid(page, 'COST_PACKAGE'), ['COST_BATCH']))
-    .toEqual({ COST_BATCH: formatScale(String(sum('COST_PACKAGE')), 2) });
+    .toEqual({ COST_BATCH: sumText('COST_PACKAGE', sum('COST_PACKAGE')) });
   await showDetail(page, '原料/辅料');
   const masterTotal = async () => num((await summaryValues(master, ['TOTAL_FL'])).TOTAL_FL);
   const rowTotal = async () => num(await (await cell(master, doc.docId, 'TOTAL_FL')).textContent());
@@ -141,7 +148,7 @@ test('场景 2 明细汇总行：标删除后汇总行和主表合计跟着变�
   await detailButton(page, 'COST_MATERIAL', '明细删除').click();
   await expect(materials.locator(`.ag-row[row-id="${k30}"]`).first()).toHaveClass(/row-deleted/);
   await expect(page.getByText('1 行未保存')).toBeVisible();
-  await expect.poll(materialSum).toEqual({ COST_BATCH: formatScale(String(sum('COST_MATERIAL') - 750), 0) });
+  await expect.poll(materialSum).toEqual({ COST_BATCH: sumText('COST_MATERIAL', sum('COST_MATERIAL') - 750) });
   await expect.poll(rowTotal).not.toBe(rowBefore);
   const rowAfter = await rowTotal();
   await expect
@@ -152,7 +159,7 @@ test('场景 2 明细汇总行：标删除后汇总行和主表合计跟着变�
   await page.keyboard.press('Control+z');
   await expect(materials.locator(`.ag-row[row-id="${k30}"]`).first()).not.toHaveClass(/row-deleted/);
   await expect(page.getByText(/行未保存/)).toHaveCount(0);
-  await expect.poll(materialSum).toEqual({ COST_BATCH: formatScale(String(sum('COST_MATERIAL')), 0) });
+  await expect.poll(materialSum).toEqual({ COST_BATCH: sumText('COST_MATERIAL', sum('COST_MATERIAL')) });
   await expect.poll(masterTotal).toBe(summaryBefore);
 
   // 再标删除后刷新：浏览器问要不要离开（确认离开），重新打开后汇总不变
@@ -163,7 +170,7 @@ test('场景 2 明细汇总行：标删除后汇总行和主表合计跟着变�
   await page.reload();
   await openDoc(page, doc.docId);
   await showDetail(page, '原料/辅料');
-  await expect.poll(materialSum).toEqual({ COST_BATCH: formatScale(String(sum('COST_MATERIAL')), 0) });
+  await expect.poll(materialSum).toEqual({ COST_BATCH: sumText('COST_MATERIAL', sum('COST_MATERIAL')) });
   expect(commands).toEqual([]);
   expect(await api.record(doc.docId)).toEqual(record);
 });
@@ -429,7 +436,7 @@ test('场景 5a 新建成本单：产品 Lookup 选 392，保存，由BOM生成 
     const field = view.master.fields.find(f => f.name === name)!;
     // eslint-disable-next-line no-await-in-loop
     await expect(await cell(grid, rowId, name), name).toHaveText(
-      formatScale(String(record.master.values[name]), field.scale)
+      formatNumber(field, String(record.master.values[name]))
     );
   }
   expect(num(record.master.values.TOTAL_COST)).toBeGreaterThan(0);

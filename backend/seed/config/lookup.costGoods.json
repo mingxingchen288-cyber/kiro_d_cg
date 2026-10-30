@@ -5,19 +5,67 @@
   "content": {
     "table": "V_COST_GOODS_LOOKUP",
     "columns": [
-      "GOODSID",
-      "GOODSNAME",
-      "MA_NO",
-      "APEX_PL",
-      "MAH",
-      "P_PERPACK",
-      "S_PERBACK",
-      "CUSTOMID",
-      "CUSTOMNAME",
-      "MEMO",
-      "STRENGTH",
-      "LIVERY",
-      "GOODSNAME_EN"
+      {
+        "column": "GOODSID",
+        "label": "产品ID",
+        "width": 80
+      },
+      {
+        "column": "GOODSNAME",
+        "label": "产品名称",
+        "width": 200
+      },
+      {
+        "column": "MA_NO",
+        "label": "注册证号"
+      },
+      {
+        "column": "APEX_PL",
+        "label": "批量"
+      },
+      {
+        "column": "MAH",
+        "label": "注册持有人",
+        "width": 150
+      },
+      {
+        "column": "P_PERPACK",
+        "label": "每盒片数"
+      },
+      {
+        "column": "S_PERBACK",
+        "label": "每大箱装盒数"
+      },
+      {
+        "column": "CUSTOMID",
+        "label": "客户ID",
+        "width": 80
+      },
+      {
+        "column": "CUSTOMNAME",
+        "label": "客户名称",
+        "width": 150
+      },
+      {
+        "column": "MEMO",
+        "label": "BOM状态",
+        "width": 120
+      },
+      {
+        "column": "STRENGTH",
+        "label": "剂量",
+        "width": 100
+      },
+      {
+        "column": "LIVERY",
+        "label": "分销商",
+        "width": 150
+      },
+      {
+        "column": "GOODSNAME_EN",
+        "label": "产品英文名",
+        "width": 200
+      }
     ],
     "keywordColumns": [
       "GOODSID",

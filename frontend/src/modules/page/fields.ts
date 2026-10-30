@@ -1,5 +1,5 @@
 /**
- * 字段的规则：哪些字段能写进命令、单元格能不能编辑、新增行的默认值（FP-15、C06 第 2 节）、数值的显示小数位、
+ * 字段的规则：哪些字段能写进命令、单元格能不能编辑、新增行的默认值（FP-15、C06 第 2 节）、数值的显示小数位和千分位、
  * 对比的显示（FP-15，与旧系统 useMetaColumns.ts 的 renderCompareValue 相同）。不引用 AG Grid 和 Vue。
  */
 import type { FieldValue, FieldValues } from '../../contracts/command';
@@ -156,16 +156,36 @@ export function formatScale(text: string, scale: number | null): string {
   return `${sign && !isZero ? '-' : ''}${intPart}${fracPart}`;
 }
 
+/**
+ * 千分位（C05 `grouping`）：十进制文本的整数部分每三位加一个英文逗号，负号和小数部分不变；不是十进制文本时原样返回。
+ * 同旧系统 useMetaColumns.ts 的 applyThousandsGrouping（先按小数位取舍，再加千分位）。
+ */
+export function groupThousands(text: string): string {
+  const match = /^(-?)(\d+)(\.\d+)?$/.exec(text);
+  if (!match) return text;
+  const [, sign, integer, fraction = ''] = match;
+  return `${sign}${integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${fraction}`;
+}
+
+/** 数值的显示：先按小数位（`scale`），配了千分位（`grouping`）时再加千分位 */
+export function formatNumber(field: Pick<ViewField, 'scale' | 'grouping'>, text: string): string {
+  const scaled = formatScale(text, field.scale);
+  return field.grouping ? groupThousands(scaled) : scaled;
+}
+
 export function displayText(field: ViewField, value: FieldValue, dict?: Map<string, string>): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'boolean') return value ? '是' : '否';
   if (dict?.has(value)) return dict.get(value)!;
-  if (field.type === 'number') return formatScale(value, field.scale);
+  if (field.type === 'number') return formatNumber(field, value);
   if (field.type === 'datetime') return value.replace('T', ' ');
   return value;
 }
 
-/** 编辑框给出的文本转成字段值：空为 null；数值去掉首尾空白，不是十进制文本时返回 undefined（不接受） */
+/**
+ * 编辑框给出的文本转成字段值：空为 null；数值去掉首尾空白，不是十进制文本时返回 undefined（不接受）。
+ * 带千分位的数值（从表格中复制出来再粘贴，例如 3,500,000）去掉千分位后接受。
+ */
 export function parseInput(field: ViewField, input: unknown): FieldValue | undefined {
   if (input === null || input === undefined) return null;
   if (typeof input === 'boolean') return field.type === 'boolean' ? input : String(input);
@@ -173,7 +193,8 @@ export function parseInput(field: ViewField, input: unknown): FieldValue | undef
   if (text === '') return null;
   if (field.type === 'number') {
     const trimmed = text.trim();
-    return /^-?[0-9]+(\.[0-9]+)?$/.test(trimmed) ? trimmed : undefined;
+    const plain = /^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(trimmed) ? trimmed.replace(/,/g, '') : trimmed;
+    return /^-?[0-9]+(\.[0-9]+)?$/.test(plain) ? plain : undefined;
   }
   if (field.type === 'datetime') return text.trim().replace(' ', 'T');
   return text;

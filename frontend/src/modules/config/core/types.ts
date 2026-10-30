@@ -54,6 +54,8 @@ export interface EntityField {
   label: string;
   type: FieldType;
   scale?: number | null;
+  /** 千分位（C06 第 2 节）：数值显示时整数部分每三位加英文逗号；省略时为 false */
+  grouping?: boolean;
   source: 'erp' | 'own';
   role: 'input' | 'calculated' | 'system';
   default?: DefaultValue | null;
@@ -105,6 +107,8 @@ export interface FieldSetting extends FieldFlags {
   width?: number | null;
   pinned?: 'left' | 'right' | null;
   dictType?: string | null;
+  /** 字典下拉中可以填写字典以外的值（C06 第 3 节，旧系统"下拉（可填写）"）；省略时为 false */
+  dictFreeText?: boolean;
   lookup?: LookupSetting | null;
   /** 汇总行求和（C06 第 3 节），只能用于数值字段 */
   aggregate?: 'sum' | null;
@@ -381,9 +385,17 @@ export interface DictContent {
   items: Array<{ value: string; label: string; order: number }>;
 }
 
+/** Lookup 的显示列写成对象时（C06 第 9 节）：`label` 为对话框中的列标题，`width` 为列宽，省略时分别为列名、平分 */
+export interface LookupColumnItem {
+  column: string;
+  label?: string | null;
+  width?: number | null;
+}
+
 export interface LookupContent {
   table: string;
-  columns: string[];
+  /** 列名，或带标题、宽度的对象 */
+  columns: Array<string | LookupColumnItem>;
   keywordColumns: string[];
   orderBy?: string | null;
 }

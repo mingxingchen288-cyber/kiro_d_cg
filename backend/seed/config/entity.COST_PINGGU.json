@@ -60,6 +60,7 @@
         "column": "ANNUAL_QTY",
         "label": "年需求量",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input"
       },
@@ -68,6 +69,7 @@
         "column": "APEX_PL",
         "label": "批量",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input"
       },
@@ -92,6 +94,7 @@
         "column": "S_PERBACK",
         "label": "每箱盒数",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input"
       },
@@ -108,6 +111,7 @@
         "column": "X_PERBACK",
         "label": "每托箱数",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input"
       },
@@ -116,6 +120,7 @@
         "column": "M_PERPACK",
         "label": "每中盒小盒数",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input"
       },
@@ -124,6 +129,7 @@
         "column": "TOTAL_FL",
         "label": "每批辅料成本",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2
@@ -133,6 +139,7 @@
         "column": "TOTAL_BC",
         "label": "每批包材成本",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2
@@ -142,6 +149,7 @@
         "column": "TOTAL_YL",
         "label": "每批原料成本",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2
@@ -175,6 +183,7 @@
         "column": "TOTAL_COST",
         "label": "每批物料成本",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2
@@ -184,6 +193,7 @@
         "column": "COST_PERBOX",
         "label": "每盒成本",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2
@@ -193,6 +203,7 @@
         "column": "OUT_PRICE_RMB",
         "label": "出厂价(RMB)",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 4
@@ -202,6 +213,7 @@
         "column": "OUT_PRICE_F",
         "label": "出厂价(外币)",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input",
         "scale": 4
@@ -211,6 +223,7 @@
         "column": "SALEMONEY",
         "label": "每批销售额",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2
@@ -220,6 +233,7 @@
         "column": "JGF_BATCH",
         "label": "每批加工费",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2
@@ -229,6 +243,7 @@
         "column": "COST_PERQP",
         "label": "千片生产成本",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input",
         "scale": 2
@@ -238,6 +253,7 @@
         "column": "JGF_PERQP",
         "label": "千片加工费",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2
@@ -247,6 +263,7 @@
         "column": "ML_PERQP",
         "label": "千片毛利",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2
@@ -256,6 +273,7 @@
         "column": "Y_JG_RE",
         "label": "年加工费",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2
@@ -265,6 +283,7 @@
         "column": "Y_ML",
         "label": "年毛利",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2
@@ -274,6 +293,7 @@
         "column": "Y_SALE",
         "label": "年销售额",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 2

@@ -66,7 +66,14 @@ function editable(field: ViewField) {
 function dictOptions(field: ViewField) {
   void runtime.state.dictVersion;
   const dict = field.dictType ? runtime.dicts.get(field.dictType) : undefined;
-  if (dict) return [...dict].map(([value, label]) => ({ value, label }));
+  if (dict) {
+    const list = [...dict].map(([value, label]) => ({ value, label }));
+    // 可填写的字典下拉（C05 dictFreeText）：当前值不在字典中时也列出，同表格中的编辑器
+    const current = values.value[field.name];
+    if (field.dictFreeText && typeof current === 'string' && current && !dict.has(current))
+      list.unshift({ value: current, label: current });
+    return list;
+  }
   const options = optionValues(field);
   return options ? options.map(value => ({ value, label: value })) : null;
 }
@@ -139,6 +146,8 @@ function openLookup(field: ViewField) {
             <NSelect
               size="small"
               clearable
+              :tag="Boolean(field.dictFreeText)"
+              :filterable="Boolean(field.dictFreeText)"
               :value="(values[field.name] as string | null) ?? null"
               :options="dictOptions(field)!"
               @update:value="(v: string | null) => commit(field, v)"

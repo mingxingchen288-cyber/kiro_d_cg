@@ -5,11 +5,30 @@
   "content": {
     "table": "V_COST_CUSTOMER_LOOKUP",
     "columns": [
-      "CUSTOMID",
-      "CUSTOMNAME",
-      "COUNTRY",
-      "LIVERY",
-      "TRANPOSID"
+      {
+        "column": "CUSTOMID",
+        "label": "客户ID",
+        "width": 80
+      },
+      {
+        "column": "CUSTOMNAME",
+        "label": "客户名称",
+        "width": 200
+      },
+      {
+        "column": "COUNTRY",
+        "label": "国家",
+        "width": 100
+      },
+      {
+        "column": "LIVERY",
+        "label": "分销商",
+        "width": 150
+      },
+      {
+        "column": "TRANPOSID",
+        "label": "分销商ID"
+      }
     ],
     "keywordColumns": [
       "CUSTOMID",

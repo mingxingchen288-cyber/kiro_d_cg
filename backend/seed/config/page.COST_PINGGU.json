@@ -96,6 +96,10 @@
         },
         "Y_SALE": {
           "aggregate": "sum"
+        },
+        "PINGGU_CLASS": {
+          "dictType": "pingguClass",
+          "dictFreeText": true
         }
       },
       "buttons": [

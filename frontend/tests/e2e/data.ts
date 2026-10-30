@@ -7,7 +7,7 @@
  */
 import type { FieldValue, FieldValues } from '../../src/contracts/command';
 import type { PageView, ViewField, ViewRegion } from '../../src/contracts/page-view';
-import { fieldWritable, formatScale } from '../../src/modules/page/fields';
+import { fieldWritable, formatNumber } from '../../src/modules/page/fields';
 
 /** 测试成本单备注的标记 */
 export const MARKER = 'PF_TEST';
@@ -90,24 +90,22 @@ export function wp15(text: string) {
   return `${sign}${padded.slice(0, -8)}.${padded.slice(-8)}`;
 }
 
-/** 复制对话框中明细行的文字（CopyDialog.vue 的 rowLabel：除主键外前三个可见字段，按小数位显示） */
+/** 复制对话框中明细行的文字（CopyDialog.vue 的 rowLabel：除主键外前三个可见字段，按小数位和千分位显示） */
 export function copyRowLabel(region: { primaryKey: string; fields: ViewField[] }, values: FieldValues) {
   return region.fields
     .filter(f => f.visible && f.name !== region.primaryKey)
     .slice(0, 3)
-    .map(f =>
-      values[f.name] === null || values[f.name] === undefined ? '' : formatScale(String(values[f.name]), f.scale)
-    )
+    .map(f => (values[f.name] === null || values[f.name] === undefined ? '' : formatNumber(f, String(values[f.name]))))
     .filter(Boolean)
     .join(' / ');
 }
 
-/** 汇总行应显示的文字：后端 aggregates（或前端求和）按字段的小数位显示 */
+/** 汇总行应显示的文字：后端 aggregates（或前端求和）按字段的小数位和千分位显示 */
 export function summaryTexts(fields: ViewField[], sums: FieldValues) {
   const out: Record<string, string> = {};
   for (const field of fields) {
     const value = sums[field.name];
-    if (value !== null && value !== undefined) out[field.name] = formatScale(String(value), field.scale);
+    if (value !== null && value !== undefined) out[field.name] = formatNumber(field, String(value));
   }
   return out;
 }

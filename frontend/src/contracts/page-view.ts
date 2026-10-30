@@ -21,6 +21,21 @@ export const LookupSetting = object('LookupSetting', {
 });
 export type LookupSetting = Infer<typeof LookupSetting>;
 
+/** C05 v6：Lookup 对话框的一个显示列（C06 第 9 节）；`label` 没配置时为列名，`width` 没配置时省略（各列平分） */
+export const LookupColumn = object('LookupColumn', {
+  column: str,
+  label: optional(nullable(str)),
+  width: optional(nullable(int))
+});
+export type LookupColumn = Infer<typeof LookupColumn>;
+
+/** 页面视图中的 Lookup：页面配置的设置，加上 Lookup 配置的显示列 `columns`（C05 v6） */
+export const ViewLookup = object('ViewLookup', {
+  ...LookupSetting.shape,
+  columns: optional(array(LookupColumn))
+});
+export type ViewLookup = Infer<typeof ViewLookup>;
+
 /**
  * 新增行的默认值，写法同 C06 第 2 节 `fields[].default`。
  * C05 v3 的页面视图还没有这一项（契约缺口，见 .reports/modules/frontend-page/contract-gaps.md 第 1 项），后端给出时前端照用。
@@ -51,7 +66,7 @@ export const ViewField = object('ViewField', {
   width: nullable(int),
   pinned: nullable(literal('left', 'right')),
   dictType: nullable(code),
-  lookup: nullable(LookupSetting),
+  lookup: nullable(ViewLookup),
   /** 汇总行（C06 第 3 节 `aggregate`）：`sum` 为这一列在表格底部的汇总行中求和；没有设置时省略 */
   aggregate: optional(nullable(literal('sum'))),
   /**
@@ -59,6 +74,10 @@ export const ViewField = object('ViewField', {
    * 用户不能直接填写，Lookup 回填和复制带来的值写进命令（authz AZ-04 接受）。
    */
   fillWritable: optional(bool),
+  /** C05 v6：千分位（实体字段的 `grouping`），数值显示时整数部分每三位加英文逗号；为 false 时省略 */
+  grouping: optional(bool),
+  /** C05 v6：字典下拉中可以填写字典以外的值（页面配置的 `dictFreeText`，旧系统"下拉（可填写）"）；为 false 时省略 */
+  dictFreeText: optional(bool),
   default: optional(nullable(FieldDefault)),
   compare: optional(nullable(FieldCompareView))
 });

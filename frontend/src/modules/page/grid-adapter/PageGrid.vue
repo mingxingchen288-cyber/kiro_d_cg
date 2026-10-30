@@ -30,7 +30,8 @@ import { fieldOf } from '../fields';
 import type { GridPort, GridRow, PageRuntime } from '../page-runtime';
 import { messageOf } from '../page-runtime';
 import { SUMMARY_ROW_ID } from '../summary';
-import { FORM_COLUMN, buildColumns, suppressColumnVirtualisation } from './columns';
+import { DICT_FREE_TEXT_EDITOR, FORM_COLUMN, buildColumns, suppressColumnVirtualisation } from './columns';
+import DictSelectCellEditor from './DictSelectCellEditor.vue';
 
 defineOptions({ name: 'PageGrid' });
 
@@ -86,6 +87,9 @@ const rowSelection: RowSelectionOptions = {
 };
 
 const defaultColDef: ColDef<GridRow> = { minWidth: 70 };
+
+/** 自定义单元格编辑器：可填写的字典下拉（C05 `dictFreeText`） */
+const components = { [DICT_FREE_TEXT_EDITOR]: DictSelectCellEditor };
 
 function getRowId(params: GetRowIdParams<GridRow>) {
   return params.data.__id;
@@ -325,6 +329,7 @@ function getContextMenuItems(params: GetContextMenuItemsParams<GridRow>): Array<
     class="page-grid h-full"
     :column-defs="columnDefs"
     :default-col-def="defaultColDef"
+    :components="components"
     :get-row-id="getRowId"
     :row-model-type="master ? 'serverSide' : 'clientSide'"
     :server-side-datasource="master ? datasource : undefined"

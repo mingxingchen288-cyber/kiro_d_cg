@@ -1,7 +1,9 @@
 /**
  * "表与列"的列表格（同旧系统 SectionTables.vue 的列元数据表格）在新配置中的对应：
- * - 实体（C06 第 2 节，所有页面共用）：标题、类型、写入列、来源（ERP / 自有）、角色、小数位、默认值、选项值、对比；
- * - 页面字段设置（C06 第 3 节，只对本页面）：显示、编辑、必填、求和（汇总行，只能用于数值字段）、宽度、固定、字典、Lookup；
+ * - 实体（C06 第 2 节，所有页面共用）：标题、类型、写入列、来源（ERP / 自有）、角色、小数位、千分位（只有数值字段能勾）、
+ *   默认值、选项值、对比；
+ * - 页面字段设置（C06 第 3 节，只对本页面）：显示、编辑、必填、求和（汇总行，只能用于数值字段）、宽度、固定、字典、
+ *   字典可填写（选了字典才能勾）、Lookup；
  *   "显示、编辑、必填"也可以切换为编辑实体的 `fieldDefaults`（所有页面的基线）。
  * 旧系统每个页面有自己的一份列元数据；新配置把它拆成实体和页面两层，下层只能收紧可见、可编辑，必填只能增加。
  *
@@ -36,12 +38,16 @@ export interface FieldRow {
   source: 'erp' | 'own';
   role: EntityField['role'];
   scale: number | null;
+  /** 实体字段的 `grouping`（C06 第 2 节）：勾选时数值显示千分位，同旧系统列表格的"千分位" */
+  grouping: boolean;
   visible: boolean;
   editable: boolean;
   required: boolean;
   width: number | null;
   pinned: 'left' | 'right' | null;
   dictType: string | null;
+  /** 页面字段设置的 `dictFreeText`（C06 第 3 节）：字典下拉中可以填写字典以外的值，同旧系统编辑器"下拉（可填写）" */
+  dictFreeText: boolean;
   lookup: LookupSetting | null;
   /** 页面字段设置的 `aggregate`（C06 第 3 节）：勾选时这一列在汇总行中求和，同旧系统列表格的"求和" */
   aggregate: boolean;
@@ -126,12 +132,14 @@ export function fieldRows(entity: EntityContent, settings: Record<string, FieldS
       source: f.source,
       role: f.role,
       scale: f.scale ?? null,
+      grouping: f.grouping === true,
       visible: flags.visible !== false,
       editable: flags.editable !== false,
       required: flags.required === true,
       width: s.width ?? null,
       pinned: s.pinned ?? null,
       dictType: s.dictType ?? null,
+      dictFreeText: s.dictFreeText === true,
       lookup: s.lookup ?? null,
       aggregate: s.aggregate === 'sum',
       defaultText: defaultToText(f.default),
@@ -150,6 +158,8 @@ export function applyRows(entity: EntityContent, settings: Record<string, FieldS
     const field: EntityField = { ...(old ?? {}), name: r.name, column: r.column.trim() || null, label: r.label, type: r.type, source: r.source, role: r.role };
     if (r.scale !== null && String(r.scale) !== '') field.scale = Number(r.scale);
     else delete field.scale;
+    if (r.grouping && r.type === 'number') field.grouping = true;
+    else delete field.grouping;
     const def = textToDefault(r.defaultText, r.optionsText);
     if (def) field.default = def;
     else delete field.default;
@@ -174,6 +184,7 @@ export function applyRows(entity: EntityContent, settings: Record<string, FieldS
     if (r.width) s.width = Number(r.width);
     if (r.pinned) s.pinned = r.pinned;
     if (r.dictType) s.dictType = r.dictType;
+    if (r.dictType && r.dictFreeText) s.dictFreeText = true;
     if (r.lookup) s.lookup = r.lookup;
     if (r.aggregate) s.aggregate = 'sum';
     if (Object.keys(s).length) nextSettings[r.name] = s;
@@ -198,12 +209,14 @@ export function newRowsFrom(columns: Array<{ name: string; type: string; label: 
       source: 'own',
       role: 'input',
       scale: null,
+      grouping: false,
       visible: true,
       editable: c.inTable,
       required: false,
       width: null,
       pinned: null,
       dictType: null,
+      dictFreeText: false,
       lookup: null,
       aggregate: false,
       defaultText: '',

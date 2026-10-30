@@ -3,10 +3,11 @@
  * Lookup管理，同旧系统 LookupPanel.vue：表格列 lookupCode、名称、数据源、显示列，工具栏 新增 / 删除 / 保存 / 刷新；
  * 双击"显示列"打开"配置显示列"（读数据源的列，勾选显示列和关键字搜索列，全选 / 清空）。
  * 每个 Lookup 是一个 `lookup` 配置项（C06 第 9 节）：`keywordColumns` 必须写，不按关键字搜索时为空数组。
- * 旧系统显示列的"显示标题、宽度"在 C06 的 lookup 中没有对应字段，不提供。
+ * "配置显示列"中每列可填"显示标题""宽度"，同旧系统（LookupPanel.vue 的显示标题、宽度两列）：标题为空或与字段名相同、
+ * 又没填宽度时，`columns` 中只写列名；否则写 `{"column", "label", "width"}`（lookup-columns.ts）。
  */
 import { computed, h, onMounted, ref } from 'vue';
-import { NAlert, NButton, NCheckbox, NDataTable, NModal, NPopconfirm, NSpace } from 'naive-ui';
+import { NAlert, NButton, NCheckbox, NDataTable, NInput, NInputNumber, NModal, NPopconfirm, NSpace } from 'naive-ui';
 import type { ColDef } from 'ag-grid-community';
 import { useConfigContext } from '../core/context';
 import { type ConfigProblem, errorText } from '../core/errors';
@@ -14,6 +15,7 @@ import type { LookupContent } from '../core/types';
 import ConfigGrid from '../components/ConfigGrid.vue';
 import ProblemList from '../components/ProblemList.vue';
 import { linkColumn } from '../components/grid-columns';
+import { type SourceColumn, columnItems, columnsText, sourceColumnsOf } from './lookup-columns';
 
 interface Row extends LookupContent {
   _id: string;
@@ -31,7 +33,7 @@ const saving = ref(false);
 const problems = ref<ConfigProblem[]>([]);
 const editing = ref<Row | null>(null);
 const showColumns = ref(false);
-const sourceColumns = ref<Array<{ name: string; show: boolean; keyword: boolean }>>([]);
+const sourceColumns = ref<SourceColumn[]>([]);
 const loadingColumns = ref(false);
 let sequence = 0;
 
@@ -39,7 +41,7 @@ const columns = computed<ColDef[]>(() => [
   { field: 'key', headerName: 'lookupCode', width: 160, editable: p => p.data?.version === null },
   { field: 'name', headerName: '名称', width: 160 },
   { field: 'table', headerName: '数据源（表或视图）', width: 220 },
-  linkColumn('columns', '显示列', 260, (d: Row) => d.columns.join(', ') || '双击配置显示列'),
+  linkColumn('columns', '显示列', 260, (d: Row) => columnsText(d.columns) || '双击配置显示列'),
   linkColumn('keywordColumns', '关键字搜索列', 200, (d: Row) => d.keywordColumns.join(', ') || '不按关键字搜索'),
   { field: 'orderBy', headerName: '排序', width: 140 },
   { colId: 'state', headerName: '状态', width: 100, editable: false, valueGetter: p => (p.data?.dirty ? '未保存' : `版本 ${p.data?.version}`) }
@@ -105,7 +107,7 @@ async function onEdit(event: { colDef: ColDef; data: Row }) {
   loadingColumns.value = true;
   try {
     const schema = await api.schemaColumns(row.table.trim());
-    sourceColumns.value = schema.columns.map(c => ({ name: c.name, show: row.columns.includes(c.name), keyword: row.keywordColumns.includes(c.name) }));
+    sourceColumns.value = sourceColumnsOf(schema.columns.map(c => c.name), row.columns, row.keywordColumns);
   } catch (error) {
     notify.error(errorText(error));
   } finally {
@@ -115,7 +117,7 @@ async function onEdit(event: { colDef: ColDef; data: Row }) {
 
 function applyColumns() {
   const row = editing.value!;
-  row.columns = sourceColumns.value.filter(c => c.show).map(c => c.name);
+  row.columns = columnItems(sourceColumns.value);
   row.keywordColumns = sourceColumns.value.filter(c => c.keyword).map(c => c.name);
   row.dirty = true;
   showColumns.value = false;
@@ -137,7 +139,7 @@ onMounted(load);
     </NSpace>
     <ProblemList :problems="problems" />
     <ConfigGrid :rows="rows" :columns="columns" :height="520" :loading="loading" multiple row-key="_id" @select="selected = $event" @change="e => (e.data.dirty = true)" @edit="onEdit" />
-    <NModal v-model:show="showColumns" preset="card" title="配置显示列" style="width: 640px">
+    <NModal v-model:show="showColumns" preset="card" title="配置显示列" style="width: 820px">
       <NSpace justify="space-between" class="mb-8">
         <span>数据源：{{ editing?.table || '-' }}</span>
         <span>已选 {{ sourceColumns.filter(c => c.show).length }} 列</span>
@@ -155,8 +157,10 @@ onMounted(load);
         :data="sourceColumns"
         :columns="[
           { title: '字段', key: 'name' },
-          { title: '显示', key: 'show', width: 80, render: (row: any) => h(NCheckbox, { checked: row.show, onUpdateChecked: (v: boolean) => ((row.show = v), !v && (row.keyword = false)) }) },
-          { title: '关键字搜索', key: 'keyword', width: 110, render: (row: any) => h(NCheckbox, { checked: row.keyword, disabled: !row.show, onUpdateChecked: (v: boolean) => (row.keyword = v) }) }
+          { title: '显示', key: 'show', width: 70, render: (row: SourceColumn) => h(NCheckbox, { checked: row.show, onUpdateChecked: (v: boolean) => ((row.show = v), !v && (row.keyword = false)) }) },
+          { title: '显示标题', key: 'label', width: 170, render: (row: SourceColumn) => h(NInput, { value: row.label, size: 'small', disabled: !row.show, placeholder: row.name, onUpdateValue: (v: string) => (row.label = v) }) },
+          { title: '宽度', key: 'width', width: 120, render: (row: SourceColumn) => h(NInputNumber, { value: row.width, size: 'small', min: 1, clearable: true, disabled: !row.show, placeholder: '自动', onUpdateValue: (v: number | null) => (row.width = v) }) },
+          { title: '关键字搜索', key: 'keyword', width: 100, render: (row: SourceColumn) => h(NCheckbox, { checked: row.keyword, disabled: !row.show, onUpdateChecked: (v: boolean) => (row.keyword = v) }) }
         ]"
       />
       <NSpace justify="end" class="mt-8">
