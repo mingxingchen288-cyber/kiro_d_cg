@@ -116,7 +116,8 @@ class OracleEnv:
         self.clock = FakeClock()
         self.ids = FakeIdGenerator()
         self.rules = rules or FakeRulesEngine()
-        self.validator = Validator(self.schema, OracleSequences(), StaticDepartments(["1069"]), self.rules)
+        # 1069：C06 7.9 样例中旧系统技术中心的编号；18：d_cg 中技术中心的部门编号（seed 的审批流 TECH_CUSTOMER_MATERIAL 引用它，同 support.py）
+        self.validator = Validator(self.schema, OracleSequences(), StaticDepartments(["1069", "18"]), self.rules)
         self.hook: Any = None
         self.service = ConfigService(self.uow, self.validator, cache, self.publisher, self.clock, self.ids,
                                      step_hook=lambda step: self.hook(step) if self.hook else None)
