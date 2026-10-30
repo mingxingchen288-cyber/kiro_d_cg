@@ -120,7 +120,7 @@ def test_departments_come_from_directory_reader() -> None:
 def test_import_seed_only_when_no_base_items() -> None:
     """PF_CONFIG_ITEM 没有基础配置项时一次保存 seed 的配置项（代号加一）；已有时不再导入。"""
     env = Env()
-    assert import_seed(env.service, SEED) == len(seed_drafts()) == 25
+    assert import_seed(env.service, SEED) == len(seed_drafts()) == 28
     stored = {(r.type, r.key) for r in env.records().values() if r.type in BASE_TYPES}
     assert stored == {(d.type, d.key) for d in seed_drafts()} and env.generation() == 1
     assert import_seed(env.service, SEED) == 0 and env.generation() == 1
