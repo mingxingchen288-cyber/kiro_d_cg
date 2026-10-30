@@ -6,7 +6,8 @@
 补上列默认值和主键，建序列 `<表名>_SEQ`，起始值为 cmx 最大主键加一。保留列在 cmx 中的列注释也一起复制
 （旧向导的列标题取列注释，`SchemaInspector` 的 `column_comments` 读它；2026-10-29 加入，之前复制的表要 `--refresh` 才有）。
 视图（`"kind": "view"`）：清单中写的是 d_cg 版本的 SQL（去掉方案名、引用 d_cg 的表、去掉不复制的列和 DELETED 条件），
-按它建视图。
+按它建视图。例外是 `"readsCmx": true` 的视图：它们直接读 cmx 的同名视图（`reason` 写明为什么 d_cg 的表做不出来），
+例如成本核算主表的产品 Lookup：产品的"BOM状态"由 cmx 视图经 ERP 数据库链接算出（2026-10-30）。
 已存在的表和视图不动；`refresh` 中的先删除（视图为替换）再建。cmx 只读。
 """
 
@@ -35,6 +36,8 @@ class TableSpec:
 @dataclass(frozen=True)
 class ViewSpec:
     sql: str
+    reads_cmx: bool = False
+    """为 true 时视图直接读 cmx 的视图（清单中的 `readsCmx`），见文件说明。"""
 
 
 def table_specs() -> dict[str, TableSpec | ViewSpec]:
@@ -42,7 +45,7 @@ def table_specs() -> dict[str, TableSpec | ViewSpec]:
     specs: dict[str, TableSpec | ViewSpec] = {}
     for name, spec in data.items():
         if spec.get("kind") == "view":
-            specs[name.upper()] = ViewSpec(spec["sql"])
+            specs[name.upper()] = ViewSpec(spec["sql"], bool(spec.get("readsCmx", False)))
             continue
         parent = spec.get("parent")
         specs[name.upper()] = TableSpec(

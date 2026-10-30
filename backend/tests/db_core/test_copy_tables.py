@@ -50,7 +50,12 @@ def test_view_uses_d_cg_tables(engine: Engine, name: str) -> None:  # noqa: F811
         referenced = {r[0] for r in c.execute(text(
             "SELECT referenced_owner FROM user_dependencies WHERE name = :v AND type = 'VIEW'"), {"v": name})}
     assert inspector.object_type(name) == "view" and status == "VALID" and rows > 0
-    assert "CMX." not in body.upper() and "CMX" not in referenced
+    spec = SPECS[name]
+    assert isinstance(spec, ViewSpec)
+    if spec.reads_cmx:  # 直接读 cmx 视图的例外（copy_tables 文件说明）：只引用 cmx 和 d_cg 自己
+        assert referenced <= {"CMX", "D_CG"}
+    else:
+        assert "CMX." not in body.upper() and "CMX" not in referenced
 
 
 def test_copy_again_changes_nothing(engine: Engine) -> None:  # noqa: F811

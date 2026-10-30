@@ -182,5 +182,26 @@
     "kind": "view",
     "source": "CMX.V_COST_PINGGU_PACKAGE_LQ（液体包材明细 CostPackageLq 的查询视图）：改法同上",
     "sql": "SELECT d.DTLID, d.DOCID, d.GOODSID, d.PER_HL, d.EXADD_MATER, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.MEMO, f.GOODSNAME_EN, f.PRICE BASE_PRICE, f.SUQTY, f.GOODSNAME, f.USEFLAG DTL_USEFLAG, f.STANDARDTYPE, f.FACTORYNAME, f.GOODSTYPE FROM T_COST_PINGGU_DTL_LQ d, T_COST_GOODS f WHERE f.USEFLAG IN ('非印字包材', '印字包材') AND d.GOODSID = f.GOODSID"
+  },
+  "V_COST_GOODS_LOOKUP": {
+    "kind": "view",
+    "readsCmx": true,
+    "source": "CMX.V_COST_GOODS_LOOKUP（成本核算主表产品 Lookup costGoods 的数据源，旧 T_COST_LOOKUP_CONFIG）：列取旧 Lookup 的显示列，加旧查询固定的 DELETED = 0",
+    "reason": "产品的 BOM 状态（MEMO）由 cmx 视图经 ERP 数据库链接 mpcs_pr_bom_doc@hyerp 算出，d_cg 的表做不出来；由BOM生成明细的 SQL 同样直接读 CMX.T_COST_BOM_GOODS_TREE_V",
+    "sql": "SELECT GOODSID, GOODSNAME, MA_NO, APEX_PL, MAH, P_PERPACK, S_PERBACK, CUSTOMID, CUSTOMNAME, MEMO, STRENGTH, LIVERY, GOODSNAME_EN FROM CMX.V_COST_GOODS_LOOKUP WHERE DELETED = 0"
+  },
+  "V_COST_CUSTOMER_LOOKUP": {
+    "kind": "view",
+    "readsCmx": true,
+    "source": "CMX.V_COST_CUSTOMER_LOOKUP（成本核算主表客户 Lookup costCustomer 的数据源）：列取旧 Lookup 的显示列，加 DELETED = 0",
+    "reason": "客户和分销商在 d_cg 没有对应的表，与产品 Lookup 一起直接读 cmx",
+    "sql": "SELECT CUSTOMID, CUSTOMNAME, COUNTRY, LIVERY, TRANPOSID FROM CMX.V_COST_CUSTOMER_LOOKUP WHERE DELETED = 0"
+  },
+  "V_COST_USER": {
+    "kind": "view",
+    "readsCmx": true,
+    "source": "CMX.V_COST_USER（成本核算主表商务人员 Lookup costUser 的数据源）：只留工号、姓名，不带 cmx 视图中的密码等列，加 DELETED = 0",
+    "reason": "旧系统的人员在 d_cg 没有对应的表（平台账号是另一套），与产品 Lookup 一起直接读 cmx",
+    "sql": "SELECT USERNAME, REAL_NAME FROM CMX.V_COST_USER WHERE DELETED = 0"
   }
 }
