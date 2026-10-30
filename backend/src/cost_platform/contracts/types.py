@@ -1720,7 +1720,7 @@ class StepMember(Wire):
     type: Literal["user", "role"]
     id: Key
     name: str
-    status: Literal["pending", "passed", "rejected", "withdrawn"]
+    status: Literal["pending", "passed", "rejected", "withdrawn", "skipped"]
     processed_by: UserBrief | None
     processed_at: DateTimeText | None
     comment: str | None

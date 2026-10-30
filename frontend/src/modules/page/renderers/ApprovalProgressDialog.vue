@@ -4,7 +4,7 @@
  * 显示来源页面、来源单据号、提交人、提交时间、当前级别和各级节点的处理情况；不显示修改内容，不能在这里通过或驳回。
  */
 import { computed } from 'vue';
-import type { ApprovalDetail } from '../../../contracts/http';
+import { MODE, STEP_STATUS, membersText } from '../approval-progress';
 import type { PageRuntime } from '../page-runtime';
 
 defineOptions({ name: 'ApprovalProgressDialog' });
@@ -12,26 +12,6 @@ defineOptions({ name: 'ApprovalProgressDialog' });
 const props = defineProps<{ runtime: PageRuntime }>();
 const runtime = props.runtime;
 const frozen = computed(() => runtime.ui.frozen.value);
-
-const STEP_STATUS: Record<string, string> = {
-  passed: '已通过',
-  pending: '待处理',
-  rejected: '已驳回',
-  upcoming: '未到',
-  withdrawn: '已撤回'
-};
-const MEMBER_STATUS: Record<string, string> = { passed: '已通过', pending: '待处理', rejected: '已驳回', withdrawn: '已撤回' };
-const MODE: Record<string, string> = { or: '或签', and: '会签' };
-
-function members(step: ApprovalDetail['steps'][number]) {
-  return step.members
-    .map(m => {
-      const by = m.processedBy ? `，${m.processedBy.displayName} ${m.processedAt?.replace('T', ' ') ?? ''}` : '';
-      const comment = m.comment ? `，意见：${m.comment}` : '';
-      return `${m.name}（${MEMBER_STATUS[m.status] ?? m.status}${by}${comment}）`;
-    })
-    .join('；');
-}
 </script>
 
 <template>
@@ -75,7 +55,7 @@ function members(step: ApprovalDetail['steps'][number]) {
                 <td>{{ step.node }}</td>
                 <td>{{ MODE[step.mode] ?? step.mode }}</td>
                 <td>{{ STEP_STATUS[step.status] ?? step.status }}</td>
-                <td>{{ members(step) }}</td>
+                <td>{{ membersText(step) }}</td>
               </tr>
             </tbody>
           </NTable>

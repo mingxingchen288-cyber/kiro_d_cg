@@ -106,6 +106,50 @@ def test_withdrawn_before_change_still_shows_withdrawn() -> None:
     assert h.record(approval_id).progress.nodes[0].status == "pending"
 
 
+def _two_person_or_flow() -> t.ConfigDraft:
+    """第 1 级"两人或签"配了系统管理员（1）和采购员（2001）两个账号，第 2 级生产员（3001）审批；改原辅料就进入。"""
+    def level(i: int, name: str, users: list[str]) -> dict[str, object]:
+        return {"level": i, "nodes": [{"name": name, "conditionType": "always", "mode": "or",
+                                       "approvers": [{"type": "user", "userId": u} for u in users]}]}
+
+    return t.ConfigDraft(type="approvalFlow", key="F_OR", name="两人或签", content={
+        "page": "COST_PINGGU", "order": 1, "operations": {"COST_MATERIAL": ["modify"]},
+        "levels": [level(1, "两人或签", ["1", "2001"]), level(2, "生产审批", ["3001"])], "notify": []})
+
+
+def test_or_sign_other_approver_shown_skipped() -> None:
+    """或签节点配了两个人，系统管理员通过后：第 1 级为已通过，系统管理员已通过，采购员已跳过（不是待处理）；
+    审批进入第 2 级，页面上的审批进度弹窗读同一个详情接口，显示同样的状态。"""
+    h = Harness([], extra_flows=[_two_person_or_flow()])
+    [approval] = h.save(YANGNA, "COST_PINGGU", [cost(2550, modify("COST_MATERIAL", 206325, MEMO="或签"))]).state.approvals
+    h.pass_(ADMIN, approval.approval_id)
+    detail = h.detail(YANGNA, approval.approval_id)
+    assert (detail.status, detail.current_level) == ("pending", 2)
+    assert [(s.level, s.node, s.mode, s.status, [(m.name, m.status) for m in s.members]) for s in detail.steps] == [
+        (1, "两人或签", "or", "passed", [("系统管理员", "passed"), ("采购员", "skipped")]),
+        (2, "生产审批", "or", "pending", [("生产员", "pending")])]
+    assert h.record(approval.approval_id).progress.nodes[0].members[1].status == "skipped"  # 通过时就记下
+    assert not h.detail(BUYER, approval.approval_id).actions.can_pass
+
+
+def test_or_sign_passed_before_change_still_shows_skipped() -> None:
+    """改动之前通过的或签节点：进度中采购员仍记着 pending，详情返回时换算为 skipped，不改存下的进度。"""
+    h = Harness([], extra_flows=[_two_person_or_flow()])
+    [approval] = h.save(YANGNA, "COST_PINGGU", [cost(2550, modify("COST_MATERIAL", 206325, MEMO="或签"))]).state.approvals
+    h.pass_(ADMIN, approval.approval_id)
+    with h.uow.begin() as uow:
+        row = uow.connection.execute(sa.select(pf_approval.c.progress)
+                                     .where(pf_approval.c.approval_id == int(approval.approval_id))).one()
+        legacy = json.loads(row.progress)
+        legacy["nodes"][0]["members"][1]["status"] = "pending"
+        uow.connection.execute(sa.update(pf_approval).where(pf_approval.c.approval_id == int(approval.approval_id))
+                               .values(progress=json.dumps(legacy, ensure_ascii=False)))
+        uow.commit()
+    first = h.detail(ADMIN, approval.approval_id).steps[0]
+    assert [(m.name, m.status) for m in first.members] == [("系统管理员", "passed"), ("采购员", "skipped")]
+    assert h.record(approval.approval_id).progress.nodes[0].members[1].status == "pending"
+
+
 def test_affected_table_columns_read_once_per_process() -> None:
     """修改表的列定义每张表只读一次（approval/columns.py）。物料清单注册过（同 d_cg，写入经写入意图）：第一个审批的详情、
     最终批准各读一次 T_COST_GOODS（详情页和审批命令各用自己的 Evaluator），第二个审批的详情、预览、核对指纹和最终批准都不再读。

@@ -23,8 +23,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
-MemberStatus = Literal["pending", "passed", "rejected", "withdrawn"]
-"""`withdrawn`：审批撤回或被驳回时还没处理的节点和审批人（旧系统的 CANCELED，显示"已撤回"，见 `close_unprocessed`）。"""
+MemberStatus = Literal["pending", "passed", "rejected", "withdrawn", "skipped"]
+"""`withdrawn`：审批撤回或被驳回时还没处理的节点和审批人（旧系统的 CANCELED，显示"已撤回"，见 `close_unprocessed`）。
+`skipped`：或签节点有人通过后，同一节点其余还没处理的审批人（旧系统的 SKIPPED，显示"已跳过"，见 `skip_unprocessed`）；
+只用于审批人，节点没有这个状态。"""
 ApprovalStatus = Literal["pending", "approved", "rejected", "withdrawn"]
 Destination = Literal["stay", "next", "end", "closed"]
 
@@ -153,12 +155,28 @@ def advance(progress: Progress, next_nodes: NextNodes) -> Destination:
     return "next"
 
 
+def skip_unprocessed(progress: Progress) -> None:
+    """或签节点已通过时，同一节点其余还没处理的审批人记为已跳过（`skipped`）；直接修改 `progress`。
+
+    对照旧系统 PKG_WF_APPROVAL：或签通过（`docs/approval-refactor-20261026-ordinary-install.sql` 第 911 行 `APPROVE_DETAIL`、
+    第 1601–1607 行 `PREPARE_APPROVE_DETAIL`）把其余还在 PENDING 的审批记录改为 SKIPPED（AUTO_REASON `OR_LEVEL_COMPLETED`），
+    `ApprovalDetailDialog.vue` 的 `statusText` 显示"已跳过"。旧系统跳过的是同级、同一审批流的全部待处理记录；新平台本级每个
+    节点都要通过（AP-04），这里只跳过同一节点的。会签节点不跳过。
+    在这之前通过的或签节点（进度中其余审批人仍记着待处理），显示时同样按这里换算（`service.py` 的 `_steps`）。"""
+    for node in progress.nodes:
+        if node.mode != "or" or node.status != "passed":
+            continue
+        for member in node.members:
+            if member.status == "pending":
+                member.status = "skipped"
+
+
 def close_unprocessed(progress: Progress) -> None:
     """审批撤回或被驳回后，还没处理的节点和审批人记为已撤回（`withdrawn`）；直接修改 `progress`。
 
     对照旧系统 PKG_WF_APPROVAL：撤回 `DO_CANCEL_APPROVAL`、驳回 `DO_REJECT_DETAIL` 都把本轮还在 WAITING、PENDING 的审批记录
     改为 CANCELED（驳回人那一条为 REJECTED），审批详情的进度显示"已撤回"。还在处理中的节点改为已撤回；驳回的节点保持已驳回，
-    其中没处理的审批人改为已撤回；已通过的节点不动（旧系统或签通过时其余审批人已是"已跳过"，不再改）。
+    其中没处理的审批人改为已撤回；已通过的节点不动（或签通过时其余审批人已记为已跳过，`skip_unprocessed`）。
     已经结束、进度中仍记着待处理的审批（这个函数之前撤回、驳回的），显示时同样按这里换算（`service.py` 的 `_steps`）。"""
     for node in progress.nodes:
         if node.status not in ("pending", "rejected"):
@@ -195,6 +213,7 @@ def decide(progress: Progress, action: Action, *, applicant_id: str, is_member: 
         _mark(node, action, "passed", is_member)
         if _node_passed(node):
             node.status = "passed"
+    skip_unprocessed(result)
     if any(n.status != "passed" for n in result.current_nodes()):
         return Decision(True, "stay", result, tuple(mine))
     return Decision(True, advance(result, next_nodes), result, tuple(mine))

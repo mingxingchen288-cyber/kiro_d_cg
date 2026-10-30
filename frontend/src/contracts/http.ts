@@ -304,7 +304,8 @@ export const StepMember = object('StepMember', {
   type: literal('user', 'role'),
   id: key,
   name: str,
-  status: literal('pending', 'passed', 'rejected', 'withdrawn'),
+  // skipped：或签节点有人通过后，同一节点其余还没处理的审批人（C09 v12）
+  status: literal('pending', 'passed', 'rejected', 'withdrawn', 'skipped'),
   processedBy: nullable(UserBrief),
   processedAt: nullable(dateTimeText),
   comment: nullable(str)
