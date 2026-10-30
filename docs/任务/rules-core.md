@@ -12,7 +12,7 @@
 - 交付物：用同一个 `Cargo.lock` 编出 Python 包和 WASM 的最小实现（求值一条表达式规则）；样例至少含 0.1+0.2、除法、`123456789012345.67` 加 `0.01` 和 C01 的边界样例；构建时间、包大小、求值耗时的记录。
 - 接入责任：结论交用户；不含接线。
 - 验收标准：两个产物都能构建；样例在 Python 和浏览器（Chromium，经 Playwright 运行）中的结果按 C01 判定一致。不通过或超期时停下来问用户。
-- 状态与证据：完成——验收标准已满足，待独立复核（工程约定第 7 节）。
+- 状态与证据：进行中——验收标准已满足，待独立复核（工程约定第 7 节）。
   - 工具链：zen-engine 2.1.6 无条件依赖 QuickJS（C 代码），按用户 2026-10-28 的同意装了 wasi-sdk 34（`%USERPROFILE%\.local\wasi-sdk\wasi-sdk-34.0`，其中的 libclang.dll 供 bindgen 使用）；maturin 1.15.0 经 `uvx --from maturin==1.15.0` 运行。
   - 真实验证（2026-10-28，`pwsh -NoProfile -File .reports/T-RC-2/verify-all.ps1`，先清空 `rules-core/target` 和 `dist`）：
     - 构建：`tools/build-rules-core.ps1`，两个产物都用 `rules-core/Cargo.lock`（`--locked`，构建前后 SHA256 相同）。Python 包 488.1 秒，wheel 9,477,612 字节；WASM 242.4 秒（在 Python 包之后顺序构建，宿主端的构建脚本和过程宏已编好），`rules_core.wasm` 13,023,015 字节。输出：`.reports/T-RC-1/build.log`、`.reports/T-RC-1/build-metrics.json`。
@@ -29,7 +29,7 @@
 - 交付物：C07 的完整实现（preview 和 commit 阶段，计算、校验、界面规则，出错处理；审批流的入口条件是 SQL，由 approval 执行，不在 rules-core 中，C07 v4）；C01 判定的 Rust 实现；Python 包 `cost_rules_core`；`rules-core/dist/web/`：WASM ES 模块、Worker 脚本和 `createCalcWorkerClient`；覆盖每种规则和每种错误的样例集。
 - 接入责任：后端由 T-AS-5 注入 write-pipeline、approval、config；前端由 T-AS-3 创建 Worker 客户端实例，T-AS-7 联调。
 - 验收标准：样例集在两个产物上全部通过且结果一致，浏览器中经 `createCalcWorkerClient` 运行（Playwright、Chromium）；proptest：同一请求求值两次结果相同，上游结果按全部精度参与下游计算（例如 1/3 再乘 3，结果与按 28 位有效数字计算的值一致，不因中间舍入改变）；同一规则包重复求值不重新编译；跨实体依赖（明细引用主表、主表汇总明细）一次求值得到最终值，与按依赖顺序逐条手算的结果相同；依赖成环的规则包 `load_pack` 返回 `PACK_INVALID`（Python 包中抛 C08 第 8 节的 `PackInvalidError`）；`old` 只给出改过的字段时，其余字段的 `old` 等于当前值；Python 包通过 `RulesEngine` 的契约测试（C08 第 14 节）。
-- 状态与证据：完成（T-AS-7 联调通过）。自身的验收标准已满足；完成前的独立复核待做（`.reports/review/T-RC-2.md`）。计算部分（用户 2026-10-28 指定的范围）：`load_pack`、`evaluate`、`core_version`，`calc` 规则的单个表达式、`branches`、`master.字段`、主表汇总明细（含按条件求和）、依赖排序和成环检查、preview 和 commit 两个阶段，第 8 节的数值处理；Python 包 `cost_rules_core` 和 `rules-core/dist/web/`（WASM、`index.js`、`worker.js`、`createCalcWorkerClient`）已交付。校验、界面规则（2026-10-30）：计算规则全部执行完后，按 order、规则编码执行；校验成立时给出 reject 或 prompt，定位到实体、行和字段；界面规则写进行结果的 `fields`（editable、required）和 `style`（row、cells），field 为空时作用于整行；写法见 `rules-core/README.md` 第 2 节。没有样例的错误：`EVAL_FAILED`（只在内核 panic 时出现），按工程约定第 5 节上线后再补。
+- 状态与证据：进行中（T-AS-7 联调通过）。自身的验收标准已满足；完成前的独立复核待做（`.reports/review/T-RC-2.md`）。计算部分（用户 2026-10-28 指定的范围）：`load_pack`、`evaluate`、`core_version`，`calc` 规则的单个表达式、`branches`、`master.字段`、主表汇总明细（含按条件求和）、依赖排序和成环检查、preview 和 commit 两个阶段，第 8 节的数值处理；Python 包 `cost_rules_core` 和 `rules-core/dist/web/`（WASM、`index.js`、`worker.js`、`createCalcWorkerClient`）已交付。校验、界面规则（2026-10-30）：计算规则全部执行完后，按 order、规则编码执行；校验成立时给出 reject 或 prompt，定位到实体、行和字段；界面规则写进行结果的 `fields`（editable、required）和 `style`（row、cells），field 为空时作用于整行；写法见 `rules-core/README.md` 第 2 节。没有样例的错误：`EVAL_FAILED`（只在内核 panic 时出现），按工程约定第 5 节上线后再补。
   - 计算带出变化按保存后的值判断（2026-10-30，C07 v8、RC-10，worktree `batch4/rules-approval`，输出在 `.reports/batch4-20261030/ra-rules-approval/`）：计算不舍入（RC-04），保存按 WP-15 最多 8 位小数，算出超过 8 位小数的行每次重算都与库里的 8 位值不同，被当成有修改去校验，后端却不会写它；旧系统按字段精度舍入，不会这样。现在 `eval.rs` 的 `calc_changed` 先把算出的数值按 WP-15 的写法（`decimal::stored`：最多 8 位，`MidpointAwayFromZero`，与后端 `ROUND_HALF_UP` 相同）处理再与 `old` 比较，`old` 和 `computed` 都不处理。列定义了更小小数位的情况 rules-core 不知道，按 8 位；d_cg 和 cmx 中定义了小数位的数值列只有主键、外键和标记列（`NUMBER(p,0)`，`q01-数值列小数位.out.txt`），计算字段的列都没有。新增样例 34、35（preview、commit）：d_cg 单据 2712，明胶空心胶囊每片含量假设为 0、单价假设为 18.3333333333，库里每批成本 36.66666667；只改硬脂酸镁的单价 63 → 64，胶囊每批成本算出 36.6666666666，不算变化，没有拒绝。改代码前这两个样例失败（被"每片含量必填且必须大于0"拒绝），原有 01–33 的结果不变。后端 `tests/config/test_packs.py` 用 seed 生成的规则包对 34、35 算出相同结果；`tests/pipeline/test_validate_changed_rows.py` 加一个页面保存的测试（2712 只改硬脂酸镁的单价，保存成功、104679 不写）。
     - 构建（`build-1.log`、`build-1-metrics.json`）：两个产物重建，`Cargo.lock` 前后 SHA256 相同；Python 208.1 秒、wheel 9,514,804 字节，WASM 108.5 秒、`rules_core.wasm` 13,078,959 字节。
     - 原生 `cargo test`：单元 3 passed，样例集 37 个全部通过（`cargo-test-2.log`）；浏览器 `run-browser.ps1` 38 passed（`playwright-1.log`）；Python 包 `run-python.ps1` 55 passed，两端 37 个样例按 C01 一致 37、逐字节相同 37（`python-2.log`、`python-results-2.json`；第一次 `python-1.log` 用的是 uv 缓存里的旧 wheel，加 `--refresh-package cost-rules-core` 后重跑）。
@@ -80,7 +80,7 @@
 - 交付物：第 8 节每一行至少一个样例，并附上旧系统前端计算引擎对同一输入的结果。
 - 接入责任：样例供 T-RC-2 和 T-MG-3 的对账使用。
 - 验收标准：每个样例在两个产物上通过；与旧系统结果不同的只有浮点误差一类，逐条列出。
-- 状态与证据：完成——样例和验证已完成，待独立复核（工程约定第 7 节，`.reports/review/T-RC-3.md`）。
+- 状态与证据：进行中——样例和验证已完成，待独立复核（工程约定第 7 节，`.reports/review/T-RC-3.md`）。
   - 样例：`rules-core/fixtures/cases/20-T-RC-3-数值处理规则表.json`（规则包 `fixtures/packs/numeric.json`），第 8 节每一行一条规则：空值和缺失字段按 0、除以 0 和 0/0 为 0、溢出为 0、求值出错为 0 并给出 prompt、条件出错按成立（计算规则和校验规则各一条）、汇总时空值按 0、没有行时 sum/count/avg/max/min 为 0、分支都不匹配保持原值、不舍入。已有样例另外覆盖：除以 0（04、08）、汇总没有行（06、07 的原辅料明细为空）、分支都不匹配（11）、不舍入（12、13）。
   - 旧系统结果：样例中的 `oldSystem`，2026-10-30 用 node 24 直接运行旧 `cost-web/src/v3/logic/calc-engine/calculator.ts`（mathjs 15.1.0）得到，脚本和原始输出在 `.reports/batch1-20261029/rules-core/old-engine/`（`run-old.mts`、`old-results.json`）。
   - 与旧系统不同的：① `5 / 3` 旧系统 1.6666666666666667、新平台 1.6666666666666666666666666667，浮点误差，按 C01 一致（Rust 版判定已核对）；② `1e28 * 10` 旧系统 1e29、新平台 0：浮点到 1.8e308 才溢出，新平台超出 28 位有效数字按第 8 节为 0，这一条不属于浮点误差，是两者能表示的范围不同。其余 12 个字段相同。求值出错时新平台另给一条 prompt，旧系统只在控制台告警。

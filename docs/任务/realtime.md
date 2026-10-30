@@ -12,7 +12,7 @@
 - 交付物：`/ws` 端点、连接登记、发布和订阅任务函数；握手和心跳时检查会话（`touch=False`）。
 - 接入责任：T-AS-4 挂载 `/ws` 并启动订阅任务；浏览器端客户端属于 T-AS-3。
 - 验收标准：模拟验证：会话无效或 Origin 不符时拒绝握手；事件只推给 audience 匹配的连接；会话过期或撤销后关闭连接；通过 `RealtimePublisher` 的契约测试（C08 第 14 节）；真实验证：两个进程时，一个进程发布的事件能推到连在另一个进程上的连接。
-- 状态与证据：完成（2026-10-29；真实验证通过，还没有独立复核）。
+- 状态与证据：进行中（2026-10-29；真实验证通过，还没有独立复核）。
   - 模拟验证：通过。命令为在 `backend` 目录执行 `uv run pytest -q -p no:cacheprovider -m "not oracle and not redis" tests/realtime`，17 个通过、0 个失败（`.reports/modules/realtime/pytest-1.txt`）。用 FastAPI 的 TestClient 连 `/ws`，会话用 `FakeAuthenticator`，频道用 `MemoryChannel`：
     - `test_handshake.py`：握手和心跳都以 `touch=False` 认证；Origin 不符返回 403 ORIGIN_REJECTED；没有会话、会话已过期（E19）返回 401 SESSION_REQUIRED；
     - `test_dispatch.py`：`config.changed` 只推给打开了该页面的连接（E18），影响两个页面时每个连接只收一条，取消订阅后不再收到；`notification` 推给接收人的每个连接（E23），与订阅的页面无关；

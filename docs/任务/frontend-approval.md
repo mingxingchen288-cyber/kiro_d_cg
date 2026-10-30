@@ -12,7 +12,7 @@
 - 交付物：待办列表（我审批的、我发起的）；审批详情、勾选、通过、驳回、撤回。
 - 接入责任：T-AS-3 注册到外壳；T-AS-7 与真实后端联调。
 - 验收标准：页面样式与旧系统审批详情一致（FA-06）；在 d_cg 上走通业务例子 E37、E39 的页面部分：E37 详情中原辅料三行的"触发审批"、物料清单一块 75→90、第 2 级会签两人分别通过；E39 中取消 2556 后这一行恢复为单价 75、金额 23.25，通过时 `checkedRows` 不含 2556。
-- 状态与证据：完成（模拟验证通过；在 d_cg 上走通 E37、E39 已在 T-AS-7 的真实联调中通过；完成前的独立复核还没做）。
+- 状态与证据：进行中（模拟验证通过；在 d_cg 上走通 E37、E39 已在 T-AS-7 的真实联调中通过；完成前的独立复核还没做）。
   - 交付（2026-10-29）：`frontend/src/modules/approval/`：`index.ts`（C11 `FrontendModule`，路由 `/approval`、`/approval/:approvalId`）、`detail-runtime.ts`（详情、勾选与 preview、通过、驳回、撤回、人工参数、409 重新确认）、`todo-runtime.ts`（待审批 / 我的发起）、`view-model.ts`（"A → B"、变化、触发审批、审批进度）、`events.ts`、`renderers/`（详情页、修改内容和受影响单据表格、审批进度表、待办页，样式对照旧系统 `ApprovalDetailDialog.vue`、`ApprovalPresentationGrid.vue`、`approval-notification-center.vue`）。FA-02 不另做界面（不显示排队）。
   - 模拟验证：`pnpm exec vitest run tests/approval` 5 个文件 13 个测试通过（E37 详情与两级会签、E39 取消 2556 后 preview 与通过的 `checkedRows`、表头全选不含记录已不存在的行、驳回、撤回、人工参数、409 重新确认、待办、C11 装载）；全量 `pnpm test` 22 个文件 458 个测试通过。`pnpm typecheck` 退出码 2：9 个错误都在其他模块（config、layouts、store/route），本模块和 `tests/approval` 0 个。输出：`.reports/modules/frontend-approval/vitest-approval-2.txt`、`vitest-all-2.txt`、`typecheck-4.txt`。
   - 浏览器渲染检查（模拟数据，不是联调）：用替代实现挂载详情页和待办页，勾选、preview、通过、页签切换的 DOM 结果记在 `.reports/modules/frontend-approval/progress.md`；检查用的临时入口已删除。
