@@ -18,13 +18,12 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import pytest
 from websockets.exceptions import ConnectionClosed
 
-from .servers import Backend, Browser, Socket, backends
+from .servers import Backend, Browser, Socket
 
 pytestmark = [pytest.mark.oracle, pytest.mark.redis]
 
@@ -32,13 +31,6 @@ PAGE = "COST_PINGGU"
 ADMIN = ("admin", "admin123..")
 ACCOUNTANT = ("chengben01", "Abc123..")
 CLOSE_SESSION_ENDED = 4401
-
-
-@pytest.fixture(scope="module")
-def servers(tmp_path_factory: pytest.TempPathFactory) -> Iterator[list[Backend]]:
-    with backends(Path(tmp_path_factory.mktemp("batch-a"))) as started:
-        assert len(started) == 2, "需要两个后端端口（E2E_BACKEND_PORTS）"
-        yield started
 
 
 @pytest.fixture(scope="module")
