@@ -61,6 +61,7 @@
         "column": "PER_HL",
         "label": "每片含量",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input",
         "scale": 0
@@ -70,6 +71,7 @@
         "column": "EXADD_MATER",
         "label": "额外投料量",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input",
         "scale": 2
@@ -79,6 +81,7 @@
         "column": "BATCH_QTY",
         "label": "每批数量",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 0
@@ -88,6 +91,7 @@
         "column": null,
         "label": "最后采购数量",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input",
         "scale": 0
@@ -97,6 +101,7 @@
         "column": "PRICE",
         "label": "单价",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input",
         "scale": 2
@@ -106,6 +111,7 @@
         "column": null,
         "label": "参考采购价",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "input",
         "scale": 2
@@ -115,6 +121,7 @@
         "column": "COST_BATCH",
         "label": "每批成本",
         "type": "number",
+        "grouping": true,
         "source": "own",
         "role": "calculated",
         "scale": 0

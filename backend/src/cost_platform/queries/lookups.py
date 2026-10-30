@@ -41,7 +41,8 @@ class LookupQueries:
         searchable = bool(config.keyword_columns)
         if keyword and not searchable:
             raise PlatformError(ErrorCode.INVALID_REQUEST, f"Lookup {lookup_code} 不支持按关键字搜索")
-        if request.filter is not None and request.filter.column not in config.columns:
+        names = config.column_names()
+        if request.filter is not None and request.filter.column not in names:
             message = f"{request.filter.column} 不是 Lookup {lookup_code} 的列"
             raise PlatformError(ErrorCode.VALIDATION_FAILED, message, [ErrorDetail(field=request.filter.column, message=message)])
         with self._uow.begin() as uow:
@@ -57,11 +58,11 @@ class LookupQueries:
                 clauses.append(f"({matches})")
             where = where_sql(clauses)
             total = uow.connection.execute(text(f"SELECT COUNT(*) FROM {config.table} q{where}"), binds.values).scalar()
-            order = config.order_by or config.columns[0]
-            columns = ", ".join(f"q.{c}" for c in config.columns)
+            order = config.order_by or names[0]
+            columns = ", ".join(f"q.{c}" for c in names)
             sql = f"SELECT {columns} FROM {config.table} q{where} ORDER BY {order} {page_clause(name)}"
             records = uow.connection.execute(text(sql), {**binds.values, **page_binds(request.start_row, request.end_row)}).all()
-        rows = [LookupRow(values={c: wire_text(v) for c, v in zip(config.columns, r, strict=True)}) for r in records]
+        rows = [LookupRow(values={c: wire_text(v) for c, v in zip(names, r, strict=True)}) for r in records]
         return LookupSearchResponse(rows=rows, total=int(total or 0), keyword_search=searchable)
 
 

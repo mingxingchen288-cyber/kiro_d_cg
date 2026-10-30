@@ -75,6 +75,7 @@ function pick(row: FieldValues) {
           <LookupGrid
             :rows="shown.rows"
             :multiple="shown.multiple"
+            :columns="shown.columns"
             @selection="(rows: FieldValues[]) => (selected = rows)"
             @pick="pick"
           />

@@ -22,7 +22,7 @@
  */
 import type { Locator } from '@playwright/test';
 import { numbersConsistent } from '../../src/contracts/decimal-text';
-import { formatScale } from '../../src/modules/page/fields';
+import { formatNumber } from '../../src/modules/page/fields';
 import { type Row, copyRowLabel, wp15 } from './data';
 import {
   cell,
@@ -129,7 +129,7 @@ test('保存后不整页刷新、页面与数据库一致；前端预览与后�
   }
   expect(compared.length).toBeGreaterThan(10);
 
-  // 页面与数据库：后端重新读出的单据，按页面视图的小数位显示，与页面上的格子相同
+  // 页面与数据库：后端重新读出的单据，按页面视图的小数位和千分位显示，与页面上的格子相同
   const view = await api.view();
   const record = await api.record(doc.docId);
   type Shown = { region: { fields: ViewField[] }; on: Locator; row: Row; names: string[] };
@@ -138,9 +138,7 @@ test('保存后不整页刷新、页面与数据库一致；前端预览与后�
       const field = region.fields.find(f => f.name === name)!;
       // 逐格横向滚动后读取，按顺序进行
       // eslint-disable-next-line no-await-in-loop
-      expect(await cellText(on, row.rowKey!, name), name).toBe(
-        formatScale(String(row.values[name] ?? ''), field.scale)
-      );
+      expect(await cellText(on, row.rowKey!, name), name).toBe(formatNumber(field, String(row.values[name] ?? '')));
     }
   };
   const materialRow = record.details.COST_MATERIAL.find(r => r.rowKey === pregel)!;

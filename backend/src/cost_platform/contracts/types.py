@@ -516,7 +516,26 @@ class LookupSetting(Wire):
     fill_back: Bool = True
 
 
-ViewLookup = LookupSetting
+class LookupColumn(Wire):
+    """Lookup 的一个显示列（C06 第 9 节 `columns` 写成对象时；C05 `lookup.columns`）：`label` 是对话框中的列标题，
+    省略时显示列名；`width` 是列宽（像素），省略时各列平分。同旧系统 Lookup 配置 `displayColumns` 的 `header`、`width`。"""
+
+    column: str
+    label: str | None = None
+    width: Int | None = None
+
+
+class ViewLookup(LookupSetting):
+    """页面视图中的 Lookup（C05）：页面配置的设置，加上 Lookup 配置的显示列（`label` 已按列名补上）。"""
+
+    columns: list[LookupColumn] = []
+
+
+def _view_lookup(value: Any) -> Any:
+    """页面视图的字段也可以直接给页面配置的 `LookupSetting`，这时没有显示列。"""
+    if isinstance(value, LookupSetting) and not isinstance(value, ViewLookup):
+        return ViewLookup(**dict(value))
+    return value
 
 
 class ViewField(Wire):
@@ -532,12 +551,16 @@ class ViewField(Wire):
     width: Int | None
     pinned: Pinned | None
     dict_type: Code | None
-    lookup: ViewLookup | None
+    lookup: Annotated[ViewLookup | None, BeforeValidator(_view_lookup)]
     aggregate: Aggregate | None = None
     """汇总行：`sum` 为在表格底部的汇总行中求和（C06 第 3 节）；没有时省略。"""
     fill_writable: Bool = False
     """字段不可编辑，但它是本区域可编辑字段的 Lookup 回填目标（`fillBack` 为 true），且保存时能写（在保存操作的
     `writableFields` 中、有写入列，authz 的 AZ-04）：前端把 Lookup 回填和复制带来的值写进命令。为 false 时省略。"""
+    grouping: Bool = False
+    """千分位：取自实体字段（C06 第 2 节），数值显示时整数部分每三位加英文逗号；为 false 时省略。"""
+    dict_free_text: Bool = False
+    """字典下拉中可以填写字典以外的值：取自页面配置（C06 第 3 节）；为 false 时省略。"""
 
 
 class ViewButton(Wire):
@@ -701,6 +724,8 @@ class EntityField(Wire):
     label: str
     type: FieldType
     scale: Int | None = None
+    grouping: Bool = False
+    """千分位（C06 第 2 节）：数值显示时整数部分每三位加英文逗号，只用于显示；同旧系统列配置 `rulesConfig.useGrouping`。"""
     source: ColumnSource
     role: FieldRole
     default: DefaultValue | None = None
@@ -758,6 +783,8 @@ class FieldSetting(Wire):
     width: Int | None = None
     pinned: Pinned | None = None
     dict_type: Code | None = None
+    dict_free_text: Bool = False
+    """为 true 时字典下拉中还可以填写字典以外的值（C06 第 3 节，旧系统"下拉（可填写）"）。"""
     lookup: LookupSetting | None = None
     aggregate: Aggregate | None = None
 
@@ -1132,9 +1159,19 @@ class DictConfig(Wire):
 
 class LookupConfig(Wire):
     table: str
-    columns: list[str]
+    columns: list[str | LookupColumn]
+    """查询和显示的列：列名，或带显示标题、宽度的 `LookupColumn`（C06 第 9 节）。"""
     keyword_columns: list[str]
     order_by: str | None = None
+
+    def column_names(self) -> list[str]:
+        """`columns` 中的列名，按顺序。"""
+        return [c if isinstance(c, str) else c.column for c in self.columns]
+
+    def display_columns(self) -> list[LookupColumn]:
+        """`columns` 中的每一列写成 `LookupColumn`，`label` 没写时为列名（C05 `lookup.columns`）。"""
+        return [LookupColumn(column=c, label=c) if isinstance(c, str) else c.model_copy(update={"label": c.label or c.column})
+                for c in self.columns]
 
 
 class ExportColumn(Wire):

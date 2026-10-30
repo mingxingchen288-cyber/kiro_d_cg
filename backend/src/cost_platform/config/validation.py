@@ -333,13 +333,14 @@ def _page(run: Run, entry: Entry) -> None:
 
 def _lookup_setting(run: Run, entry: Entry, path: str, setting: Any, names: Mapping[str, EntityField]) -> None:
     lookup = run.catalog.of_type("lookup").get(setting.code)
+    columns = lookup.column_names() if lookup is not None else []
     for name, column in setting.fill.items():
         if name not in names:
             run.err(entry, f"{path}.fill.{name}", f"回填字段 {name} 不是本区域实体的字段")
-        if lookup is not None and column not in lookup.columns:
+        if lookup is not None and column not in columns:
             run.err(entry, f"{path}.fill.{name}", f"列 {column} 不在 Lookup {setting.code} 的 columns 中")
     if setting.filter is not None:
-        if lookup is not None and setting.filter.column not in lookup.columns:
+        if lookup is not None and setting.filter.column not in columns:
             run.err(entry, f"{path}.filter.column", f"列 {setting.filter.column} 不在 Lookup {setting.code} 的 columns 中")
         if setting.filter.from_ == "row" and (setting.filter.field is None or setting.filter.field not in names):
             run.err(entry, f"{path}.filter.field", "按本行字段筛选时，field 必须是本区域实体的字段")
@@ -591,11 +592,12 @@ def _lookup(run: Run, entry: Entry) -> None:
     if found is None:
         run.err(entry, "table", f"表或视图 {lookup.table} 在数据库中不存在")
         return
-    for i, column in enumerate(lookup.columns):
+    names = lookup.column_names()
+    for i, column in enumerate(names):
         if column not in found:
             run.err(entry, f"columns[{i}]", f"列 {column} 不在 {lookup.table} 中")
     for i, column in enumerate(lookup.keyword_columns):
-        if column not in lookup.columns:
+        if column not in names:
             run.err(entry, f"keywordColumns[{i}]", f"关键字列 {column} 不在 columns 中")
 
 

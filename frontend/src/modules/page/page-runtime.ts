@@ -25,7 +25,7 @@ import type {
   RecordResponse,
   RoleRef
 } from '../../contracts/http';
-import type { PageView, ViewButton, ViewRegion } from '../../contracts/page-view';
+import type { LookupColumn, PageView, ViewButton, ViewRegion } from '../../contracts/page-view';
 import type { RealtimeClient } from '../../contracts/realtime';
 import type { CalcWorkerClient, RuleEffect } from '../../contracts/rules';
 import type { ShellApi } from '../../contracts/shell';
@@ -94,6 +94,8 @@ export interface LookupState {
   multiple: boolean;
   keyword: string;
   keywordSearch: boolean;
+  /** 对话框的列：Lookup 配置的显示列（C05 `lookup.columns`，标题和宽度）；为空时按返回的列名显示 */
+  columns: LookupColumn[];
   rows: FieldValues[];
   total: number;
   loading: boolean;
@@ -1132,6 +1134,7 @@ export class PageRuntime {
       multiple: Boolean(setting.multiple),
       keyword: '',
       keywordSearch: true,
+      columns: setting.columns ?? [],
       rows: [],
       total: 0,
       loading: false,

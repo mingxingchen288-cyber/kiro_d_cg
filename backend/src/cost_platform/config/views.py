@@ -22,6 +22,8 @@ from cost_platform.contracts.types import (
     EntityField,
     FieldFlags,
     FieldSetting,
+    LookupConfig,
+    LookupSetting,
     PackRef,
     PageConfig,
     PageView,
@@ -31,6 +33,7 @@ from cost_platform.contracts.types import (
     ViewButton,
     ViewDetail,
     ViewField,
+    ViewLookup,
     ViewMaster,
 )
 
@@ -60,24 +63,34 @@ def field_state(field: EntityField, entity: EntityConfig, layers: Sequence[Layer
     return visible, editable, required
 
 
+def view_lookup(setting: LookupSetting | None, lookups: Mapping[str, LookupConfig]) -> ViewLookup | None:
+    """页面配置的 Lookup 设置加上 Lookup 配置的显示列（C05 `lookup.columns`，标题没写时为列名）。"""
+    if setting is None:
+        return None
+    lookup = lookups.get(setting.code)
+    return ViewLookup(**dict(setting), columns=lookup.display_columns() if lookup is not None else [])
+
+
 def _view_field(field: EntityField, entity: EntityConfig, setting: FieldSetting | None, role: FieldFlags | None,
-                writable: Collection[str]) -> ViewField:
+                writable: Collection[str], lookups: Mapping[str, LookupConfig]) -> ViewField:
     visible, editable, required = field_state(field, entity, [entity.field_defaults.get(field.name), setting, role])
     return ViewField(
         name=field.name, label=field.label, type=field.type, scale=field.scale, source=field.source,
         calculated=field.role == "calculated", visible=visible, editable=editable and field.name in writable,
         required=required, width=setting.width if setting else None, pinned=setting.pinned if setting else None,
-        dict_type=setting.dict_type if setting else None, lookup=setting.lookup if setting else None,
-        aggregate=setting.aggregate if setting else None,
+        dict_type=setting.dict_type if setting else None,
+        lookup=view_lookup(setting.lookup if setting else None, lookups),
+        aggregate=setting.aggregate if setting else None, grouping=field.grouping,
+        dict_free_text=bool(setting and setting.dict_type and setting.dict_free_text),
     )
 
 
 def _fields(entity: EntityConfig, settings: Mapping[str, FieldSetting], columns: Mapping[str, FieldFlags],
-            writable: Collection[str]) -> list[ViewField]:
+            writable: Collection[str], lookups: Mapping[str, LookupConfig]) -> list[ViewField]:
     """区域的字段。不可编辑的字段是本区域可编辑字段的 Lookup 回填目标、有写入列且在 `writableFields` 中时，
     `fillWritable` 为 true（与 authz AZ-04 接受的回填字段相同）：例如成本核算主表的产品名称不能直接填写，
     但随产品 Lookup 回填后要写库（旧系统 useLookupDialog.ts 回填不看目标列能否编辑，DynamicDataService 照样写入）。"""
-    fields = [_view_field(f, entity, settings.get(f.name), columns.get(f.name), writable) for f in entity.fields]
+    fields = [_view_field(f, entity, settings.get(f.name), columns.get(f.name), writable, lookups) for f in entity.fields]
     targets = {target for f in fields if f.editable and f.lookup is not None and f.lookup.fill_back for target in f.lookup.fill}
     own = {f.name: f for f in entity.fields}
     return [f.model_copy(update={"fill_writable": True})
@@ -106,15 +119,18 @@ def _buttons(region: str, buttons: Sequence[ButtonConfig], grant: RolePage) -> l
 
 
 def build_page_view(page_code: str, page: PageConfig, entities: Mapping[str, EntityConfig], role: RoleConfig,
-                    version: int, pack: PackRef, writable_fields: Mapping[str, Sequence[str]]) -> PageView:
+                    version: int, pack: PackRef, writable_fields: Mapping[str, Sequence[str]], *,
+                    lookups: Mapping[str, LookupConfig] | None = None) -> PageView:
     """角色在该页面的权限见 `role.pages[page_code]`；调用方已确认角色可以访问该页面。
-    `writable_fields` 是页面保存操作（`page.save_operation`）的 `writableFields`。"""
+    `writable_fields` 是页面保存操作（`page.save_operation`）的 `writableFields`；`lookups` 是全部 Lookup 配置，
+    字段的 Lookup 从中带出显示列（没有给出时不带）。"""
     grant = role.pages[page_code]
     entity = entities[page.master.entity]
+    lookups = lookups or {}
     master = ViewMaster(
         entity=page.master.entity, primary_key=entity.primary_key,
         fields=_fields(entity, page.master.fields, grant.columns.get("master", {}),
-                       set(writable_fields.get(page.master.entity, ()))),
+                       set(writable_fields.get(page.master.entity, ())), lookups),
         buttons=_buttons("master", page.master.buttons, grant), grid=page.master.grid,
         form_layout=page.master.form_layout, erp_row=entity.erp_row,
     )
@@ -125,7 +141,7 @@ def build_page_view(page_code: str, page: PageConfig, entities: Mapping[str, Ent
         details.append(ViewDetail(
             entity=area.entity, title=area.title, primary_key=detail.primary_key, parent_key=parent_keys[area.entity],
             fields=_fields(detail, area.fields, grant.columns.get(area.entity, {}),
-                           set(writable_fields.get(area.entity, ()))),
+                           set(writable_fields.get(area.entity, ())), lookups),
             buttons=_buttons(area.entity, area.buttons, grant), grid=area.grid, form_layout=area.form_layout,
             erp_row=detail.erp_row,
         ))
@@ -145,11 +161,13 @@ def view_pairs(catalog: Catalog) -> list[tuple[str, str]]:
 def build_views(catalog: Catalog, version: int, pack_versions: Mapping[str, int]) -> dict[tuple[str, str], PageView]:
     """全部页面视图；`version` 先填同一个值，由调用方按内容是否变化定下每个视图自己的版本。"""
     entities, pages, roles = catalog.entities(), catalog.pages(), catalog.roles()
+    lookups: dict[str, LookupConfig] = catalog.of_type("lookup")
     views = {}
     for page_code, role_code in view_pairs(catalog):
         page = pages[page_code]
         pack = PackRef(pack_id=page.master.entity, version=pack_versions.get(page.master.entity, version))
         operation = catalog.operation(page.save_operation)
         writable = operation.writable_fields if operation is not None else {}
-        views[(page_code, role_code)] = build_page_view(page_code, page, entities, roles[role_code], version, pack, writable)
+        views[(page_code, role_code)] = build_page_view(page_code, page, entities, roles[role_code], version, pack, writable,
+                                                        lookups=lookups)
     return views

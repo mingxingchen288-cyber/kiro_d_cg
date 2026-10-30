@@ -1,0 +1,29 @@
+{
+  "type": "dict",
+  "key": "pingguClass",
+  "name": "成本核算分类",
+  "content": {
+    "items": [
+      {
+        "value": "委托研发",
+        "label": "委托研发",
+        "order": 1
+      },
+      {
+        "value": "委托转移",
+        "label": "委托转移",
+        "order": 2
+      },
+      {
+        "value": "自主立项",
+        "label": "自主立项",
+        "order": 3
+      },
+      {
+        "value": "平台业务",
+        "label": "平台业务",
+        "order": 4
+      }
+    ]
+  }
+}

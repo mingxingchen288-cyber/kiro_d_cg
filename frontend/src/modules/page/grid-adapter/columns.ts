@@ -20,6 +20,9 @@ import type { GridRow, PageRuntime } from '../page-runtime';
 
 export const FORM_COLUMN = '__form';
 
+/** 可填写的字典下拉编辑器（DictSelectCellEditor.vue）在表格 `components` 中的名字，由 PageGrid 注册 */
+export const DICT_FREE_TEXT_EDITOR = 'dictSelectCellEditor';
+
 /**
  * 测试模式专用：只在 `vite --mode test`（`pnpm dev`、`pnpm build:test`，端到端测试的开发方式和回归方式都用它）下
  * 关掉 AG Grid 的列虚拟化，主表和明细（以及 Lookup 结果）一次渲染全部列，端到端用例按 col-id 直接取格子，不用横向逐段滚动。
@@ -163,7 +166,13 @@ export function buildColumns(runtime: PageRuntime, region: ViewRegion, withFormC
     } else {
       column.cellDataType = false;
     }
-    if (dict) {
+    if (dict && field.dictFreeText) {
+      // C05 dictFreeText：字典下拉中还可以填写字典以外的值（旧系统"下拉（可填写）"，TagSelectCellEditor.vue）
+      column.cellEditor = DICT_FREE_TEXT_EDITOR;
+      column.cellEditorPopup = true;
+      column.cellEditorPopupPosition = 'under';
+      column.cellEditorParams = { options: [...dict].map(([value, label]) => ({ value, label })) };
+    } else if (dict) {
       column.cellEditor = 'agSelectCellEditor';
       column.cellEditorParams = {
         values: ['', ...dict.keys()],

@@ -428,6 +428,7 @@ _SECTION_1_1_MODELS: dict[str, tuple[Any, ...]] = {
     "行权限可视化条件的 `conditions[]`（第 8 节）": (t.RowConditionItem,),
     "menu 的 `items[]`（含 `children`）": (t.MenuItem,),
     "`lookup` 的内容": (t.LookupConfig,),
+    "lookup 的 `columns[]`（写成对象时）": (t.LookupColumn,),
     "`export` 的内容": (t.ExportConfig,),
 }
 

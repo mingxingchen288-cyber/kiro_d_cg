@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * "表与列"中的一张表，同旧系统 SectionTables.vue 的一个折叠项：视图 / 目标表 / PK 等表信息和"保存表信息"，
- * 列表格（标题、类型、写入列、来源、角色、小数位、显示、编辑、必填、求和、宽度、固定、字典、Lookup、默认值、选项值、对比），
+ * 列表格（标题、类型、写入列、来源、角色、小数位、千分位、显示、编辑、必填、求和、宽度、固定、字典、字典可填写、Lookup、
+ * 默认值、选项值、对比），
  * 按钮"从视图重新导入""选择视图列添加""删除选中列""上移""下移""保存列"。
  * "显示、编辑、必填"显示实际结果，不能改的格子不能勾，原因在"不能修改的原因"列和悬停提示中（FC-09）。
  * 保存列：先保存实体（C06 第 2 节），再保存页面的字段设置（第 3 节），再同步页面保存操作的可写字段（第 4 节），都先校验。
@@ -71,6 +72,11 @@ const columns = computed<ColDef[]>(() => [
   selectColumn('source', '来源', [{ label: '自有', value: 'own' }, { label: 'ERP', value: 'erp' }], 70),
   selectColumn('role', '角色', [{ label: '输入', value: 'input' }, { label: '计算', value: 'calculated' }, { label: '系统', value: 'system' }], 70),
   { field: 'scale', headerName: '小数位', width: 70, cellDataType: 'number' },
+  {
+    ...booleanColumn('grouping', '千分位', 65),
+    editable: p => p.data?.type === 'number',
+    tooltipValueGetter: p => (p.data && p.data.type !== 'number' ? '只有数值字段能显示千分位' : '勾选后数值每三位加逗号显示（所有页面），编辑和导出不变')
+  },
   flagColumn('visible', '显示'),
   flagColumn('editable', '编辑'),
   flagColumn('required', '必填'),
@@ -90,6 +96,11 @@ const columns = computed<ColDef[]>(() => [
   { field: 'width', headerName: '宽度', width: 65, cellDataType: 'number' },
   selectColumn('pinned', '固定', [{ label: '不固定', value: null }, { label: '左', value: 'left' }, { label: '右', value: 'right' }], 70),
   selectColumn('dictType', '字典', [{ label: '（无）', value: null }, ...props.dicts], 110),
+  {
+    ...booleanColumn('dictFreeText', '字典可填写', 80),
+    editable: p => Boolean(p.data?.dictType),
+    tooltipValueGetter: p => (p.data?.dictType ? '勾选后下拉中还可以填写字典以外的值（旧系统"下拉（可填写）"）' : '先选字典')
+  },
   linkColumn('lookup', 'Lookup', 120, (d: FieldRow) => (d.lookup ? `Lookup: ${d.lookup.code}` : '配置Lookup')),
   { field: 'defaultText', headerName: '默认值', width: 130, cellEditor: 'agRichSelectCellEditor', cellEditorParams: { values: ['', ...BUILTIN_DEFAULTS.map(b => b.label)], allowTyping: true, filterList: true } },
   { field: 'optionsText', headerName: '选项值（逗号分隔）', width: 150 },

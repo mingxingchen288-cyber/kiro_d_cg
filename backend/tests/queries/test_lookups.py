@@ -17,6 +17,10 @@ CATALOG = ItemsCatalog(
         "GOODS": LookupConfig(table="T_COST_GOODS", columns=["GOODSID", "GOODSNAME", "GOODSTYPE"],
                               keyword_columns=["GOODSID", "GOODSNAME"], order_by="GOODSID"),
         "GOODS_PLAIN": LookupConfig(table="T_COST_GOODS", columns=["GOODSID", "GOODSNAME", "GOODSTYPE"], keyword_columns=[]),
+        # C06 v22：显示列带标题和宽度（同旧系统 Lookup 配置的 header、width）
+        "GOODS_TITLED": parse_wire(LookupConfig, {"table": "T_COST_GOODS", "columns": [
+            {"column": "GOODSID", "label": "物料ID", "width": 80}, {"column": "GOODSNAME", "label": "物料名称"}, "GOODSTYPE"],
+            "keywordColumns": ["GOODSNAME"], "orderBy": "GOODSID"}),
     },
     dicts={"STATUS": DictConfig(items=[{"value": "0", "label": "停用", "order": 2}, {"value": "1", "label": "启用", "order": 1}])},
 )
@@ -72,6 +76,13 @@ def test_lookup_without_keyword_columns(lookups: LookupQueries) -> None:
     with pytest.raises(PlatformError) as caught:
         search(lookups, "GOODS_PLAIN", keyword="胶")
     assert caught.value.code is ErrorCode.INVALID_REQUEST
+
+
+def test_columns_with_titles_query_by_column_name(lookups: LookupQueries) -> None:
+    """`columns` 写成带标题、宽度的对象时，查询和返回的值仍按列名；`filter.column` 按列名判断。"""
+    result = search(lookups, "GOODS_TITLED", keyword="胶", filter={"column": "GOODSTYPE", "value": "瓶"})
+    assert ids(result) == ["116", "118"]
+    assert result.rows[0].values == {"GOODSID": "116", "GOODSNAME": "胶囊壳", "GOODSTYPE": "瓶"}
 
 
 def test_unknown_lookup_is_not_found(lookups: LookupQueries) -> None:
