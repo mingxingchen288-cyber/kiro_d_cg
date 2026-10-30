@@ -24,7 +24,7 @@
 - AS-03：管道阶段由各模块的插件注册，执行先后由 orchestration 的 `STAGE_ORDER` 决定（架构第 7 节），assembly 不排阶段。
 - AS-04：启动时在后台任务中按注册表 setup 的先后依次执行各插件的 start，HTTP 服务不等它们完成就开始应答；全部 start 完成后进入就绪。现在的先后：config（导入基础配置 → CF-10 → CF-13 预热 → 配置恢复任务）→ identity 的 ID-06 → realtime 的 Redis 订阅 → delivery 的投递重试。就绪前，`/health` 返回 503 `{"status": "starting"}`，其他 HTTP 请求不进入路由，返回 503 CONFIG_UNAVAILABLE（C03 的错误响应体），响应不带 `X-Config-Version`；就绪后 `/health` 返回 200。某个插件的 start 失败时记 ERROR 日志（含插件名），平台保持未就绪（CF-13），`/health` 返回 503 `{"status": "failed"}`。关闭时先取消还没结束的启动任务，再按相反顺序调用 stop：只 stop 已经 start 成功的插件，以及没有 start、只有 stop 的插件（例如 db-core 释放连接池）。`/ws` 不经过 HTTP 中间件；就绪前 realtime 的订阅还没有启动。
 - AS-05：命令行 `platform` 只有 `db` 和 `migrate` 两类子命令。
-- AS-06：前端 `main.ts` 创建 HTTP 客户端、实时客户端（断线自动重连），并用 rules-core 交付的 `createCalcWorkerClient` 创建计算客户端，加载外壳，再注册各前端模块。前端服务的响应带 COOP 和 COEP 头，供 rules-core 的 WASM 使用。
+- AS-06：前端 `main.ts` 创建 HTTP 客户端、实时客户端（断线自动重连），并用 rules-core 交付的 `createCalcWorkerClient` 创建计算客户端，加载外壳，再注册各前端模块。前端服务的响应带 COOP 和 COEP 头，供 rules-core 的 WASM 使用：开发时由 Vite 开发服务器加（`vite.config.ts`）；生产环境由后端在 `/` 下提供 `frontend/dist` 中的构建产物，与 `/api`、`/ws` 同源，这些响应带两个头，前端路由的路径返回 `index.html`（`assembly/app.py` 的 `FrontendFiles`，T-AS-7）。构建产物以页面的 origin 作为后端地址，`VITE_SERVICE_BASE_URL` 只给开发服务器用。
 - AS-07：import-linter 和 dependency-cruiser 检查[架构第 3 节](../架构与组装.md)的依赖规则，违反时构建失败。
 - AS-08：提供系统时钟和编号生成的真实实现。
 - AS-09：前端只读取仓库根目录的环境文件。`vite.config.ts` 的 `envDir` 和其中调用的 `loadEnv()` 都指向仓库根目录，`frontend/` 下不放环境文件，以免出现两处读取位置。保留 Vite 默认的 `VITE_` 前缀：不修改 `envPrefix`，调用 `loadEnv()` 时也不传空前缀。这样只有 `VITE_` 开头的变量进入浏览器和构建产物，根目录 `.env` 中数据库、Redis 等 `PLATFORM_*` 变量不会暴露。各文件的用途如下：
