@@ -20,6 +20,8 @@ import GridOptionsDialog from './GridOptionsDialog.vue';
 import OperationDialog from './OperationDialog.vue';
 
 const props = defineProps<{ page: ItemEditor<'page'>; catalog: PageCatalog }>();
+/** 校验规则弹窗保存了字段必填（字段设置）：由页面配置让"表与列"重新读取 */
+const emit = defineEmits<{ 'fields-saved': [] }>();
 type Dialog = '' | 'BUTTON' | RuleKind | 'APPROVAL_REQUIRED' | 'GRID_OPTIONS' | 'OPERATION';
 const active = ref<Dialog>('');
 const activeIndex = ref(0);
@@ -87,7 +89,7 @@ const rows: Array<{ kind: RuleKind | 'APPROVAL_REQUIRED'; icon: string; label: s
 
     <ButtonConfigDialog v-if="active === 'BUTTON'" :show="true" :page="page" :area="areas[activeIndex]" :title="table.title" @update:show="active = ''" />
     <GridOptionsDialog v-if="active === 'GRID_OPTIONS'" :show="true" :page="page" :area="areas[activeIndex]" :title="table.title" :fields="table.fields" @update:show="active = ''" />
-    <RuleConfigDialog v-if="active === 'calc' || active === 'validate'" :show="true" :kind="active" :page-code="page.state.current!.key" :table="table" :tables="catalog.tables" :master-fields="masterFields" @update:show="active = ''" />
+    <RuleConfigDialog v-if="active === 'calc' || active === 'validate'" :show="true" :kind="active" :page-code="page.state.current!.key" :page="page" :table="table" :tables="catalog.tables" :master-fields="masterFields" @update:show="active = ''" @fields-saved="emit('fields-saved')" />
     <CellEditableDialog v-if="active === 'editable'" :show="true" :page-code="page.state.current!.key" :table="table" :master-fields="masterFields" @update:show="active = ''" />
     <GridStyleDialog v-if="active === 'style'" :show="true" :page-code="page.state.current!.key" :table="table" :master-fields="masterFields" @update:show="active = ''" />
     <ApprovalRequiredDialog v-if="active === 'APPROVAL_REQUIRED'" :show="true" :table="table" @update:show="active = ''" />

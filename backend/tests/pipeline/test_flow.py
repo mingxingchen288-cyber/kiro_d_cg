@@ -197,6 +197,38 @@ def test_required_checked_on_added_and_modified_rows() -> None:
     assert [(d.entity, d.client_row_id, d.field) for d in caught.value.details] == [(MATERIAL, TMP_1, "MEMO")]
 
 
+def test_required_number_price_empty_rejected_zero_saved() -> None:
+    """业务例子（frontend-config 的数值字段必填）：配置页把原辅料的单价设为必填，保存为字段设置，页面视图中 PRICE 必填。
+    成本单 1001 新增一行原辅料，单价为空（前端在命令中写 null）：422 VALIDATION_FAILED，指出这一行的 PRICE；
+    单价填 0 能保存。规则中数值为空按 0 计算，必填检查按真实的值。"""
+    pipeline = Pipeline(setup=Setup(required={MATERIAL: ["PRICE"]}))
+
+    def add(price: str | None) -> t.Command:
+        return command([master_none("1001", [{"entity": MATERIAL, "op": "add", "clientRowId": TMP_1,
+                                              "values": {"GOODSID": "115", "USAGE": "1", "PRICE": price}}])])
+
+    with pytest.raises(t.PlatformError) as caught:
+        pipeline.execute(add(None), pipeline.setup.context())
+    assert caught.value.code is t.ErrorCode.VALIDATION_FAILED
+    assert [(d.entity, d.client_row_id, d.field, d.message) for d in caught.value.details] == [
+        (MATERIAL, TMP_1, "PRICE", "PRICE 不能为空")]
+
+    respond(pipeline, row_result(MATERIAL, client_row_id=TMP_1, COST_BATCH="0"))
+    result = pipeline.execute(add("0"), pipeline.setup.context())
+    assert result.outcome == "saved"
+    assert pipeline.store.rows[MATERIAL][result.id_map[TMP_1]]["PRICE"] == D(0)
+
+
+def test_required_number_price_modified_to_empty_rejected() -> None:
+    """同上，已保存的原辅料 5001 把单价清空：拒绝，指出这一行的 PRICE。"""
+    pipeline = Pipeline(setup=Setup(required={MATERIAL: ["PRICE"]}))
+    cmd = command([master_none("1001", [{"entity": MATERIAL, "op": "modify", "rowKey": "5001", "changes": {"PRICE": None}}])])
+    with pytest.raises(t.PlatformError) as caught:
+        pipeline.execute(cmd, pipeline.setup.context())
+    assert caught.value.code is t.ErrorCode.VALIDATION_FAILED
+    assert [(d.row_key, d.field) for d in caught.value.details] == [("5001", "PRICE")]
+
+
 def test_required_not_checked_on_rows_changed_only_by_calculation() -> None:
     """主表 MEMO 必填且为空：只因计算发生变化的主表行不检查，改了的明细行检查通过。"""
     pipeline = Pipeline(setup=Setup(required={MASTER: ["MEMO"], MATERIAL: ["GOODSID"]}))

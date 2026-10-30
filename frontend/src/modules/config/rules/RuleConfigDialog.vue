@@ -4,19 +4,22 @@
  * 点字段把引用插到正在编辑的输入框光标处（本区域字段直接写字段名；明细里引用主表写 `master.字段`；主表里引用明细写明细实体编码，
  * 例如 `sum(map(COST_MATERIAL, #.USAGE * #.PRICE))`）。表达式为 ZEN 表达式（C06 第 5 节）。
  * 多公式按分支写，"分支字段 + 匹配方式 + 值"生成分支条件；校验的"规则 + 值"生成条件。
+ * 校验的"必填"用于数值字段时不生成条件，点"设为字段必填"换成"字段必填"卡片，保存为字段设置的必填
+ * （同"表与列"的"必填"列，见 rule-editor 的 RequiredCard）；已有的字段必填也列在这里。
  */
 import { computed, ref } from 'vue';
 import { NButton, NEmpty, NInput, NInputNumber, NModal, NPopconfirm, NSelect, NSpace, NSwitch, NTag } from 'naive-ui';
 import type { PageTable } from '../core/catalog';
 import { useConfigContext } from '../core/context';
+import type { ItemEditor } from '../core/item-editor';
 import ProblemList from '../components/ProblemList.vue';
-import { type RuleCard, RuleEditor } from './rule-editor';
+import { type RequiredCard, type RequiredScope, type RuleCard, RuleEditor } from './rule-editor';
 import { MATCH_OPTIONS, type MatchType, RULE_KIND_TITLES, VALIDATE_OPTIONS, type ValidateType, matchCondition, validateCondition } from './rule-model';
 
-const props = defineProps<{ show: boolean; kind: 'calc' | 'validate'; pageCode: string; table: PageTable; tables: PageTable[]; masterFields: string[] }>();
-const emit = defineEmits<{ 'update:show': [show: boolean] }>();
+const props = defineProps<{ show: boolean; kind: 'calc' | 'validate'; pageCode: string; page: ItemEditor<'page'>; table: PageTable; tables: PageTable[]; masterFields: string[] }>();
+const emit = defineEmits<{ 'update:show': [show: boolean]; 'fields-saved': [] }>();
 const { store, notify } = useConfigContext();
-const editor = new RuleEditor(store, { pageCode: props.pageCode, table: props.table }, props.kind, props.masterFields, notify);
+const editor = new RuleEditor(store, { pageCode: props.pageCode, table: props.table }, props.kind, props.masterFields, notify, props.page);
 const state = editor.state;
 const sidebarFilter = ref('');
 const helpers = ref<Record<string, { field: string | null; match: MatchType; value: string; rule: ValidateType }>>({});
@@ -60,7 +63,9 @@ function insertField(t: PageTable, field: string) {
 
 function helper(card: RuleCard, index = 0) {
   const key = `${card._id}-${index}`;
-  helpers.value[key] ??= { field: card.content.field, match: 'regex', value: '', rule: 'required' };
+  // 校验的"规则"只用来生成条件：新卡片默认"必填"（同旧系统新增一项校验）；已经写了条件的卡片为"自定义"，
+  // 条件就是写好的那一条，不显示成"必填"，免得被当成必填规则、误点"设为字段必填"把原规则换掉
+  helpers.value[key] ??= { field: card.content.field, match: 'regex', value: '', rule: card.content.when ? 'custom' : 'required' };
   return helpers.value[key];
 }
 
@@ -78,18 +83,43 @@ function setMulti(card: RuleCard, multi: boolean) {
   dirty(card);
 }
 
+const SCOPE_OPTIONS: Array<{ label: string; value: RequiredScope }> = [
+  { label: '实体默认（所有页面）', value: 'entity' },
+  { label: '本页面', value: 'page' }
+];
+const scopeText = (scope: RequiredScope) => SCOPE_OPTIONS.find(o => o.value === scope)!.label;
+const labelOf = (field: string) => props.table.fields.find(f => f.name === field)?.label ?? field;
+
+/** 数值字段选了"必填"：不生成条件，换成字段必填 */
+const numberRequired = (card: RuleCard) => helper(card).rule === 'required' && editor.isNumber(card.content.field);
+
+function toRequired(card: RuleCard) {
+  const reason = editor.toRequired(card);
+  if (reason) notify.error(reason);
+}
+
+function requiredNote(r: RequiredCard) {
+  const label = labelOf(r.field);
+  return `保存为字段设置（同"表与列"的"必填"列，范围"${r.scope === 'entity' ? '实体默认' : '本页面'}"），不生成校验规则。保存单据时${label}为空（没填或清空）就拒绝，提示"${label} 不能为空"；填 0 可以保存。`;
+}
+
+function close() {
+  if (state.fieldsSaved) emit('fields-saved');
+  emit('update:show', false);
+}
+
 async function save() {
-  if (await editor.save()) emit('update:show', false);
+  if (await editor.save()) close();
 }
 
 editor.load();
 </script>
 
 <template>
-  <NModal :show="show" preset="card" :title="`${RULE_KIND_TITLES[kind]} - ${table.title}`" style="width: 1060px; max-height: 85vh" :segmented="{ content: true, footer: true }" @update:show="emit('update:show', $event)">
+  <NModal :show="show" preset="card" :title="`${RULE_KIND_TITLES[kind]} - ${table.title}`" style="width: 1060px; max-height: 85vh" :segmented="{ content: true, footer: true }" @update:show="v => (v ? emit('update:show', v) : close())">
     <div class="dialog-body">
       <div class="rules-area">
-        <NEmpty v-if="!state.loading && state.cards.length === 0" :description="`暂无${RULE_KIND_TITLES[kind]}`" />
+        <NEmpty v-if="!state.loading && state.cards.length === 0 && state.required.length === 0" :description="`暂无${RULE_KIND_TITLES[kind]}`" />
         <div v-for="(card, idx) in state.cards" :key="card._id" class="rule-card">
           <div class="rule-header">
             <NTag size="small" :type="kind === 'validate' ? 'info' : card.multi ? 'warning' : 'info'">{{ kind === 'validate' ? '校验' : card.multi ? '多公式' : '单公式' }}</NTag>
@@ -126,12 +156,16 @@ editor.load();
                 <span class="field-label">值</span>
                 <NInput v-model:value="helper(card).value" size="small" placeholder="规则值" class="w-140" />
               </div>
-              <NButton v-if="helper(card).rule !== 'custom'" size="small" @click="(card.content.when = validateCondition(card.content.field ?? '', helper(card).rule, helper(card).value)), dirty(card)">生成条件</NButton>
+              <NButton v-if="numberRequired(card)" size="small" type="primary" ghost @click="toRequired(card)">设为字段必填</NButton>
+              <NButton v-else-if="helper(card).rule !== 'custom'" size="small" @click="(card.content.when = validateCondition(card.content.field ?? '', helper(card).rule, helper(card).value)), dirty(card)">生成条件</NButton>
             </template>
             <div class="rule-field field-grow">
               <span class="field-label">{{ kind === 'validate' ? '条件（成立时拒绝或提示）' : '条件 (可选)' }}</span>
               <NInput :value="whenText(card)" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }" size="small" placeholder="如: GOODSTYPE != '包材'" @focus="(e: FocusEvent) => track(e, v => ((card.content.when = v), dirty(card)))" @update:value="v => ((card.content.when = v), dirty(card))" />
             </div>
+          </div>
+          <div v-if="kind === 'validate' && numberRequired(card)" class="section-label">
+            {{ labelOf(card.content.field!) }}是数值字段：规则中数值为空按 0 计算，条件判断不出没填。点"设为字段必填"，这张卡片换成字段必填，保存为字段设置。
           </div>
           <div v-if="kind === 'validate'" class="rule-row">
             <div class="rule-field">
@@ -197,6 +231,22 @@ editor.load();
           </template>
           <ProblemList :problems="card.problems" />
         </div>
+        <div v-for="r in state.required" :key="r._id" class="rule-card">
+          <div class="rule-header">
+            <NTag size="small" type="success">字段必填</NTag>
+            <span>{{ labelOf(r.field) }}</span>
+            <span class="rule-index">{{ r.field }}</span>
+            <div class="spacer" />
+            <NSelect v-if="!r.saved" v-model:value="r.scope" :options="SCOPE_OPTIONS" size="tiny" style="width: 180px" />
+            <span v-else class="rule-index">{{ scopeText(r.scope) }} · 已保存</span>
+            <NPopconfirm @positive-click="editor.removeRequired(r)">
+              <template #trigger><NButton size="tiny" quaternary type="error">删除</NButton></template>
+              确定删除？保存后去掉这个字段的必填（"表与列"的"必填"列同时取消）。
+            </NPopconfirm>
+          </div>
+          <div class="section-label">{{ requiredNote(r) }}</div>
+        </div>
+        <ProblemList :problems="state.requiredProblems" />
       </div>
       <div class="field-sidebar">
         <div class="sidebar-header">字段参考</div>
@@ -219,7 +269,7 @@ editor.load();
         <NButton size="small" @click="editor.add(null)">+ 添加规则</NButton>
         <NSpace size="small">
           <span class="rule-index">{{ state.status }}</span>
-          <NButton size="small" @click="emit('update:show', false)">取消</NButton>
+          <NButton size="small" @click="close">取消</NButton>
           <NButton size="small" type="primary" :loading="state.busy" @click="save">保存</NButton>
         </NSpace>
       </NSpace>

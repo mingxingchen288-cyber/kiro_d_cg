@@ -6,6 +6,7 @@
  * - 正式数据（从后端读到的值）经 `load` 登记，只用来判断"改回原值"，不进撤销历史。
  * - 每次调用 set、addRow、deleteRow 是一个撤销步骤；`batch` 把其中的多次调用合成一步（Lookup 回填、复制、粘贴）。
  *   历史按行记录修改前后的状态，撤销把这些行恢复为修改前，重做恢复为修改后。
+ * - 行的先后（命令中的单据和行、新增行的位置）按行进入未保存修改的先后（`seq`），撤销、重做后与当时相同。
  */
 // 本模块用相对路径引用 contracts：vitest 没有配置 `@` 别名（vitest.config.ts 归 assembly）
 import { isDecimalText, numbersConsistent } from '../../contracts/decimal-text';
@@ -44,9 +45,15 @@ interface PendingRow {
   deleted: boolean;
   /** 新增行插在哪一行之后（同一实体、同一单据中），null 表示最前面 */
   after: string | null;
+  /**
+   * 这一行进入未保存修改的先后（从没有修改变为有修改时取下一个号，之后不变）。命令中单据和行的先后、新增行的先后都按它，
+   * 随行的状态一起记进撤销历史，撤销、重做后与当时相同；不按 Map 的插入顺序，因为撤销、重做会把行重新插到最后。
+   */
+  seq: number;
 }
 
 type Step = Map<string, { before: PendingRow | undefined; after: PendingRow | undefined }>;
+type RowChange = Omit<PendingRow, 'seq'>;
 
 const keyOf = (entity: string, id: string) => `${entity}\u0000${id}`;
 const copyRow = (row: PendingRow | undefined) => (row ? { ...row, values: { ...row.values } } : undefined);
@@ -58,6 +65,7 @@ export class EditBuffer {
   private redoStack: Step[] = [];
   private current_step: Step | null = null;
   private depth = 0;
+  private lastSeq = 0;
 
   constructor(
     private readonly schema: BufferSchema,
@@ -114,7 +122,7 @@ export class EditBuffer {
   /** 某单据中某实体的新增行，按插入位置；主表的新增行 `recordId` 传 null */
   newRows(entity: string, recordId: string | null): Array<{ id: string; after: string | null }> {
     const rows: Array<{ id: string; after: string | null }> = [];
-    for (const row of this.pending.values()) {
+    for (const row of this.rows()) {
       if (row.entity !== entity || !row.isNew) continue;
       if (entity !== this.schema.master && row.recordId !== recordId) continue;
       rows.push({ id: row.id, after: row.after });
@@ -133,12 +141,12 @@ export class EditBuffer {
 
   /** 有未保存修改的单据 */
   dirtyRecords(): string[] {
-    return [...new Set([...this.pending.values()].map(r => r.recordId))];
+    return [...new Set(this.rows().map(r => r.recordId))];
   }
 
   /** 有未保存修改的行 */
   dirtyRows(): RowId[] {
-    return [...this.pending.values()].map(r => ({ entity: r.entity, id: r.id }));
+    return this.rows().map(r => ({ entity: r.entity, id: r.id }));
   }
 
   get canUndo() {
@@ -209,7 +217,7 @@ export class EditBuffer {
         if (this.same(entity, field, value, committed.values[field] ?? null)) delete changes[field];
         else changes[field] = value;
       }
-      const next: PendingRow | undefined =
+      const next: RowChange | undefined =
         Object.keys(changes).length > 0
           ? { entity, id, recordId: committed.recordId, isNew: false, values: changes, deleted: false, after: null }
           : undefined;
@@ -305,7 +313,9 @@ export class EditBuffer {
   /** 某些单据的全部行（含新增的） */
   rowsOfRecords(recordIds: string[]): RowId[] {
     const set = new Set(recordIds);
-    return [...this.pending.values()].filter(r => set.has(r.recordId)).map(r => ({ entity: r.entity, id: r.id }));
+    return this.rows()
+      .filter(r => set.has(r.recordId))
+      .map(r => ({ entity: r.entity, id: r.id }));
   }
 
   // ---- 命令
@@ -313,7 +323,7 @@ export class EditBuffer {
   /** 按单据生成命令的 documents（C02 第 1 节），只含可写的字段 */
   documents(): DocumentPatch[] {
     const records = new Map<string, PendingRow[]>();
-    for (const row of this.pending.values()) {
+    for (const row of this.rows()) {
       const list = records.get(row.recordId) ?? [];
       list.push(row);
       records.set(row.recordId, list);
@@ -356,9 +366,12 @@ export class EditBuffer {
 
   private writableValues(row: PendingRow, isNew: boolean): FieldValues {
     const current = this.current(row.entity, row.id) ?? {};
+    const types = this.schema.entities[row.entity]?.fieldTypes ?? {};
     const result: FieldValues = {};
     for (const [field, value] of Object.entries(row.values)) {
-      if (isNew && value === null) continue;
+      // 新增行中为空的字段不写，由后端按默认值补（WP-16）。数值字段例外，写 null：后端对没写的数值字段补 0，
+      // 用户清空的单价（或 Lookup 带回的空单价）会存成 0，必填（WP-07）也检查不到；旧系统新增时同样写入空值
+      if (isNew && value === null && types[field] !== 'number') continue;
       if (!this.schema.writable(row.entity, field, current, isNew)) continue;
       result[field] = value;
     }
@@ -371,10 +384,17 @@ export class EditBuffer {
     return type === 'number' && isDecimalText(a) && isDecimalText(b) && numbersConsistent(a as string, b as string);
   }
 
-  /** 改一行并记入当前撤销步骤 */
-  private write(key: string, next: PendingRow | undefined) {
+  /** 未保存修改的行，按进入的先后（`seq`） */
+  private rows(): PendingRow[] {
+    return [...this.pending.values()].sort((a, b) => a.seq - b.seq);
+  }
+
+  /** 改一行并记入当前撤销步骤；行原来没有未保存的修改时取下一个先后号，原来有时沿用 */
+  private write(key: string, change: RowChange | undefined) {
     const step = this.current_step!;
-    if (!step.has(key)) step.set(key, { before: copyRow(this.pending.get(key)), after: undefined });
+    const existing = this.pending.get(key);
+    const next: PendingRow | undefined = change ? { ...change, seq: existing?.seq ?? (this.lastSeq += 1) } : undefined;
+    if (!step.has(key)) step.set(key, { before: copyRow(existing), after: undefined });
     step.get(key)!.after = copyRow(next);
     this.restore(key, next);
   }

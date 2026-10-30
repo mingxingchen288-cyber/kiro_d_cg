@@ -86,7 +86,11 @@ export const MATCH_OPTIONS: Array<{ label: string; value: MatchType }> = [
   { label: '正则', value: 'regex' }
 ];
 
-const quote = (text: string) => `'${text.replaceAll("'", "\\'")}'`;
+/**
+ * ZEN 表达式的字符串常量：没有转义，到下一个同样的引号为止（zen-expression 2.1.6）。含单引号的文字用双引号括起，
+ * 其余用单引号；写法同后端 `config/expressions.py` 的 `_string`。
+ */
+const quote = (text: string) => (text.includes("'") ? `"${text}"` : `'${text}'`);
 
 /** 旧系统"分支字段 + 匹配方式 + 值" → ZEN 表达式条件，例如正则 → `matches(GOODSNAME, '桶|说明书')` */
 export function matchCondition(field: string, type: MatchType, value: string) {
