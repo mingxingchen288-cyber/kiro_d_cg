@@ -9,7 +9,10 @@
    范围，再和自己的单据合在一起一次锁完。违反时 `LockBook.claim` 返回 500：这是实现错误，用户操作触发不了。
 3. 一次锁多行时按顺序一行一条 `SELECT … FOR UPDATE WAIT n`，不依赖一条 SQL 内部的加锁顺序（没有核实过）；只锁一行时
    （普通保存只锁一张单据）加锁和读数据仍是一条语句，SQL 条数不变。
-4. 加锁前普通读到的本命令单据，锁住后重读核对；不同时抛 `LockScopeChanged`，编排回滚整个事务、整条命令重来。
+4. 加锁前普通读到的本命令单据，锁住后核对；不同时抛 `LockScopeChanged`，编排回滚整个事务、整条命令重来。核对用的数据由
+   加锁语句本身读出：这些单据按顺序轮到时用"锁一行并读出数据"的语句（`lock_select_sql`，与普通保存的加锁读取同一条），
+   仍是一行一条；其余对象只锁不读（`lock_key_sql`）。有明细的单据另用一条普通查询读明细（明细不加锁，单据锁在主表行上）。
+   这样往前冻结的页面（物料清单）保存只比普通保存多 1 条加锁前的普通读取。
 
 本文件是平台业务代码中唯一写 `FOR UPDATE` 的地方（`backend/tests/architecture/test_lock_entry.py` 检查）；例外是 config 的
 代号行、identity 的账号行、delivery 的 SKIP LOCKED，它们不和业务锁同时持有。
@@ -17,7 +20,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from typing import Protocol
 from weakref import WeakKeyDictionary
 
@@ -124,6 +127,9 @@ class KeyLocker(Protocol):
 
     def lock_key(self, uow: UnitOfWork, table: str, key_column: str, key: str, numeric: bool) -> None: ...
 
+    def lock_document(self, uow: UnitOfWork, ctx: ExecutionContext, ref: DocumentRef,
+                      details: Collection[str]) -> DocumentData | None: ...
+
     def read_documents(self, uow: UnitOfWork, ctx: ExecutionContext,
                        refs: Sequence[DocumentRef]) -> dict[DocumentRef, DocumentData]: ...
 
@@ -153,13 +159,23 @@ class PipelineLocks:
 
     def lock(self, uow: UnitOfWork, ctx: ExecutionContext, targets: list[LockTarget],
              expected: dict[DocumentRef, DocumentData] | None = None) -> None:
+        """按统一顺序一行一条加锁（规则 1、7）；`expected` 中的单据轮到时锁住并读出数据，锁住后用它核对（规则 4，见文件说明）。
+        `expected` 中本事务已持有锁的单据这次不再加锁，另用普通查询重读核对。"""
+        expected = expected or {}
+        own = {document_target(ctx, ref): ref for ref in expected}
+        now: dict[DocumentRef, DocumentData | None] = {}
         for target in self._book.claim(uow, targets):
-            self._store.lock_key(uow, target.table, target.key_column, target.key, target.numeric)
-        if expected:
-            now = self._store.read_documents(uow, ctx, list(expected))
-            changed = [ref for ref, data in expected.items() if not same_document(now.get(ref), data)]
-            if changed:
-                raise LockScopeChanged("、".join(f"{r.entity} {r.record_key}" for r in changed) + " 在加锁前读取之后被修改")
+            ref = own.get(target)
+            if ref is None:
+                self._store.lock_key(uow, target.table, target.key_column, target.key, target.numeric)
+            else:
+                now[ref] = self._store.lock_document(uow, ctx, ref, list(expected[ref].details))
+        rest = [ref for ref in expected if ref not in now]
+        if rest:
+            now.update(self._store.read_documents(uow, ctx, rest))
+        changed = [ref for ref, data in expected.items() if not same_document(now.get(ref), data)]
+        if changed:
+            raise LockScopeChanged("、".join(f"{r.entity} {r.record_key}" for r in changed) + " 在加锁前读取之后被修改")
 
     def held(self, uow: UnitOfWork) -> frozenset[LockTarget]:
         return self._book.held(uow)

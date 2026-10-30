@@ -81,6 +81,30 @@ def test_loader_relocks_documents_already_held() -> None:
     assert store.lock_order == [("T_COST_PINGGU", "1001"), ("T_COST_GOODS", "115"), ("T_COST_PINGGU", "1001")]
 
 
+def test_lock_with_expected_reads_own_documents_in_the_lock_statements() -> None:
+    """规则 3、4：物料清单改价要冻结成本单 1001，物料 115 推迟加锁、加锁前已普通读到。按统一顺序先锁 1001（只锁），再锁住
+    115 并读出数据，用它核对；锁住后不再整批重读（原来多一次 `read_documents`）。"""
+    store, setup = MemoryStore(), Setup()
+    uow, ctx = RecordingUnitOfWork(), setup.context()
+    locks = PipelineLocks(LockBook(), store, scales_inspector())  # type: ignore[arg-type]
+    expected = locks.read(uow, ctx, [GOODS_115])  # type: ignore[arg-type]
+    locks.lock(uow, ctx, [locks.document(ctx, GOODS_115), locks.document(ctx, DOC_1001)], expected)  # type: ignore[arg-type]
+    assert store.lock_order == [("T_COST_PINGGU", "1001"), ("T_COST_GOODS", "115")]
+    assert store.document_locks == [GOODS_115]
+    assert store.document_reads == [[GOODS_115]]  # 只有加锁前的那一次
+
+
+def test_lock_with_expected_changed_meanwhile_raises() -> None:
+    """规则 4：加锁前读到物料 115 之后别人改了它，锁住并读出的数据与加锁前不同，抛 `LockScopeChanged`。"""
+    store, setup = MemoryStore(), Setup()
+    uow, ctx = RecordingUnitOfWork(), setup.context()
+    locks = PipelineLocks(LockBook(), store, scales_inspector())  # type: ignore[arg-type]
+    expected = locks.read(uow, ctx, [GOODS_115])  # type: ignore[arg-type]
+    store.rows[GOODS]["115"]["ZX_PRICE"] = "别人改了"
+    with pytest.raises(t.LockScopeChanged):
+        locks.lock(uow, ctx, [locks.document(ctx, GOODS_115)], expected)  # type: ignore[arg-type]
+
+
 def test_loader_defer_lock_reads_without_locking() -> None:
     """`defer_lock`（触发审批要往前冻结）：加锁读取只普通读取，不加锁，也不记为已持有。"""
     store, setup = MemoryStore(), Setup()

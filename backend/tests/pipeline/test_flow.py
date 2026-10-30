@@ -485,6 +485,27 @@ def test_e24_approved_detail_add_uses_reserved_key_and_delete_applies() -> None:
     assert (added["DOCID"], added["GOODSID"], added["PRICE"]) == (D(1001), D(116), D("12"))
     assert "5002" not in pipeline.store.rows[MATERIAL]
     assert [r.document.entity for r in pipeline.setup.engine.requests] == [MASTER]  # 1001 已重算
+    # 审批通过时写入的新增行照旧补默认值（WP-16）：USAGE 没写，数值字段没配默认值为 0
+    [inserted] = [rows for op, entity, rows in writes(pipeline) if (op, entity) == ("insert", MATERIAL)]
+    assert inserted[0]["USAGE"] == D(0)
+
+
+def test_button_added_detail_writes_only_given_linked_and_calculated_fields() -> None:
+    """"由BOM生成明细"的形状（OP-09，旧 P_COST_BOM_INSERT）：按钮在成本单 1001 新增一条原辅料（物料 116、单价 12），
+    意图 `fill_defaults` 为 False。INSERT 只写 SQL 给出的 GOODSID、PRICE，关联字段 DOCID 和计算出的 COST_BATCH；
+    没写的 USAGE（数值，没配默认值）不补 0，不进 INSERT，取数据库的列默认值。"""
+    def add(state: t.CommandState, ctx: t.ExecutionContext) -> None:
+        state.intents.append(t.RowIntent(document=t.DocumentRef(MASTER, "1001"), entity=MATERIAL, op="add", row_key=None,
+                                         client_row_id=TMP_1, values={"GOODSID": D(116), "PRICE": D("12")}, fill_defaults=False))
+
+    pipeline = Pipeline(actions=[add])
+    respond(pipeline, row_result(MATERIAL, client_row_id=TMP_1, COST_BATCH="12"), row_result(MASTER, "1001", TOTAL_COST="66"))
+    cmd = command([], operation=BUTTON, params={"selectedRows": [{"entity": MASTER, "rowKey": "1001"}]})
+    result = pipeline.execute(cmd, pipeline.setup.context())
+    assert result.outcome == "saved"
+    inserted = [w for w in writes(pipeline) if w[0] == "insert"]
+    assert inserted == [("insert", MATERIAL, [{"DOCID": D(1001), "GOODSID": D(116), "PRICE": D("12"), "COST_BATCH": D("12")}])]
+    assert pipeline.store.rows[MATERIAL][result.id_map[TMP_1]]["USAGE"] is None
 
 
 def test_new_document_approved_is_inserted_without_skipped() -> None:

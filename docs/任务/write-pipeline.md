@@ -118,3 +118,19 @@
 - 验收标准：模拟验证：复制成本单时不可写的产品名称、创建人取源行的值（命令中的伪造值不用），计算字段不写，没复制的字段不补默认值；没有 `copyOf` 的新增行照旧拒绝不可写字段；源行超出行权限时 409 ROW_NOT_FOUND；明细复制只在视图中的物料名称、计算字段不写。业务例子（浏览器）：复制 200721 只复制主表，保存后新单据的币种为"人民币"、项目号与源单据相同（源为空则为空），产品等字段照旧；之后删掉这张单据。
 - 状态与证据：模拟验证和浏览器业务例子通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/pipeline/test_copy.py` 4 个；前端 `tests/page/copy-lookup.test.ts`、`product-lookup.test.ts` 的命令带 `copyOf` 和不可编辑的复制字段。浏览器（后端 8084 + d_cg，`.reports/batch4-20261030/p-pipeline-fixes/e2e/p2.out.json`）：复制 200721 只复制主表，命令带 `copyOf: 200721` 和币种"人民币"，保存后新单据 200834 的币种"人民币"、项目号为空（与源相同）、产品ID 392，随后删掉。
   - 没做：复制出的行提交审批后，审批通过按原来的 Patch 重放（approval `patch.py` 的 `patch_intents` 不看 `copyOf`），不可写的复制字段按命令中的值写；只有复制带明细且触发审批时走到，在 approval 的文件里。
+
+### T-WP-11 按钮新增的明细不补默认值
+
+- 归属与目标：WP-16 加例外：按钮 `replaceDetails` 新增的行（OP-09）只写 SQL 给出的字段、关联字段、主键和计算规则算出的字段，其余列不进 INSERT，取数据库的列默认值。来源：旧 P_COST_BOM_INSERT（`my-project/sql20260523/03_program_units.sql` 第 699–760 行）的 INSERT 列中没有 EXADD_MATER、CUSTOMER_SPECIFIED；现象见 `.reports/batch4-20261030/p-pipeline-fixes/findings.md`"和旧系统不同、这次没改的"（由BOM生成明细写 EXADD_MATER = 0）；用户 2026-10-30 同意直接做。
+- 前置输入：T-WP-5（WP-16）、T-OP-3（`replaceDetails`）；contracts 的 `RowIntent.fill_defaults`（C08 v19）。
+- 负责范围：`contracts/types.py` 的 `RowIntent.fill_defaults`（默认 True）；`pipeline/merge.py` 的 `_Rows.new_values(defaults=)`、`IntentMerger._add`；`operations/sql_actions.py` 的 `expand_replace_details`（新增意图设为 False）。审批通过时写入的待审新增行（`approval/patch.py`、`process.py` 生成的意图）不改，照旧补默认值。
+- 验收标准（业务例子）：新建一张产品 392 的成本单点"由BOM生成明细"，新增的 11 行明细额外投料量为空、客户指定为 T_COST_PINGGU_DTL 的列默认值 0（d_cg `USER_TAB_COLUMNS`：EXADD_MATER 没有默认值、可空；CUSTOMER_SPECIFIED NOT NULL、DATA_DEFAULT 0），每批数量、每批成本、主表合计照常算出（空值按 0 参与计算，rules-core 第 8 节；旧 P_PINGGU_DTL_COMPUTE 也是 `nvl(exadd_mater, 0)`）；页面显示与重新打开一致。
+- 状态与证据：模拟验证、真实验证和浏览器业务例子通过（2026-10-30，B1 组，`batch5/pipeline-defaults`，`.reports/batch5-20261030/b1-pipeline/`）。模拟：`tests/pipeline/test_flow.py` 的 `test_button_added_detail_writes_only_given_linked_and_calculated_fields`（INSERT 只有 DOCID、GOODSID、PRICE、COST_BATCH），E24 补"审批通过照旧补 0"；`tests/operations/test_sql_actions.py` 新增意图 `fill_defaults` 为 False。真实（d_cg）：`tests/operations/test_sql_actions_oracle.py` 的由BOM生成明细断言 11 行 EXADD_MATER 为空、CUSTOMER_SPECIFIED 为 0，`check_recalculated` 照常通过。浏览器：`frontend/tests/e2e/g0-1030.spec.ts` 场景 5a 断言接口读到的明细额外投料量为 null、客户指定为 false、每批数量有值，页面上额外投料量格子为空、客户指定不勾，重新打开（`openDoc`）后一样。契约测试 `test_samples.py` 的默认值检查改为允许文档写明的默认值。
+
+### T-WP-12 往前冻结的页面保存少一条 SQL
+
+- 归属与目标：T-WP-7 留下的代价（`.reports/batch4-20261030/l-lock-order/findings.md`"已知的代价"）：配了往前冻结审批流的页面（物料清单页，GOODS_TO_COST）每次保存推迟加锁，多 1 条加锁前普通读取、1 条锁住后核对重读。把"锁 + 核对重读"合成一条带数据的加锁语句，只多加锁前的 1 条。用户 2026-10-30 同意直接做；规则 1–9 不变。
+- 前置输入：T-WP-7。
+- 负责范围：`pipeline/locks.py` 的 `PipelineLocks.lock`（`expected` 中的单据按顺序轮到时用"锁一行并读出数据"的语句，锁住后用它核对；其余对象照旧只锁；本事务已持有锁的单据仍普通重读）、`KeyLocker.lock_document`；`pipeline/document_store.py` 的 `lock_document`（与普通保存的 `lock_load` 一个主键时同一条语句，有明细时另一条普通查询读明细）。
+- 验收标准：一次锁多行仍按统一顺序每行一条（规则 7）；本命令单据在加锁前读取之后被改时仍整个回滚重来（规则 4）；`tests/pipeline/test_oracle_lock_order.py` 原有 8 个场景照样通过；物料清单页保存的 SQL 条数比原来少 1 条。
+- 状态与证据：模拟验证和真实验证通过（2026-10-30，B1 组，`batch5/pipeline-defaults`，`.reports/batch5-20261030/b1-pipeline/`）。模拟：`tests/pipeline/test_locks.py` 的 `test_lock_with_expected_reads_own_documents_in_the_lock_statements`（先锁成本单 1001、再锁住并读出物料 115，`read_documents` 只有加锁前的一次）、`test_lock_with_expected_changed_meanwhile_raises`；`test_document_store_sql.py` 的 `test_deferred_lock_reads_the_own_document_in_the_lock_statement`（SQL 文本）；`tests/contracts/test_business_locker.py` 照常通过。真实（d_cg）：`test_oracle_lock_order.py` 8 个场景通过（规则 4 的场景 d 仍执行两次），新加 e1（PF_TEST 物料清单页改名称 8 → 7 条）、e2（改执行价进审批、冻结成本单 16 → 15 条，加锁语句只有成本单、物料两条）；`tests/pipeline/test_oracle_goods_save_sql_count.py`（seed 配置的物料清单页 GOODS_PRICE_MANAGE，测试自建本地物料、改规格不触发审批）8 → 7 条。

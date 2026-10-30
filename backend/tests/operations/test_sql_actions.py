@@ -47,6 +47,8 @@ def test_replace_details_deletes_the_rows_then_adds_one_row_per_sql_row() -> Non
     assert deletes == [(D, MATERIAL, "5001"), (D, MATERIAL, "5002")]
     assert adds == [(D, MATERIAL, {"GOODSID": dec(115), "PRICE": dec(75)}),
                     (D, MATERIAL, {"GOODSID": dec(120), "PRICE": dec("0.48")})]
+    # 新增的行不补默认值（旧 P_COST_BOM_INSERT 只写查出的列，WP-16 的例外）
+    assert [i.fill_defaults for i in bench.merged if i.op == "add"] == [False, False]
     ids = [i.client_row_id for i in bench.merged if i.op == "add"]
     assert all(t.parse_wire(t.DetailAdd, {"entity": MATERIAL, "op": "add", "clientRowId": c, "values": {}}) for c in ids)
     bench.close()

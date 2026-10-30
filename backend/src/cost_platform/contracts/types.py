@@ -2280,6 +2280,9 @@ class RowIntent:
     row_key: str | None
     client_row_id: str | None
     values: dict[str, Value] = dc_field(hash=False)
+    fill_defaults: bool = True
+    """新增行没有写的字段是否按 WP-16 补默认值。按钮 `replaceDetails` 新增的行为 False：只写 SQL 给出的字段、关联字段、
+    主键和计算字段，其余列不写，取数据库的列默认值（旧 P_COST_BOM_INSERT）；审批通过时写入的新增行为 True。"""
 
 
 @dataclass

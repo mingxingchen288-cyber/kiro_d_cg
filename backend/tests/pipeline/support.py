@@ -15,7 +15,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import json
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -250,6 +250,10 @@ class MemoryStore:
         """按先后加上的每个行锁：（物理表、主键），`lock_load` 和 `lock_key` 都记。"""
         self.detail_loads: list[list[str]] = []
         """每次读明细时的单据主键（一次读取一条语句）。"""
+        self.document_locks: list[t.DocumentRef] = []
+        """`lock_document` 锁住并读出的单据（按先后）。"""
+        self.document_reads: list[list[t.DocumentRef]] = []
+        """每次 `read_documents`（不加锁的普通读取）的单据。"""
         self.denied: set[tuple[str, str]] = set()
         self._next = 9001
 
@@ -269,8 +273,22 @@ class MemoryStore:
     def lock_key(self, uow: UnitOfWork, table: str, key_column: str, key: str, numeric: bool) -> None:
         self.lock_order.append((table, key))
 
+    def lock_document(self, uow: UnitOfWork, ctx: t.ExecutionContext, ref: t.DocumentRef,
+                      details: Collection[str]) -> t.DocumentData | None:
+        """锁一张单据并读出数据（`PipelineLocks.lock` 核对推迟加锁的本命令单据）；`document_locks` 记下锁过的单据。"""
+        self.lock_order.append((ENTITIES[ref.entity].table, ref.record_key))
+        self.document_locks.append(ref)
+        found = self._documents([ref]).get(ref)
+        if found is None:
+            return None
+        return t.DocumentData(ref=ref, master=found.master, details={e: rows for e, rows in found.details.items() if e in details})
+
     def read_documents(self, uow: UnitOfWork, ctx: t.ExecutionContext,
                        refs: Sequence[t.DocumentRef]) -> dict[t.DocumentRef, t.DocumentData]:
+        self.document_reads.append(list(refs))
+        return self._documents(refs)
+
+    def _documents(self, refs: Sequence[t.DocumentRef]) -> dict[t.DocumentRef, t.DocumentData]:
         found = {}
         for ref in refs:
             if ref.record_key not in self.rows[ref.entity]:

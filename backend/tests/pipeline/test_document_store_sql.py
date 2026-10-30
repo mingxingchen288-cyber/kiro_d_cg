@@ -9,10 +9,22 @@ import pytest
 
 from cost_platform.contracts import types as t
 from cost_platform.pipeline.document_store import DetailSource, OracleDocumentStore
+from cost_platform.pipeline.locks import LockBook, PipelineLocks
 from cost_platform.pipeline.writer import ChangeWriter
 
 from .recording import RecordingUnitOfWork
-from .support import GOODS, GOODS_ENTITY, MASTER, MASTER_ENTITY, MATERIAL, MATERIAL_ENTITY, TMP_1, TMP_2, Setup
+from .support import (
+    GOODS,
+    GOODS_ENTITY,
+    MASTER,
+    MASTER_ENTITY,
+    MATERIAL,
+    MATERIAL_ENTITY,
+    TMP_1,
+    TMP_2,
+    Setup,
+    scales_inspector,
+)
 
 D = Decimal
 REF = t.DocumentRef(MASTER, "1001")
@@ -55,6 +67,24 @@ def test_lock_load_reads_view_by_field_name() -> None:
     OracleDocumentStore(5).lock_load(uow, GOODS, GOODS_ENTITY, ["115"])  # type: ignore[arg-type]
     assert uow.connection.sql == ["SELECT GOODSID, NAME, ISERP, PRICE, ZX_PRICE FROM T_COST_GOODS_PRICE_V "
                                   "WHERE GOODSID IN (:k0) ORDER BY GOODSID FOR UPDATE WAIT 5"]
+
+
+def test_deferred_lock_reads_the_own_document_in_the_lock_statement() -> None:
+    """往前冻结的页面推迟加锁（用户 2026-10-30 规则 3、4）：物料 115 是本命令的单据，加锁前已普通读到；成本单 1002 是要冻结的。
+    按统一顺序先锁 1002（只锁），再锁 115 并读出数据（与普通保存的加锁读取同一条），用它核对，不另外重读。"""
+    ctx = Setup().context()
+    goods_row = (D(115), "硬脂酸镁", D(1), D("3.50"), D("3.50"))
+    uow = RecordingUnitOfWork()
+    uow.connection.results = [[goods_row], [], [goods_row]]
+    locks = PipelineLocks(LockBook(), OracleDocumentStore(5), scales_inspector())
+    goods, doc = t.DocumentRef(GOODS, "115"), t.DocumentRef(MASTER, "1002")
+    expected = locks.read(uow, ctx, [goods])  # type: ignore[arg-type]
+    locks.lock(uow, ctx, [locks.document(ctx, goods), locks.document(ctx, doc)], expected)  # type: ignore[arg-type]
+    assert uow.connection.sql == [
+        "SELECT GOODSID, NAME, ISERP, PRICE, ZX_PRICE FROM T_COST_GOODS_PRICE_V WHERE GOODSID IN (:k0) ORDER BY GOODSID",
+        "SELECT DOCID FROM T_COST_PINGGU WHERE DOCID = :k FOR UPDATE WAIT 5",
+        "SELECT GOODSID, NAME, ISERP, PRICE, ZX_PRICE FROM T_COST_GOODS_PRICE_V "
+        "WHERE GOODSID IN (:k0) ORDER BY GOODSID FOR UPDATE WAIT 5"]
 
 
 def test_lock_load_row_permission_in_same_statement() -> None:

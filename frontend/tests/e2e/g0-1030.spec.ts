@@ -2,6 +2,7 @@
  * 2026-10-30 G0 浏览器核对的 8 个场景（.reports/batch2-20261030/g0-verify/findings.md）改成的正式用例。
  * 场景 5 按 V3（.reports/batch3-20261030/v3-verify/findings.md 场景 1、2）的做法：新单据先用产品 Lookup 选产品；
  * 场景 6"同步采购价"按钮用户 2026-10-30 已删除，改成核对主表不再有这个按钮。
+ * 场景 5a 另核对由BOM生成的明细不补默认值（2026-10-30 B1，WP-16）：额外投料量为空、客户指定不勾，重新打开一样。
  * 写数据的用自己的测试成本单（data），只读的直接看 d_cg 已有的单据（2919、200721、审批 13、14）。
  */
 import type { Locator } from '@playwright/test';
@@ -342,6 +343,29 @@ test('场景 4b 拒绝提示：2919 改一行单价，预览和保存都提示�
 
 // ---------------------------------------------------------------- 5 新建成本单选产品、由BOM生成明细；复制带产品
 
+const BOM_DETAILS = [
+  { entity: 'COST_MATERIAL', title: '原料/辅料' },
+  { entity: 'COST_PACKAGE', title: '包材' }
+] as const;
+
+/** 由BOM生成的明细在页面上：额外投料量的格子为空，客户指定的复选框不勾 */
+async function expectBomRows(page: Page, record: { details: Record<string, Array<{ rowKey?: string }>> }) {
+  for (const { entity, title } of BOM_DETAILS) {
+    // 逐个明细、逐行核对，按顺序进行
+    // eslint-disable-next-line no-await-in-loop
+    await showDetail(page, title);
+    const grid = detailGrid(page, entity);
+    for (const { rowKey } of record.details[entity]) {
+      // eslint-disable-next-line no-await-in-loop
+      await expect(await cell(grid, rowKey!, 'EXADD_MATER'), `${entity} ${rowKey} 额外投料量`).toHaveText('');
+      // eslint-disable-next-line no-await-in-loop
+      const box = (await cell(grid, rowKey!, 'CUSTOMER_SPECIFIED')).locator('input[type="checkbox"]');
+      // eslint-disable-next-line no-await-in-loop
+      await expect(box, `${entity} ${rowKey} 客户指定`).not.toBeChecked();
+    }
+  }
+}
+
 test('场景 5a 新建成本单：产品 Lookup 选 392，保存，由BOM生成 11 行明细，主表合计更新；关闭 Lookup 时控制台没有 naive 报错', async ({
   page,
   data,
@@ -409,6 +433,17 @@ test('场景 5a 新建成本单：产品 Lookup 选 392，保存，由BOM生成 
     );
   }
   expect(num(record.master.values.TOTAL_COST)).toBeGreaterThan(0);
+
+  // 新增的明细只写 BOM 查出的字段（旧 P_COST_BOM_INSERT，WP-16 的例外）：额外投料量为空、客户指定取库默认值 0（不勾）；
+  // 每批数量照常算出；重新打开后页面一样
+  for (const entity of BOM_DETAILS.map(d => d.entity))
+    for (const row of record.details[entity]) {
+      expect([row.values.EXADD_MATER, row.values.CUSTOMER_SPECIFIED], `${entity} ${row.rowKey}`).toEqual([null, false]);
+      expect(row.values.BATCH_QTY, `${entity} ${row.rowKey} 每批数量`).not.toBeNull();
+    }
+  await expectBomRows(page, record);
+  await openDoc(page, docId);
+  await expectBomRows(page, record);
 });
 
 test('场景 5b 复制带产品：复制 200721 只要主表，保存后产品ID、产品名称都在；关闭复制对话框时控制台没有 naive 报错', async ({
