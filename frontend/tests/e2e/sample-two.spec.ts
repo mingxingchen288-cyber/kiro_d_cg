@@ -155,4 +155,15 @@ test('7.10 物料清单改价：ERP 行只能改单价，审批人取消一张�
   expect(await price(d1.docId)).toEqual(['12', '120']);
   expect(await price(d2.docId)).toEqual(['10', '100']);
   expect(data.showGoods(goodsid, lq.dtlid)).toEqual({ zxPrice: '12', lqPrice: '12', lqCostBatch: '50' });
+
+  // WP-20：审批通过时写修改人（审批人 admin，同旧系统 DynamicDataService 写 UPDATE_BY），视图按 UPDATE_BY 判断这一行
+  // 已被人工修改，重新打开后变成黄底（旧 GRID_STYLE 的 erp-updated）
+  await tech.reload();
+  await expect(header).toBeVisible();
+  await header.locator('.ag-header-cell-label').click();
+  await expect(header).toHaveAttribute('aria-sort', 'ascending');
+  await header.locator('.ag-header-cell-label').click();
+  await expect(header).toHaveAttribute('aria-sort', 'descending');
+  await expect(target).toHaveCSS('background-color', 'rgb(255, 242, 168)');
+  await expect(await cell(grid, goodsid, 'ZX_PRICE')).toHaveText('12');
 });
