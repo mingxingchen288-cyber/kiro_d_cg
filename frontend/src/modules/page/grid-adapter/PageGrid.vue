@@ -4,6 +4,7 @@
  * 主表用服务端行模型，明细用客户端行模型（FP-02）；关闭 AG Grid 自带的撤销（FP-04，撤销由编辑缓冲负责）。
  * 只给各行模型传它支持的参数：`cacheBlockSize` 只给主表（服务端行模型），`groupDefaultExpanded` 只给明细（客户端行模型），
  * 否则 AG Grid 在控制台警告"… is not supported with the '…' row model"。
+ * 列虚拟化只在测试模式下关掉（`suppressColumnVirtualisation`，见 columns.ts；用户 2026-10-30 同意），正式模式不变。
  */
 import { computed, onBeforeUnmount, shallowRef } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
@@ -27,7 +28,7 @@ import { fieldOf } from '../fields';
 import type { GridPort, GridRow, PageRuntime } from '../page-runtime';
 import { messageOf } from '../page-runtime';
 import { SUMMARY_ROW_ID } from '../summary';
-import { FORM_COLUMN, buildColumns } from './columns';
+import { FORM_COLUMN, buildColumns, suppressColumnVirtualisation } from './columns';
 
 defineOptions({ name: 'PageGrid' });
 
@@ -318,6 +319,7 @@ function getContextMenuItems(params: GetContextMenuItemsParams<GridRow>): MenuIt
     :tooltip-show-delay="300"
     :get-context-menu-items="getContextMenuItems"
     :group-default-expanded="master ? undefined : -1"
+    :suppress-column-virtualisation="suppressColumnVirtualisation"
     @grid-ready="onGridReady"
     @selection-changed="onSelectionChanged"
     @new-columns-loaded="onNewColumnsLoaded"

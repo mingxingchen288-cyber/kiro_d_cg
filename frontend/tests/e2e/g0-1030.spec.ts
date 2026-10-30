@@ -22,9 +22,9 @@ import {
   openPage,
   runButton,
   save,
-  scrollToColumn,
   selectRow,
   showDetail,
+  summary,
   test,
   toast,
   toolbar,
@@ -46,17 +46,10 @@ async function openWithList(page: Page) {
   return (await (await listed).json()) as ListBody;
 }
 
-/** 汇总行（表格底部固定行）中这些字段的文字；列在视野外时逐个横向滚过去再读 */
+/** 汇总行（表格底部固定行）中这些字段的文字（测试模式下全部列都已渲染，不用横向滚动） */
 async function summaryValues(grid: Locator, fields: string[]) {
-  const out: Record<string, string> = {};
-  for (const name of fields) {
-    // 逐列滚动后读取，按顺序进行
-    // eslint-disable-next-line no-await-in-loop
-    await scrollToColumn(grid, name);
-    // eslint-disable-next-line no-await-in-loop
-    out[name] = ((await grid.locator(`.ag-floating-bottom [col-id="${name}"]`).first().textContent()) ?? '').trim();
-  }
-  return out;
+  const all = await summary(grid);
+  return Object.fromEntries(fields.map(name => [name, all[name] ?? '']));
 }
 
 const num = (text: unknown) => Number(String(text ?? '').replace(/,/g, '') || 0);
@@ -178,9 +171,8 @@ test('场景 2 明细汇总行：标删除后汇总行和主表合计跟着变�
 
 type FieldState = { checked: boolean | null; disabled: boolean | null; type: string };
 
-/** 配置页字段表的全部行：先横向滚到"求和"列，再纵向滚动收集字段名、类型、求和复选框的状态 */
+/** 配置页字段表的全部行：纵向滚动收集字段名、类型、求和复选框的状态（测试模式下全部列都已渲染，不用横向滚） */
 async function sumColumn(grid: Locator) {
-  await scrollToColumn(grid, 'aggregate');
   return grid
     .locator('.ag-body-viewport')
     .first()

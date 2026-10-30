@@ -25,6 +25,14 @@ export const presentationTheme = themeQuartz.withParams({
   rowHoverColor: 'transparent'
 });
 
+/**
+ * 测试模式专用：只在 `vite --mode test`（`pnpm dev`、`pnpm build:test`，端到端测试用的两种方式）下关掉修改内容、
+ * 受影响单据表格的列虚拟化（列数随展示块配置），一次渲染全部列，端到端用例读整行文字时不缺列。
+ * 来源：用户 2026-10-30 同意"只在 vite --mode test 下关掉列虚拟化"；正式模式（`pnpm build`）不变。
+ * 审批进度、待办列表的列固定、1600 宽的窗口放得下，不设。
+ */
+export const suppressColumnVirtualisation = import.meta.env.MODE === 'test';
+
 export const ROW_HEIGHT = 32;
 export const HEADER_HEIGHT = 32;
 

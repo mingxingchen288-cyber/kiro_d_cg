@@ -44,7 +44,7 @@
     "preview": "vite preview",
     "release": "sa release",
     "test": "vitest run",
-    "test:e2e": "pnpm build && playwright test",
+    "test:e2e": "pnpm build:test && playwright test",
     "test:e2e:dev": "playwright test -c playwright.dev.config.ts",
     "typecheck": "vue-tsc --noEmit --skipLibCheck",
     "update-pkg": "sa update-pkg"

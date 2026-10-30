@@ -1,9 +1,13 @@
 <script setup lang="ts">
-/** grid-adapter：Lookup 对话框中的结果表格（客户端行模型）；单选时双击即选定，多选时带复选框（与旧系统 LookupDialog.vue 相同） */
+/**
+ * grid-adapter：Lookup 对话框中的结果表格（客户端行模型）；单选时双击即选定，多选时带复选框（与旧系统 LookupDialog.vue 相同）。
+ * 列数随 Lookup 返回的值，测试模式下同主表一样关掉列虚拟化（columns.ts 的 suppressColumnVirtualisation），正式模式不变。
+ */
 import { computed, shallowRef } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { ColDef, GridApi, GridReadyEvent, RowDoubleClickedEvent, RowSelectionOptions } from 'ag-grid-community';
 import type { FieldValues } from '../../../contracts/command';
+import { suppressColumnVirtualisation } from './columns';
 
 defineOptions({ name: 'LookupGrid' });
 
@@ -50,6 +54,7 @@ function onRowDoubleClicked(event: RowDoubleClickedEvent<FieldValues>) {
     :row-data="rows"
     :column-defs="columnDefs"
     :row-selection="rowSelection"
+    :suppress-column-virtualisation="suppressColumnVirtualisation"
     @grid-ready="onGridReady"
     @selection-changed="onSelectionChanged"
     @row-double-clicked="onRowDoubleClicked"

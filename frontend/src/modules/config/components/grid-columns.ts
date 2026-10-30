@@ -21,6 +21,13 @@ export const configGridTheme = themeQuartz.withParams({
   borderColor: '#dce2e9'
 });
 
+/**
+ * 测试模式专用：只在 `vite --mode test`（`pnpm dev`、`pnpm build:test`，端到端测试用的两种方式）下关掉配置表格的列虚拟化，
+ * 一次渲染全部列，端到端用例（例如表与列的"求和"列、审批流配置的各列）不用横向逐段滚动。
+ * 来源：用户 2026-10-30 同意"只在 vite --mode test 下关掉列虚拟化"；正式模式（`pnpm build`）不变。
+ */
+export const suppressColumnVirtualisation = import.meta.env.MODE === 'test';
+
 export function selectColumn(field: string, headerName: string, options: SelectOption[], width = 130): ColDef {
   return {
     field,

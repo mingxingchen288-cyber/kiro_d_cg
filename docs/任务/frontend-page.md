@@ -136,3 +136,17 @@
 - 验收标准：模拟验证：保存新单据后按新主键重读主表行，库里的默认值显示出来；按钮新增的明细按主键重读，显示视图中的物料名称。业务例子（浏览器、d_cg）：新建一张产品 392 的成本单（产品 Lookup 选 392）保存后币种马上显示"人民币"；点"由BOM生成明细"后客户指定为未勾选、额外投料量为空、包材参考采购价显示 0.10、0.07 等；最后删掉这张单据。
 - 状态与证据：模拟验证和浏览器业务例子通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/page/save.test.ts` 的"保存成功后按主键重读结果中写入的行""按钮成功后按主键重读结果中写到的行再显示"。浏览器（后端 8084 + d_cg、前端 9532，`.reports/batch4-20261030/p-pipeline-fixes/e2e/p3.out.json` 和 `p3-*.png`）：新建产品 392 的成本单 200835，命令结果中币种为空，保存后重读，页面马上显示"人民币"；"由BOM生成明细"后按实体重读原辅料 5 行、主表、包材 6 行，客户指定都是未勾选（不再是不确定状态），包材参考采购价 0.10、0.07、0.17、4.16、0.48，最后采购数量也显示，与重新打开后逐格相同；随后删掉。
   - 与任务描述不同的一处：额外投料量在按钮之后和重新打开后都是 0.00，不是"为空"。库里写的就是 0：写入管道对按钮新增的行也按 WP-16 把没配默认值的数值字段补 0；旧 P_COST_BOM_INSERT 不写这一列（为空）。要改在 `merge.IntentMerger`（审批通过的待审新增行也走这里，要按来源区分），没改，见 P 组汇报。
+
+### T-FP-13 测试模式下关掉表格的列虚拟化（端到端测试）
+
+- 归属与目标：FP-02 的"列虚拟化（测试模式专用）"。上一批重做端到端测试时试过视口 5000×1200：成本核算主表 43 列只渲染 26 列，明细 18 列全部渲染，工具 `cell()` 要在列不在视野里时横向逐段滚动（`.reports/batch4-20261030/e-e2e/findings.md` 第 4 条）。用户 2026-10-30 同意"只在 `vite --mode test` 下关掉列虚拟化（回归也要改成用 `build:test` 构建才生效）"。
+- 前置输入：AG Grid 35 的 `suppressColumnVirtualisation`（只在建表时读）；`.env.test` 与 `.env.prod` 的取值相同，两种构建只差 `import.meta.env.MODE`。
+- 负责范围：page 的 `grid-adapter/columns.ts`（开关）、`PageGrid.vue`、`LookupGrid.vue`；端到端用到列的另外两处表格一起改：config 的 `components/grid-columns.ts`、`ConfigGrid.vue`，approval 的 `renderers/grid-theme.ts`、`ApprovalViewGrid.vue`（前端模块之间不能互相导入，各放一份开关）；`frontend/package.json` 的 `test:e2e`；`frontend/tests/e2e/` 的 `support.ts`、`columns.spec.ts`、`g0-1030.spec.ts`、`batch-d.spec.ts`、`playwright-base.ts`。系统管理（人员、部门）、待办、审批进度的列固定，1600 宽放得下，不改。
+- 交付物：测试模式下上面这些表格一次渲染全部列，正式模式不变；`pnpm test:e2e` 先跑 `pnpm build:test`；`cell()` 不再横向滚，去掉 `headerShown`（改用 `header()` 在不在），`scrollToColumn` 只在悬停列头前按位置滚一次，g0 的汇总行一次读完、求和列不横向滚；`columns.spec.ts` 断言全部渲染。
+- 验收标准：测试模式 1600×900 下主表 43 列、原料/辅料和包材各 18 列全部渲染，并与页面视图的可见字段逐个对上；正式构建仍开着列虚拟化；测试模式构建由后端托管时接口地址仍是页面的 origin、AG Grid 授权照旧；回归、开发两种方式全量通过；记录前后用时。
+- 状态与证据：待独立复核（2026-10-30，V 组，`batch5/column-virtual`，提交 f170349 和本卡所在的提交；原始输出在 `.reports/batch5-20261030/v-column-virtual/`）。
+  - 测试模式：回归、开发全量各 30 条通过（`after-build-1.txt` 4.4m、`after-dev-3.txt` 4.5m；`after-dev-2.txt` 那次 E01 第二次打开页面时 Vite 代理转发 `/api/me` 报 `read ECONNRESET`、页面停在启动画面，与列虚拟化无关，重跑通过）。列数 43/43、18/18、18/18。
+  - 正式模式：`pnpm build` 产物里三处开关都是 `!1`（测试模式 `!0`，`flag-build-prod.txt`、`flag-build-test.txt`）；在正式产物上跑 `columns.spec.ts`，主表只渲染 9/43 列、明细 9/18 列，用例失败（预期如此，`run-columns-prod-build.txt`）。两种产物的接口地址都是 `window.location.origin`、没有 `/proxy-default`，授权字符串都是 538 个字符（`origin-license-*.txt`，只报长度）。
+  - `pnpm test` 35 个文件 535 个通过，`pnpm typecheck`、`pnpm lint:deps` 通过。
+  - 用时：全量（4 个 worker）回归 改前 4.0m / 4.1m、改后 4.4m / 5.5m；开发 改前 4.4m / 6.0m、改后 4.4m / 4.5m。同一份代码两次相差 1.4–1.6 分钟（机器负载 3%–78%，别的组也在用），总用时看不出变化。单 worker 跑 4 条（`*-w1-*.txt`）：g0 场景 1 汇总行 改前 9.3 / 8.1s → 改后 6.4 / 6.6s；E01 改前 19.6 / 14.4s → 改后 16.3 / 16.5s；cost-detail 两条情况相同。不再逐列滚动的用例变快，反复打开主表、保存重读的用例可能每条多 1–2s（全部列都渲染，格子多了），幅度小于负载的波动。
+  - d_cg 只读核对（`q01-结束后核对.out.txt`）：没有 PF_TEST 残留，冻结 0，审批仍是原来的 6 条。

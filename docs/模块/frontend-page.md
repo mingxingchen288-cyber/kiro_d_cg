@@ -20,6 +20,7 @@
 
 - FP-01：单表页只有主表区；主从页在主表区下面显示明细区，明细按 Tab 或堆叠显示，分隔线可以拖动。旧系统的主从嵌套模式不保留。
 - FP-02：主表用 AG Grid 服务端行模型，明细用客户端行模型，只给各行模型传它支持的参数（`cacheBlockSize` 只给主表，`groupDefaultExpanded` 只给明细）。行标识用 `rowKey` 或 `clientRowId`；新增行保存后换成正式主键，行节点不变。
+  - 列虚拟化（测试模式专用）：只在测试模式（`import.meta.env.MODE === 'test'`，即 `vite --mode test`：`pnpm dev`、`pnpm build:test`，端到端测试的两种运行方式都用它）下给主表、明细和 Lookup 结果设 `suppressColumnVirtualisation`，表格一次渲染全部列，端到端用例按 col-id 直接取格子、不用横向逐段滚动。来源：用户 2026-10-30 同意"只在 vite --mode test 下关掉列虚拟化（回归也改成用 build:test 构建）"。正式模式（`pnpm build`，`--mode prod`）不变，仍只渲染视野内的列（1600 宽时主表 43 列只渲染 9 列）。开关在 `grid-adapter/columns.ts`；配置页表格（frontend-config 的 `components/grid-columns.ts`）和审批的修改内容、受影响单据表格（frontend-approval 的 `renderers/grid-theme.ts`）同样处理。
 - FP-03：每行最前面固定一列展开图标。点击后，表单在主表区原地替换表格显示：表格只设为不可见，滚动位置和选中行保留；明细区不动。表单头部有返回、上一条、下一条。双击单元格照常进入单元格编辑。
 - FP-04：编辑缓冲按页面实例维护：修改值、新增行、删除标记、改动标记（沿用旧样式）、撤销和重做（表格和表单共用，关闭 AG Grid 自带的撤销）。保存时把全部修改生成一个命令（C02）。撤销、重做后命令中单据和行的先后、新增行的位置与当时相同。新增行中为空的字段不写进命令，由后端补默认值（WP-16）；数值字段例外，为空时写 null：后端对没写的数值字段补 0，用户清空的值会变成 0，必填也检查不到。
 - FP-05：编辑后在 Worker 中按 preview 阶段求值，请求中的 `old` 取编辑缓冲中的已提交值（从后端加载到的值），只刷新受影响行的单元格；预览结果只用于显示。
