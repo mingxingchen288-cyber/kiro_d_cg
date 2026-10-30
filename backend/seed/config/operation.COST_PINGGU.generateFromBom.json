@@ -1,0 +1,47 @@
+{
+  "type": "operation",
+  "key": "COST_PINGGU.generateFromBom",
+  "name": "由BOM生成明细",
+  "content": {
+    "label": "由BOM生成明细",
+    "kind": "action",
+    "writableFields": {
+      "COST_MATERIAL": [
+        "GOODSID",
+        "PER_HL",
+        "PRICE"
+      ],
+      "COST_PACKAGE": [
+        "GOODSID",
+        "PER_HL",
+        "PRICE"
+      ]
+    },
+    "impact": [
+      "COST_PINGGU",
+      "COST_MATERIAL",
+      "COST_PACKAGE"
+    ],
+    "actions": [
+      {
+        "action": "replaceDetails",
+        "entity": "COST_MATERIAL",
+        "sql": "SELECT V.GOODSID AS GOODSID, CASE WHEN DECODE(V.USEFLAG, 4, '原料', 2, '辅料', 3, '非印字包材', 5, '印字包材') IN ('原料', '辅料') THEN NVL(V.USEQTY, 0) / NULLIF(M.APEX_PL, 0) * 1000000 END AS PER_HL, F.PRICE AS PRICE FROM T_COST_PINGGU M JOIN CMX.T_COST_BOM_GOODS_TREE_V V ON V.TREEID LIKE '-' || :goodsId || '-%' JOIN T_COST_GOODS G ON G.GOODSID = V.GOODSID LEFT JOIN CMX.PUB_GOODS_V F ON F.GOODSID = V.GOODSID WHERE M.DOCID = :docId AND V.PID <> '-1' AND V.USEFLAG NOT IN (0, 1) AND G.USEFLAG IN ('原料', '辅料') ORDER BY V.TREEID",
+        "binds": {
+          "docId": "COST_PINGGU.DOCID",
+          "goodsId": "COST_PINGGU.GOODSID"
+        }
+      },
+      {
+        "action": "replaceDetails",
+        "entity": "COST_PACKAGE",
+        "sql": "SELECT V.GOODSID AS GOODSID, CASE WHEN DECODE(V.USEFLAG, 4, '原料', 2, '辅料', 3, '非印字包材', 5, '印字包材') IN ('原料', '辅料') THEN NVL(V.USEQTY, 0) / NULLIF(M.APEX_PL, 0) * 1000000 END AS PER_HL, F.PRICE AS PRICE FROM T_COST_PINGGU M JOIN CMX.T_COST_BOM_GOODS_TREE_V V ON V.TREEID LIKE '-' || :goodsId || '-%' JOIN T_COST_GOODS G ON G.GOODSID = V.GOODSID LEFT JOIN CMX.PUB_GOODS_V F ON F.GOODSID = V.GOODSID WHERE M.DOCID = :docId AND V.PID <> '-1' AND V.USEFLAG NOT IN (0, 1) AND G.USEFLAG IN ('非印字包材', '印字包材') ORDER BY V.TREEID",
+        "binds": {
+          "docId": "COST_PINGGU.DOCID",
+          "goodsId": "COST_PINGGU.GOODSID"
+        }
+      }
+    ],
+    "propagation": "end"
+  }
+}

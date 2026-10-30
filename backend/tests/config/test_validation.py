@@ -221,6 +221,15 @@ def test_related_sql_missing_row_key_column_rejected(env: Env) -> None:
     assert_rejected(found, "actions[0].find.sql", "只能是一条查询语句")
 
 
+def test_bom_sql_selecting_a_calculated_field_rejected(env: Env) -> None:
+    """C06 第 10 节的例子（v18）：seed 的"由BOM生成明细"能保存（`test_whole_world_passes`）；SQL 多选了 BATCH_QTY
+    （每批数量，计算字段）时拒绝保存，提示这一列由计算规则得出。"""
+    def change(c: dict[str, Any]) -> None:
+        c["actions"][0]["sql"] = c["actions"][0]["sql"].replace("F.PRICE AS PRICE", "F.PRICE AS PRICE, 0 AS BATCH_QTY")
+    found = problems(env, edited("operation", "COST_PINGGU.generateFromBom", change))
+    assert_rejected(found, "actions[0].sql", "BATCH_QTY 是计算字段，由计算规则得出")
+
+
 DATA_RULE = {"layer": "entity", "target": "COST_MATERIAL", "category": "calc", "field": "PRICE", "order": 5,
              "expression": "data.price", "dataItems": [{"name": "price", "sql": "SELECT NVL(ZX_PRICE, PRICE) AS P FROM T_COST_GOODS "
                                                        "WHERE GOODSID = :goodsId", "binds": {"goodsId": "GOODSID"}}]}

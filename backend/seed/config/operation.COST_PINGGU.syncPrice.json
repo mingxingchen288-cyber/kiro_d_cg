@@ -1,0 +1,43 @@
+{
+  "type": "operation",
+  "key": "COST_PINGGU.syncPrice",
+  "name": "同步采购价",
+  "content": {
+    "label": "同步采购价",
+    "kind": "action",
+    "writableFields": {
+      "COST_MATERIAL": [
+        "PRICE"
+      ],
+      "COST_PACKAGE": [
+        "PRICE"
+      ]
+    },
+    "impact": [
+      "COST_PINGGU",
+      "COST_MATERIAL",
+      "COST_PACKAGE"
+    ],
+    "actions": [
+      {
+        "action": "updateRows",
+        "entity": "COST_MATERIAL",
+        "sql": "SELECT D.DOCID AS DOC_ID, D.DTLID AS DTL_ID, G.PRICE AS PRICE FROM V_COST_PINGGU_MATERIAL D JOIN T_COST_GOODS G ON G.GOODSID = D.GOODSID WHERE G.USEFLAG NOT IN ('产成品', '半成品') AND DECODE(D.PRICE, G.PRICE, 0, 1) = 1 ORDER BY D.DOCID, D.DTLID",
+        "recordKeyColumn": "DOC_ID",
+        "rowKeyColumns": [
+          "DTL_ID"
+        ]
+      },
+      {
+        "action": "updateRows",
+        "entity": "COST_PACKAGE",
+        "sql": "SELECT D.DOCID AS DOC_ID, D.DTLID AS DTL_ID, G.PRICE AS PRICE FROM V_COST_PINGGU_PACKAGE D JOIN T_COST_GOODS G ON G.GOODSID = D.GOODSID WHERE G.USEFLAG NOT IN ('产成品', '半成品') AND DECODE(D.PRICE, G.PRICE, 0, 1) = 1 ORDER BY D.DOCID, D.DTLID",
+        "recordKeyColumn": "DOC_ID",
+        "rowKeyColumns": [
+          "DTL_ID"
+        ]
+      }
+    ],
+    "propagation": "end"
+  }
+}

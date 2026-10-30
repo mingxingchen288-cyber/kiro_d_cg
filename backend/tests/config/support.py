@@ -94,6 +94,12 @@ TABLES: dict[str, tuple[str, list[ColumnInfo], str | None]] = {
     "V_COST_PINGGU_PACKAGE_LQ": ("view", _cols(_DTL_LQ_VIEW), None),
     "T_CT_GOODS": ("table", _cols("GOODSID:N NAME:V PRICE:N"), "GOODSID"),
 }
+CMX_TABLES: dict[str, list[ColumnInfo]] = {
+    "T_COST_BOM_GOODS_TREE_V": _cols("TREEID:V PID:V GOODSID:N GOODSNAME:V USEFLAG:V STANDARDTYPE:V LVCODE:N USEQTY:N ENTRYID:N"),
+    "PUB_GOODS_V": _cols("GOODSID:N GOODSNAME:V GOODSNO:V PRICE:N SUQTY:N USEFLAG:V FACTORYNAME:V STANDARDTYPE:V ZX_PL:N "
+                         "ZX_MINIMUM:N APPROVEDOCNO:V BASEUNITQTY:N ZX_CUSTOMERID:N CUSTOMNAME:V TARGETMARKET:V HOLDERSNAME:V "
+                         "ISERP:N GOODSTYPE:V PACKTYPE:V TRANPOSNAME:V BOMID:N LASTSUQTY:N TRANPOSID:N"),
+}
 SEQUENCES = ["T_COST_PINGGU_SEQ", "T_COST_PINGGU_DTL_SEQ", "T_COST_GOODS_SEQ", "T_COST_PINGGU_LQ_SEQ",
              "T_COST_PINGGU_DTL_LQ_SEQ", "T_CT_GOODS_SEQ"]
 DEPARTMENTS = ["1069", "10"]
@@ -115,6 +121,11 @@ def install_sqlite(factory: FakeUnitOfWorkFactory, tables: dict[str, tuple[str, 
     raw.driver_connection.create_function("NVL", 2, lambda a, b: b if a is None else a)
     raw.close()
     with factory.engine.begin() as connection:
+        # cmx 的 BOM 树和物料视图（seed 的"由BOM生成明细"按旧 P_COST_BOM_INSERT 查它们，d_cg 中写作 CMX.<名称>）：
+        # 另挂一个名为 CMX 的库建同名表，列取自只读查询 .reports/batch1-20261029/bom-price/01-BOM候选产品.sql
+        connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS CMX")
+        for name, columns in CMX_TABLES.items():
+            connection.exec_driver_sql(f"CREATE TABLE CMX.{name} ({', '.join(f'{c.name} {c.data_type}' for c in columns)})")
         with Operations.context(MigrationContext.configure(connection)):
             cf_0001_pf_config.upgrade()
         connection.exec_driver_sql("CREATE TABLE DUAL (DUMMY VARCHAR2(1))")
