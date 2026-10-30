@@ -2,22 +2,28 @@
 
 用 d_cg 中已发布的审批流 COST_TO_GOODS（C06 7.8 去掉第 2 级：成本核算原辅料、包材的物料或单价有变化，并且单价与
 物料清单 NVL(执行价, 参考价格) 不同时进入审批；第 1 级"管理员审批"，或签，角色 ADMIN；冻结物料清单 T_COST_GOODS 中
-这个物料；通过后把单价写到物料清单的执行价）。数据为成本单 2550 原辅料 206323 聚维酮K30（物料 25，单价 75，执行价 75）。
+这个物料；通过后把单价写到物料清单的执行价，修改人写成通过的审批人，WP-20）。
 
-1. 从保存触发到最终批准（样例一），两名审批人或签同时通过：chengben01 把单价 75 改成 90 → 进入审批，2550 和物料清单 25
-   冻结，单价不写；审批详情按 C06 7.6 显示 75.00 → 90.00；冻结期间 admin 保存 2550 的备注返回 409 FROZEN_BY_APPROVAL，
-   这次保存的冻结查询就是可冻结业务多出的 1 条；admin 和另一个 ADMIN 角色的测试账号同时通过，只有一个生效，单价 90、
-   每批成本 900、主表汇总重算，物料清单执行价 90，冻结解除；用同一请求键再提交一次通过，返回原结果，不重复执行。
-   最后 chengben01 把单价改回 75（再走一次审批，admin 通过），2550 和物料清单 25 与改前相同。
-2. 最终批准中任一步失败整体回滚：测试另开一个连接锁住物料清单 25 这一行，admin 通过时写物料清单等锁 5 秒后返回
+数据自己建、自己删（sample_two.CreatedData）：两个测试 ERP 物料 A（参考价格 75、执行价为空，代替聚维酮K30）、B（参考
+价格 12.5，代替预胶化淀粉）；admin 经平台新建一张成本单，原辅料两行：A（每片含量 10、单价 75、金额 750）、B（每片含量 15、
+单价 12.5）。单价等于物料清单的单价，新建时不触发审批。不用 d_cg 已有的成本单 2550 和物料 25：通过时物料清单的修改人
+写成审批人，经平台改不回。
+
+1. 从保存触发到最终批准（样例一），两名审批人或签同时通过：chengben01 把 A 那一行的单价 75 改成 90 → 进入审批，
+   测试成本单和物料 A 冻结，单价不写；审批详情按 C06 7.6 显示 75.00 → 90.00；冻结期间 admin 保存这张单据的备注返回
+   409 FROZEN_BY_APPROVAL，这次保存的冻结查询就是可冻结业务多出的 1 条；admin 和另一个 ADMIN 角色的测试账号同时通过，
+   只有一个生效，单价 90、每批成本 900、主表汇总重算，物料 A 执行价 90、修改人为生效的审批人，冻结解除；用同一请求键
+   再提交一次通过，返回原结果，不重复执行。
+2. 最终批准中任一步失败整体回滚：测试另开一个连接锁住物料 A 这一行，admin 通过时写物料清单等锁 5 秒后返回
    409 DOCUMENT_BUSY；审批仍在第 1 级待处理，冻结还在，没有处理记录，单价、执行价都不变。释放锁后驳回。
-3. 审批提交与普通保存同时进行：chengben01 改单价（提交审批）和 admin 改 2550 主表备注同时提交，两个命令按 2550 的行锁
-   先后执行：先提交审批时，备注的保存返回 FROZEN_BY_APPROVAL；先保存备注时，备注写入，审批照常提交。驳回、改回备注。
-4. 两个命令同时为同一张单据发起审批：chengben01 改 206323 的单价、admin 改 206324 的单价同时提交，只有一个提交审批，
+3. 审批提交与普通保存同时进行：chengben01 改单价（提交审批）和 admin 改这张单据的主表备注同时提交，两个命令按单据的
+   行锁先后执行：先提交审批时，备注的保存返回 FROZEN_BY_APPROVAL；先保存备注时，备注写入，审批照常提交。驳回。
+4. 两个命令同时为同一张单据发起审批：chengben01 改 A 那一行的单价、admin 改 B 那一行的单价同时提交，只有一个提交审批，
    另一个返回 409 FROZEN_BY_APPROVAL（details 给出先提交的审批）。驳回。
 
-样例二（C06 7.9、7.10）在 d_cg 中没有配置，不在本文件中（见任务卡）。测试建的 ADMIN 角色账号、产生的审批、投递、
-站内通知和命令记录在结束时删掉（dcg.Cleanup）。
+样例二（C06 7.9、7.10）见 test_sample_two.py。测试建的 ADMIN 角色账号、产生的审批、投递、站内通知和命令记录在结束时
+删掉（dcg.Cleanup）；测试成本单经平台删除，测试物料和中途失败没删掉的单据直接按主键删，结束时核对几张业务表的行数
+与开始时相同。
 """
 
 from __future__ import annotations
@@ -25,6 +31,7 @@ from __future__ import annotations
 import secrets
 import threading
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
@@ -33,6 +40,7 @@ import pytest
 from sqlalchemy import Engine, text
 
 from .dcg import PAGE, Cleanup, detail_change, document, goods, rows, save_command
+from .sample_two import CreatedData, new_document
 from .servers import Backend, Browser
 
 pytestmark = [pytest.mark.oracle, pytest.mark.redis]
@@ -40,9 +48,7 @@ pytestmark = [pytest.mark.oracle, pytest.mark.redis]
 D = Decimal
 ADMIN = ("admin", "admin123..")
 ACCOUNTANT = ("chengben01", "Abc123..")
-DOCID = 2550
-K30 = "206323"
-PREGEL = "206324"
+MARKER = "PF_TEST test_batch_c"
 
 
 @pytest.fixture(scope="module")
@@ -61,19 +67,42 @@ def accountant(servers: list[Backend]) -> Iterator[Browser]:
     browser.close()
 
 
+@dataclass(frozen=True)
+class Doc:
+    """测试成本单：主键、A、B 两行明细的主键和两个测试物料。"""
+
+    docid: str
+    row_a: str
+    row_b: str
+    goods_a: str
+    goods_b: str
+
+    def snapshot(self, dcg: Engine) -> tuple[Any, Any]:
+        """成本单（主表、明细）和物料 A 的当前行。"""
+        return document(dcg, int(self.docid)), goods(dcg, int(self.goods_a))
+
+
 @pytest.fixture
-def before(admin: Browser, accountant: Browser, dcg: Engine, cleanup: Cleanup) -> Iterator[tuple[Any, Any]]:
-    """改前的 2550 和物料清单 25；测试结束时核对两者都已恢复。测试在单价已写成 90 之后中途失败时，先驳回本测试还在
-    审批中的审批，再经平台把单价改回（再走一次审批、admin 通过）。"""
-    snapshot = (document(dcg, DOCID), goods(dcg, 25))
-    original = by_key(snapshot[0][1], K30)["price"]
-    yield snapshot
-    if by_key(document(dcg, DOCID)[1], K30)["price"] != original:
-        for approval_id in cleanup.approvals:
-            if approval_state(dcg, approval_id)["status"] == "pending":
-                reject(admin, cleanup, approval_id)
-        approve(admin, cleanup, submitted(save(accountant, cleanup, price(K30, str(original)))))
-    assert (document(dcg, DOCID), goods(dcg, 25)) == snapshot
+def doc(admin: Browser, dcg: Engine, cleanup: Cleanup) -> Iterator[Doc]:
+    """建测试物料 A、B 和测试成本单；结束时先驳回本测试还在审批中的审批（解冻），再经平台删成本单，最后直接删测试物料
+    和没删掉的单据，核对业务表行数与开始时相同。"""
+    created = CreatedData(dcg)
+    counts = created.counts()
+    goods_a, goods_b = created.add_erp_goods("75"), created.add_erp_goods("12.5")
+    new, master_id, (id_a, id_b) = new_document(MARKER, [{"GOODSID": goods_a, "PER_HL": "10", "PRICE": "75"},
+                                                         {"GOODSID": goods_b, "PER_HL": "15", "PRICE": "12.5"}])
+    result = save(admin, cleanup, [new]).json()
+    assert result["outcome"] == "saved", result
+    docid = str(result["idMap"][master_id])
+    created.docids.append(docid)
+    yield Doc(docid, str(result["idMap"][id_a]), str(result["idMap"][id_b]), goods_a, goods_b)
+    for approval_id in cleanup.approvals:
+        if approval_state(dcg, approval_id)["status"] == "pending":
+            reject(admin, cleanup, approval_id)
+    deleted = save(admin, cleanup, [{"entity": PAGE, "master": {"op": "delete", "rowKey": docid}, "details": []}])
+    assert deleted.status_code == 200 and deleted.json()["outcome"] == "saved", deleted.text
+    created.drop_all()
+    assert created.counts() == counts
 
 
 def save(browser: Browser, cleanup: Cleanup, documents: list[dict[str, Any]]) -> httpx.Response:
@@ -83,20 +112,20 @@ def save(browser: Browser, cleanup: Cleanup, documents: list[dict[str, Any]]) ->
     return response
 
 
-def price(dtlid: str, value: str) -> list[dict[str, Any]]:
-    return [detail_change("2550", "COST_MATERIAL", dtlid, {"PRICE": value})]
+def price(doc: Doc, dtlid: str, value: str) -> list[dict[str, Any]]:
+    return [detail_change(doc.docid, "COST_MATERIAL", dtlid, {"PRICE": value})]
 
 
-def memo(value: str | None) -> list[dict[str, Any]]:
-    return [{"entity": PAGE, "master": {"op": "modify", "rowKey": "2550", "changes": {"MEMO": value}}, "details": []}]
+def memo(doc: Doc, value: str | None) -> list[dict[str, Any]]:
+    return [{"entity": PAGE, "master": {"op": "modify", "rowKey": doc.docid, "changes": {"MEMO": value}}, "details": []}]
 
 
-def submitted(response: httpx.Response) -> str:
+def submitted(doc: Doc, response: httpx.Response) -> str:
     assert response.status_code == 200, response.text
     result = response.json()
     assert result["outcome"] == "approvalSubmitted", result
     [approval] = result["approvals"]
-    assert approval["document"] == {"entity": PAGE, "recordKey": "2550"} and approval["flows"] == ["COST_TO_GOODS"]
+    assert approval["document"] == {"entity": PAGE, "recordKey": doc.docid} and approval["flows"] == ["COST_TO_GOODS"]
     return str(approval["approvalId"])
 
 
@@ -105,12 +134,6 @@ def pass_body(browser: Browser, cleanup: Cleanup, approval_id: str) -> dict[str,
     detail = browser.ok(browser.get(f"/api/approvals/{approval_id}"))
     return {"requestKey": cleanup.key(), "fingerprint": detail["fingerprint"], "checkedRows": [], "comment": "G5 联调通过",
             "params": {}}
-
-
-def approve(browser: Browser, cleanup: Cleanup, approval_id: str) -> dict[str, Any]:
-    result = browser.ok(browser.post(f"/api/approvals/{approval_id}/pass", pass_body(browser, cleanup, approval_id)))
-    assert result["outcome"] == "approvalProcessed" and result["approvals"][0]["status"] == "approved", result
-    return result
 
 
 def reject(browser: Browser, cleanup: Cleanup, approval_id: str) -> None:
@@ -127,8 +150,10 @@ def approval_state(dcg: Engine, approval_id: str) -> dict[str, Any]:
     return {**record, "freezes": freezes, "actions": actions}
 
 
-PENDING = {"status": "pending", "current_level": 1, "pending_status": "pending",
-           "freezes": {("T_COST_PINGGU", "2550"), ("T_COST_GOODS", "25")}, "actions": []}
+def pending(doc: Doc, goodsid: str) -> dict[str, Any]:
+    """第 1 级待处理：冻结测试成本单和这个物料，还没有处理记录。"""
+    return {"status": "pending", "current_level": 1, "pending_status": "pending",
+            "freezes": {("T_COST_PINGGU", doc.docid), ("T_COST_GOODS", goodsid)}, "actions": []}
 
 
 def together(*calls: Callable[[], httpx.Response]) -> list[httpx.Response]:
@@ -183,11 +208,12 @@ def second_approver(admin: Browser, servers: list[Backend], cleanup: Cleanup) ->
 # ---------------------------------------------------------------- 1：从保存到最终批准、或签同时通过、重复批准
 
 def test_save_to_final_approval_or_sign_at_once_and_replay(admin: Browser, accountant: Browser, second_approver: Browser,
-                                                           dcg: Engine, cleanup: Cleanup, before: tuple[Any, Any]) -> None:
+                                                           dcg: Engine, cleanup: Cleanup, doc: Doc) -> None:
+    before = doc.snapshot(dcg)
     (master0, details0), goods0 = before
-    approval_id = submitted(save(accountant, cleanup, price(K30, "90")))
-    assert approval_state(dcg, approval_id) == PENDING
-    assert (document(dcg, DOCID), goods(dcg, 25)) == before  # 审批结束前不写业务表
+    approval_id = submitted(doc, save(accountant, cleanup, price(doc, doc.row_a, "90")))
+    assert approval_state(dcg, approval_id) == pending(doc, doc.goods_a)
+    assert doc.snapshot(dcg) == before  # 审批结束前不写业务表
 
     detail = admin.ok(admin.get(f"/api/approvals/{approval_id}"))
     [step] = detail["steps"]
@@ -201,13 +227,14 @@ def test_save_to_final_approval_or_sign_at_once_and_replay(admin: Browser, accou
 
     # 冻结期间的普通保存：加锁读取之后的冻结查询（可冻结业务多出的 1 条）查到本审批，整笔拒绝
     key = cleanup.key()
-    frozen = admin.post("/api/commands", save_command(key, memo("G5 冻结中")))
+    frozen = admin.post("/api/commands", save_command(key, memo(doc, "G5 冻结中")))
     assert frozen.status_code == 409 and frozen.json()["code"] == "FROZEN_BY_APPROVAL", frozen.text
     assert frozen.json()["details"][0]["approvalId"] == approval_id
     sql = review_sql(admin, key)
     assert [s.split(" ")[0] for s in sql] == ["INSERT", "SELECT", "SELECT"] and "PF_APPROVAL_FREEZE" in sql[2].upper()
 
     # 或签：两名审批人同时通过，只有一个生效
+    approvers = [admin, second_approver]
     bodies = [pass_body(admin, cleanup, approval_id), pass_body(second_approver, cleanup, approval_id)]
     responses = together(lambda: admin.post(f"/api/approvals/{approval_id}/pass", bodies[0]),
                          lambda: second_approver.post(f"/api/approvals/{approval_id}/pass", bodies[1]))
@@ -220,41 +247,39 @@ def test_save_to_final_approval_or_sign_at_once_and_replay(admin: Browser, accou
     print(f"或签同时通过：{['admin', '测试审批人'][won]} 生效，另一人 403 {lost['message']}")
     assert approval_state(dcg, approval_id) == {"status": "approved", "current_level": 1, "pending_status": "applied",
                                                 "freezes": set(), "actions": ["pass"]}
-    master1, details1 = document(dcg, DOCID)
-    k30 = by_key(details1, K30)
-    assert (D(str(k30["price"])), D(str(k30["cost_batch"]))) == (D(90), D(900))
-    assert [d for d in details1 if str(d["dtlid"]) != K30] == [d for d in details0 if str(d["dtlid"]) != K30]
-    fl = D(str(master0["total_fl"])) + D(150) / D("1.13")  # 辅料合计多 150（750 → 900），有原料时除以 1.13
-    assert abs(D(str(master1["total_fl"])) - fl) <= D("0.00000002")
-    assert master1["memo"] == master0["memo"]
-    goods1 = goods(dcg, 25)
-    assert D(str(goods1["zx_price"])) == D(90) and {**goods1, "zx_price": goods0["zx_price"]} == goods0
+    master1, details1 = document(dcg, int(doc.docid))
+    row_a = by_key(details1, doc.row_a)
+    assert (D(str(row_a["price"])), D(str(row_a["cost_batch"]))) == (D(90), D(900))
+    assert [d for d in details1 if str(d["dtlid"]) != doc.row_a] == [d for d in details0 if str(d["dtlid"]) != doc.row_a]
+    # 辅料合计多 150（750 → 900）；这张单据没有原料，不除以 1.13
+    assert D(str(master1["total_fl"])) == D(str(master0["total_fl"])) + D(150)  # type: ignore[index]
+    assert master1["memo"] == master0["memo"]  # type: ignore[index]
+    # 物料 A：执行价 90，修改人为生效的审批人（WP-20），其余列不变
+    goods1 = goods(dcg, int(doc.goods_a))
+    assert (D(str(goods1["zx_price"])), goods1["update_by"]) == (D(90), approvers[won].login["user"]["username"])
+    assert {**goods1, "zx_price": goods0["zx_price"], "update_by": goods0["update_by"]} == goods0
 
     # 重复批准：同一请求键再提交，返回原结果，不重复执行
-    winner = [admin, second_approver][won]
-    replay = winner.post(f"/api/approvals/{approval_id}/pass", bodies[won])
+    replay = approvers[won].post(f"/api/approvals/{approval_id}/pass", bodies[won])
     assert replay.status_code == 200 and replay.json() == result
     assert approval_state(dcg, approval_id)["actions"] == ["pass"]
-    assert (document(dcg, DOCID), goods(dcg, 25)) == ((master1, details1), goods1)
-
-    # 改回 75：75 与执行价 90 不同，再走一次审批
-    back = submitted(save(accountant, cleanup, price(K30, "75")))
-    approve(admin, cleanup, back)
+    assert doc.snapshot(dcg) == ((master1, details1), goods1)
 
 
 # ---------------------------------------------------------------- 2：最终批准中一步失败，整体回滚
 
 def test_final_approval_step_fails_and_rolls_back(admin: Browser, accountant: Browser, dcg: Engine, cleanup: Cleanup,
-                                                  before: tuple[Any, Any]) -> None:
-    approval_id = submitted(save(accountant, cleanup, price(K30, "90")))
+                                                  doc: Doc) -> None:
+    before = doc.snapshot(dcg)
+    approval_id = submitted(doc, save(accountant, cleanup, price(doc, doc.row_a, "90")))
     body = pass_body(admin, cleanup, approval_id)
-    with dcg.connect() as holder:  # 另一个会话锁住物料清单 25，最终批准写执行价时等锁超时
-        holder.execute(text("SELECT goodsid FROM t_cost_goods WHERE goodsid = 25 FOR UPDATE"))
+    with dcg.connect() as holder:  # 另一个会话锁住物料 A，最终批准写执行价时等锁超时
+        holder.execute(text("SELECT goodsid FROM t_cost_goods WHERE goodsid = :g FOR UPDATE"), {"g": int(doc.goods_a)})
         response = admin.post(f"/api/approvals/{approval_id}/pass", body)
         holder.rollback()
     assert response.status_code == 409 and response.json()["code"] == "DOCUMENT_BUSY", response.text
-    assert approval_state(dcg, approval_id) == PENDING  # 处理记录、状态、解冻都回滚了
-    assert (document(dcg, DOCID), goods(dcg, 25)) == before
+    assert approval_state(dcg, approval_id) == pending(doc, doc.goods_a)  # 处理记录、状态、解冻都回滚了
+    assert doc.snapshot(dcg) == before
     assert rows(dcg, "SELECT 1 FROM pf_command WHERE request_key = :k", k=body["requestKey"]) == []
     reject(admin, cleanup, approval_id)
 
@@ -262,46 +287,44 @@ def test_final_approval_step_fails_and_rolls_back(admin: Browser, accountant: Br
 # ---------------------------------------------------------------- 3：审批提交与普通保存同时进行
 
 def test_submission_and_plain_save_at_the_same_time(admin: Browser, accountant: Browser, dcg: Engine, cleanup: Cleanup,
-                                                    before: tuple[Any, Any]) -> None:
-    (master0, _), _ = before
+                                                    doc: Doc) -> None:
+    (master0, _), _ = doc.snapshot(dcg)
     keys = cleanup.key(), cleanup.key()
-    submit, plain = together(lambda: accountant.post("/api/commands", save_command(keys[0], price(K30, "90"))),
-                             lambda: admin.post("/api/commands", save_command(keys[1], memo("G5 同时保存"))))
-    approval_id = submitted(submit)
+    submit, plain = together(lambda: accountant.post("/api/commands", save_command(keys[0], price(doc, doc.row_a, "90"))),
+                             lambda: admin.post("/api/commands", save_command(keys[1], memo(doc, "G5 同时保存"))))
+    approval_id = submitted(doc, submit)
     cleanup.result(submit.json())
     if plain.status_code == 200:
         print("先执行备注的保存，再提交审批")
         assert plain.json()["outcome"] == "saved"
-        assert document(dcg, DOCID)[0]["memo"] == "G5 同时保存"  # type: ignore[index]
+        assert document(dcg, int(doc.docid))[0]["memo"] == "G5 同时保存"  # type: ignore[index]
     else:
         print("先提交审批，备注的保存被冻结拒绝")
         assert (plain.status_code, plain.json()["code"]) == (409, "FROZEN_BY_APPROVAL"), plain.text
         assert plain.json()["details"][0]["approvalId"] == approval_id
-        assert document(dcg, DOCID)[0]["memo"] == master0["memo"]  # type: ignore[index]
-    assert approval_state(dcg, approval_id) == PENDING
-    assert D(str(by_key(document(dcg, DOCID)[1], K30)["price"])) == D(75)
+        assert document(dcg, int(doc.docid))[0]["memo"] == master0["memo"]  # type: ignore[index]
+    assert approval_state(dcg, approval_id) == pending(doc, doc.goods_a)
+    assert D(str(by_key(document(dcg, int(doc.docid))[1], doc.row_a)["price"])) == D(75)
     reject(admin, cleanup, approval_id)
-    if plain.status_code == 200:
-        assert save(admin, cleanup, memo(master0["memo"])).json()["outcome"] == "saved"
 
 
 # ---------------------------------------------------------------- 4：两个命令同时为同一张单据发起审批
 
 def test_two_submissions_for_one_document_only_one_succeeds(admin: Browser, accountant: Browser, dcg: Engine,
-                                                            cleanup: Cleanup, before: tuple[Any, Any]) -> None:
+                                                            cleanup: Cleanup, doc: Doc) -> None:
+    before = doc.snapshot(dcg)
     keys = cleanup.key(), cleanup.key()
-    responses = together(lambda: accountant.post("/api/commands", save_command(keys[0], price(K30, "90"))),
-                         lambda: admin.post("/api/commands", save_command(keys[1], price(PREGEL, "13"))))
+    responses = together(lambda: accountant.post("/api/commands", save_command(keys[0], price(doc, doc.row_a, "90"))),
+                         lambda: admin.post("/api/commands", save_command(keys[1], price(doc, doc.row_b, "13"))))
     assert sorted(r.status_code for r in responses) == [200, 409], [r.text for r in responses]
     won = next(i for i, r in enumerate(responses) if r.status_code == 200)
-    approval_id = submitted(responses[won])
+    approval_id = submitted(doc, responses[won])
     cleanup.result(responses[won].json())
     lost = responses[1 - won].json()
-    print(f"同时发起审批：{['chengben01 改 206323', 'admin 改 206324'][won]} 提交成功，另一个 {lost['code']}")
+    print(f"同时发起审批：{['chengben01 改物料 A 那一行', 'admin 改物料 B 那一行'][won]} 提交成功，另一个 {lost['code']}")
     assert lost["code"] == "FROZEN_BY_APPROVAL" and lost["details"][0]["approvalId"] == approval_id
-    frozen_goods = ["25", "68"][won]
-    assert approval_state(dcg, approval_id) == {**PENDING, "freezes": {("T_COST_PINGGU", "2550"), ("T_COST_GOODS", frozen_goods)}}
-    pending = rows(dcg, "SELECT approval_id FROM pf_approval WHERE source_key = '2550' AND status = 'pending'")
-    assert [str(r["approval_id"]) for r in pending] == [approval_id]
-    assert (document(dcg, DOCID), goods(dcg, 25)) == before
+    assert approval_state(dcg, approval_id) == pending(doc, [doc.goods_a, doc.goods_b][won])
+    waiting = rows(dcg, "SELECT approval_id FROM pf_approval WHERE source_key = :d AND status = 'pending'", d=doc.docid)
+    assert [str(r["approval_id"]) for r in waiting] == [approval_id]
+    assert doc.snapshot(dcg) == before
     reject(admin, cleanup, approval_id)

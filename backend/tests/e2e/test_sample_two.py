@@ -227,9 +227,10 @@ def test_goods_price_change_updates_only_checked_documents(admin: Browser, tech:
         dcg, "SELECT block, row_key, checked FROM pf_approval_affected WHERE approval_id = :a", a=int(approval_id))}
     assert checked_in_db == {("costMaterial", d1_row, 1), ("costMaterial", d2_row, 0), ("lqMaterial", lq_row, 1)}
 
-    # 物料清单执行价 12，其他列不变
+    # 物料清单执行价 12，修改人为通过的审批人 admin（WP-20），其他列不变
     goods_after = goods_row(dcg, goodsid)
-    assert D(str(goods_after["zx_price"])) == D(12) and {**goods_after, "zx_price": None} == goods_before
+    assert (D(str(goods_after["zx_price"])), goods_after["update_by"]) == (D(12), "admin")
+    assert {**goods_after, "zx_price": None, "update_by": goods_before["update_by"]} == goods_before
     # D1：单价 12，金额重算 120，主表辅料合计 120（没有原料，不除以 1.13）
     d1_master, d1_details = master_row(dcg, d1), detail_rows(dcg, d1)
     assert (D(str(d1_details[0]["price"])), D(str(d1_details[0]["cost_batch"]))) == (D(12), D(120))

@@ -103,9 +103,21 @@ def is_schema_query(sql: str) -> bool:
     return "USER_TAB_COLUMNS" in sql.upper()
 
 
+def is_config_refresh(sql: str) -> bool:
+    """重读配置（config 的 pf_config_item）：同一次运行中别的测试刚发布过配置、代次变了，这个进程之后的第一个命令先重读
+    一次；单独运行本文件时没有。"""
+    return "FROM PF_CONFIG_ITEM" in sql.upper()
+
+
+def once(sql: list[str]) -> int:
+    """进程内只在某个命令中出现一次、不计入 WP-10 的语句条数：列定义、重读配置。"""
+    return sum(map(is_schema_query, sql)) + sum(map(is_config_refresh, sql))
+
+
 def counted(sql: list[str]) -> list[str]:
-    """WP-10 计数的语句：去掉冻结查询、审批入口条件和进程内只读一次的列定义。"""
-    return [s for s in sql if not (is_freeze_query(s) or is_entry_condition(s) or is_schema_query(s))]
+    """WP-10 计数的语句：去掉冻结查询、审批入口条件和进程内只读一次的列定义、重读配置。"""
+    return [s for s in sql
+            if not (is_freeze_query(s) or is_entry_condition(s) or is_schema_query(s) or is_config_refresh(s))]
 
 
 def kinds(sql: list[str]) -> list[str]:
@@ -158,7 +170,7 @@ def test_one_cell_saves_and_sql_counts(admin: Browser, dcg: Engine, cleanup: Cle
     sql = sql_of(admin, key, "改主表一个字段（MEMO）")
     assert sum(map(is_freeze_query, sql)) == 1 and sum(map(is_schema_query, sql)) <= 1, "\n".join(sql)
     assert kinds(counted(sql)) == ["INSERT", "SELECT", "UPDATE", "UPDATE"], "\n".join(sql)
-    assert len(sql) == 5 + sum(map(is_schema_query, sql))
+    assert len(sql) == 5 + once(sql)
     master_after, details_after = document(dcg, DOCID)
     assert master_after == {**master_before, "memo": "G5 联调备注"}
     assert details_after == details_before
@@ -184,7 +196,7 @@ def test_one_cell_saves_and_sql_counts(admin: Browser, dcg: Engine, cleanup: Cle
     assert sum(map(is_schema_query, sql)) <= 1, "\n".join(sql)
     assert kinds(core) == ["INSERT", "SELECT", "SELECT", "UPDATE", "UPDATE", "UPDATE"], "\n".join(sql)
     assert "FOR UPDATE" in core[1].upper() and "UNION ALL" in core[2].upper(), "\n".join(sql)
-    assert len(sql) == 8 + sum(map(is_schema_query, sql))
+    assert len(sql) == 8 + once(sql)
 
     master_after, details_after = document(dcg, DOCID)
     changed = by_key(details_after, PREGEL)
