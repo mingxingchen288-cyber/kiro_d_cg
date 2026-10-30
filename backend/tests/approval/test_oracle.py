@@ -225,3 +225,23 @@ def test_freeze_unique_on_oracle(engine: Engine) -> None:
         harness.freeze(t.FreezeEntry("990002", "T_COST_PINGGU", "2550"))
     harness.close()
     assert caught.value.code is t.ErrorCode.FROZEN_BY_APPROVAL
+
+
+# ---------------------------------------------------------------- T-AP-9：全部审批、一张单据的审批、审批记录（只读）
+
+def test_lists_and_history_read_existing_approvals_on_d_cg(uow: object) -> None:
+    """d_cg 中已有的审批都能读出（`box=all` 读全部审批）；按来源单据、按编号、处理记录的查询在 Oracle 上可以执行，结果一致。"""
+    store = ApprovalStore()
+    everything = store.everything(uow)  # type: ignore[arg-type]
+    ids = [r.approval_id for r in everything]
+    assert ids == sorted(ids, key=int, reverse=True)
+    if not everything:
+        return
+    first = everything[0]
+    assert [r.approval_id for r in store.by_ids(uow, ids[:3])] == ids[:3]  # type: ignore[arg-type]
+    same = store.by_source(uow, first.source.entity, first.source.record_key)  # type: ignore[arg-type]
+    assert first.approval_id in [r.approval_id for r in same]
+    assert all(r.source == first.source for r in same)
+    for record in everything[:5]:
+        processed = store.records(uow, record.approval_id)  # type: ignore[arg-type]
+        assert [p.seq for p in processed] == sorted(p.seq for p in processed)

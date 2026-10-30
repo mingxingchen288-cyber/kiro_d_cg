@@ -1764,6 +1764,9 @@ class ViewMasterTable(Wire):
     title: str
     columns: list[str]
     rows: list[ViewRow]
+    widths: list[Int | None] | None = None
+    """C09 v14：各列的宽度，与 `columns` 一一对应，取 C06 7.5 `display[].columns[].width`，没配的为 null（前端按 170
+    显示，同旧系统 `ApprovalPresentationGrid.vue` 第 188 行）；v14 之前结束时存下的修改内容没有这一项，省略。"""
 
 
 class ViewDetailTable(Wire):
@@ -1771,6 +1774,8 @@ class ViewDetailTable(Wire):
     title: str
     columns: list[str]
     rows: list[ViewRow]
+    widths: list[Int | None] | None = None
+    """同 `ViewMasterTable.widths`。"""
 
 
 class ViewAffectedTable(Wire):
@@ -1784,6 +1789,8 @@ class ViewAffectedTable(Wire):
     """当前用户这次通过能不能改勾选。"""
     columns: list[str]
     rows: list[ViewRow]
+    widths: list[Int | None] | None = None
+    """同 `ViewMasterTable.widths`。"""
 
 
 class ApprovalView(Wire):
@@ -1796,6 +1803,17 @@ class ApprovalActions(Wire):
     can_pass: Bool
     can_reject: Bool
     can_withdraw: Bool
+
+
+class ApprovalHistoryItem(Wire):
+    """审批记录的一条（C09 v14）：提交、通过、驳回、撤回各一条，按时间先后排列；`comment` 为意见、驳回原因或撤回原因。"""
+
+    action: Literal["submit", "pass", "reject", "withdraw"]
+    level: Int
+    """提交为 1；通过、驳回为处理时所在的级别；撤回为撤回时的当前级别。"""
+    by: UserBrief
+    at: DateTimeText
+    comment: str | None
 
 
 class ApprovalDetail(Wire):
@@ -1815,6 +1833,8 @@ class ApprovalDetail(Wire):
     params: list[FlowParam]
     """当前用户这次通过要填写的人工参数（C06 7.1）；不需要填写时为空数组。"""
     actions: ApprovalActions
+    history: list[ApprovalHistoryItem]
+    """C09 v14：审批记录（旧系统审批详情底部的"审批记录（N）"，`WF_APPROVAL_LOG`）。"""
     view_unsaved: TrueValue | None = None
     """已结束的审批没有保存结束那一刻的修改内容时为 true，`view` 的各表为空（C06 7.6、C09 第 6 节）。"""
 

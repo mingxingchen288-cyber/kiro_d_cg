@@ -1,5 +1,5 @@
 /**
- * 外壳的运行时（单例）：创建 ShellApi 依赖的 HTTP 客户端、实时连接、计算客户端，以及会话、通知、页签标记和模块注册。
+ * 外壳的运行时（单例）：创建 ShellApi 依赖的 HTTP 客户端、实时连接、计算客户端，以及会话、通知、铃铛角标、页签标记和模块注册。
  * main.ts 在创建 Pinia 之后、加载路由之前调用 `installModules`，把 `src/modules/` 下的模块注册到外壳（C11）。
  */
 import { router } from '@/router';
@@ -17,6 +17,7 @@ import { ModuleRegistry } from './registry';
 import { type SessionStore, ShellSession, type StoredSession } from './session';
 import { createShellApi } from './shell-api';
 import { DirtyTabs } from './tabs';
+import { TodoCount } from './todo-count';
 
 const STORAGE_KEY = `${import.meta.env.VITE_STORAGE_PREFIX ?? ''}shell-session`;
 
@@ -42,6 +43,8 @@ function wsUrl() {
 export interface ShellRuntime {
   session: ShellSession;
   inbox: Inbox;
+  /** 铃铛角标：待我审批数（FS-06） */
+  todo: TodoCount;
   realtime: ShellRealtimeClient;
   dirtyTabs: DirtyTabs;
   registry: ModuleRegistry;
@@ -64,6 +67,7 @@ export function shellRuntime(): ShellRuntime {
     }
   });
   const inbox = new Inbox({ api: createPlatformApi(http), realtime, navigate: link => router.push(link) });
+  const todo = new TodoCount({ api: createPlatformApi(http), realtime });
   const dirtyTabs = new DirtyTabs();
   session = new ShellSession({
     http: baseHttp,
@@ -79,10 +83,12 @@ export function shellRuntime(): ShellRuntime {
         inbox.start().catch((error: unknown) => {
           if (!sessionProblemOf(error)) window.$message?.error(error instanceof Error ? error.message : String(error));
         });
+        void todo.start();
       },
       onEnded() {
         realtime.stop();
         inbox.stop();
+        todo.stop();
       }
     }
   });
@@ -97,8 +103,12 @@ export function shellRuntime(): ShellRuntime {
     calc: createLazyCalc(),
     session,
     tabs: {
+      // `path` 可以带查询参数（C11 v3，例如 `/page/COST_PINGGU?record=2550`）：页签按路径区分，已打开的页签换到这个地址，
+      // 之后切回这个页签时用的是最近一次打开的地址
       open(path, title) {
-        useTabStore().setTabTitle(path, title);
+        const tabStore = useTabStore();
+        tabStore.setTabTitle(path, title);
+        tabStore.setTabFullPath(path);
         router.push(path);
       },
       close(path) {
@@ -112,9 +122,12 @@ export function shellRuntime(): ShellRuntime {
       success: text => window.$message?.success(text),
       warning: text => window.$message?.warning(text),
       error: text => window.$message?.error(text)
+    },
+    bell: {
+      refresh: () => void todo.refresh()
     }
   });
-  runtime = { session, inbox, realtime, dirtyTabs, registry: new ModuleRegistry(), api };
+  runtime = { session, inbox, todo, realtime, dirtyTabs, registry: new ModuleRegistry(), api };
   return runtime;
 }
 

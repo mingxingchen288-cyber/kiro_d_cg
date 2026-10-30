@@ -46,12 +46,21 @@ export interface ShellApi {
     configVersion: Readonly<Ref<number>>;
   };
   tabs: {
+    /**
+     * 打开页签。`path` 可以带查询参数（C11 v3，例如 `/page/COST_PINGGU?record=2550`）：页签仍按路径区分，
+     * 已打开的页签换到这个地址
+     */
     open(path: string, title: string): void;
     close(path: string): void;
     /** 有未保存修改时，关闭页签前确认 */
     setDirty(path: string, dirty: boolean): void;
   };
   message: { success(text: string): void; warning(text: string): void; error(text: string): void };
+  /**
+   * C11 v3：顶栏铃铛。角标为待我审批的审批数（`GET /api/approvals?box=todo` 的条数，C09 v14）；
+   * 模块处理了审批（通过、驳回、撤回成功）后调用 `refresh`，外壳重新读取
+   */
+  bell: { refresh(): void };
 }
 
 export interface FrontendModule {

@@ -66,16 +66,34 @@ export const useTabStore = defineStore(SetupStoreId.Tab, () => {
     return titles.value[tab.id] || routeStore.menuTitleOfPath(tab.routePath) || tab.label || tab.id;
   }
 
+  /** 地址对应的页签 id：带查询参数的地址（C11 v3，例如 `/page/COST_PINGGU?record=2550`）按路由算出 id（通常就是路径） */
+  function tabIdOfPath(path: string) {
+    if (!path.includes('?')) return path;
+    return getTabIdByRoute(router.resolve(path) as unknown as App.Global.TabRoute);
+  }
+
   /**
    * 设置页签标题（`ShellApi.tabs.open`）；页签还没打开时，打开后用这个标题
    *
-   * @param path 页签路径
+   * @param path 页签路径，可以带查询参数
    * @param title 标题
    */
   function setTabTitle(path: string, title: string) {
-    titles.value = { ...titles.value, [path]: title };
-    const tab = tabs.value.find(item => item.id === path);
+    const id = tabIdOfPath(path);
+    titles.value = { ...titles.value, [id]: title };
+    const tab = tabs.value.find(item => item.id === id);
     if (tab) tab.label = title;
+  }
+
+  /**
+   * 已打开的页签换到这个地址（`ShellApi.tabs.open`，C11 v3）：切回这个页签时用最近一次打开的地址。
+   * 例如成本核算页签是从"原单据"带 `?record=2550` 打开的，页面定位后改回 `/page/COST_PINGGU`，切回来时不再定位一次。
+   *
+   * @param path 页签地址，可以带查询参数
+   */
+  function setTabFullPath(path: string) {
+    const tab = tabs.value.find(item => item.id === tabIdOfPath(path));
+    if (tab) tab.fullPath = path;
   }
 
   /** Init home tab */
@@ -411,6 +429,7 @@ export const useTabStore = defineStore(SetupStoreId.Tab, () => {
     tabs: allTabs,
     titles,
     setTabTitle,
+    setTabFullPath,
     activeTabId,
     homeTab,
     initHomeTab,

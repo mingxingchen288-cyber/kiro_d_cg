@@ -1,9 +1,10 @@
 """C09 第 6 节的审批接口背后的处理：待办列表、审批详情、预览（只读，不加锁），以及把通过、驳回、撤回转成命令交给
 orchestration 的 `CommandExecutor`（C02 第 1 节、架构 10.4）。
 
+- 列表（AP-24，C09 v14）：待审批、我的发起、全部审批、一张单据的审批，见 `list`。
 - 详情（AP-08、AP-15）：任何已登录的用户都能查看；进度只列已进入的节点和按当前数据推算后面会进入的节点；`view` 按当前
   勾选计算，`params` 为当前用户这次通过要填写的人工参数，`actions` 为当前用户能做的操作。已结束的审批，`view` 为结束那一刻
-  存下的修改内容，没有存下的给出 `viewUnsaved`（C06 7.6）。
+  存下的修改内容，没有存下的给出 `viewUnsaved`（C06 7.6）。`history` 为审批记录（AP-25，C09 v14）。
 - 预览：按提交的勾选重算 `view` 和指纹，不保存勾选。
 - 处理命令的执行上下文来源为本审批（C04），由各阶段判断能否处理（AP-05、AP-12）。
 """
@@ -16,10 +17,11 @@ import functools
 from collections.abc import Callable
 from typing import Literal
 
-from cost_platform.contracts.ports import CommandExecutor, UnitOfWorkFactory
+from cost_platform.contracts.ports import CommandExecutor, UnitOfWork, UnitOfWorkFactory
 from cost_platform.contracts.types import (
     ApprovalActions,
     ApprovalDetail,
+    ApprovalHistoryItem,
     ApprovalList,
     ApprovalStep,
     ApprovalSummary,
@@ -46,12 +48,46 @@ from cost_platform.contracts.types import (
 
 from .approvers import Directory
 from .deps import ApprovalDeps
-from .model import ApprovalRecord
+from .model import ApprovalRecord, ProcessRecord
 from .process import NextLevels, apply_checked, editable_blocks, load, manual_for
-from .routing import Action, Node, can_withdraw, close_unprocessed, decide, pending_nodes, skip_unprocessed
+from .routing import (
+    Action,
+    Membership,
+    Node,
+    Progress,
+    can_withdraw,
+    close_unprocessed,
+    decide,
+    pending_nodes,
+    skip_unprocessed,
+)
 from .view import Evaluator, view_fingerprint
 
-Box = Literal["todo", "mine"]
+Box = Literal["todo", "mine", "all", "record"]
+BOXES = ("todo", "mine", "all", "record")
+
+
+def involved(progress: Progress, user_id: str, is_member: Membership) -> bool:
+    """这个账号是已进入的某个节点的审批人（直接列出，或属于节点所配的角色），或者处理过某个节点（C09 v14 的"全部审批"）。
+
+    对照旧系统 `ApprovalNotificationService.approvalItems`（scope=all）：`WF_APPROVAL_DETAIL` 中任一条的审批人是这个账号
+    或他的角色，不论状态、级别。新平台还算上他处理过的（之后离开了那个角色，处理过的审批仍在"全部审批"中）。"""
+    return any(is_member(m, user_id) or m.processed_by == user_id for n in progress.nodes for m in n.members)
+
+
+def history(record: ApprovalRecord, processed: list[ProcessRecord]) -> list[ApprovalHistoryItem]:
+    """审批记录（C09 v14）：提交一条（发起人、提交时间，第 1 级），之后每次通过、驳回、撤回一条，按处理顺序。
+
+    对照旧系统 `WF_APPROVAL_LOG`（`ApprovalRuntimeService.progress` 第 161–166 行按 LOG_ID 排序，`ApprovalDetailDialog.vue`
+    第 200–208 行）：动作 APPLY、APPROVE、REJECT、CANCEL 对应提交、通过、驳回、撤回；旧系统另有 FINISH（审批结束）和 SKIP
+    （入口条件不满足跳过的节点），新平台的结束和跳过在审批状态和进度中显示，不另记。撤回原因记在 `comment`，同旧系统
+    记在 ACTION_COMMENT（"意见"列）。"""
+    items = [ApprovalHistoryItem(action="submit", level=1, by=UserBrief(user_id=record.applicant_id,
+                                                                        display_name=record.applicant_name),
+                                 at=record.submitted_at, comment=None)]
+    items += [ApprovalHistoryItem(action=p.action, level=p.level, by=UserBrief(user_id=p.user_id, display_name=p.user_name),
+                                  at=p.at, comment=p.comment) for p in sorted(processed, key=lambda p: p.seq)]
+    return items
 
 
 def summary(record: ApprovalRecord) -> ApprovalSummary:
@@ -83,18 +119,48 @@ class ApprovalService:
 
     # ---------------------------------------------------------------- 待办
 
-    def list(self, ctx: ExecutionContext, box: str, start_row: int, end_row: int) -> ApprovalList:
-        """`todo`：当前用户是本级尚未处理的审批人的审批；`mine`：当前用户发起的审批。"""
-        if box not in ("todo", "mine"):
-            raise PlatformError(ErrorCode.INVALID_REQUEST, "box 只能是 todo 或 mine")
+    def list(self, ctx: ExecutionContext, box: str, start_row: int, end_row: int, *, page: str | None = None,
+             record_key: str | None = None) -> ApprovalList:
+        """- `todo`：当前用户是本级尚未处理的审批人的审批（顶栏铃铛的角标也是它的条数，C09 v14）；
+        - `mine`：当前用户发起的审批；
+        - `all`（C09 v14）：当前用户是已进入的某个节点的审批人、或处理过的审批，不论状态（旧系统消息中心"查看全部"的
+          "全部审批"，见 `involved`）；
+        - `record`（C09 v14）：页面 `page` 中主键为 `record_key` 的单据的审批（旧系统页面"送审"下拉中的"查看审批进度"），
+          见 `_of_record`。
+        除 `record` 外都按审批编号倒序。"""
+        if box not in BOXES:
+            raise PlatformError(ErrorCode.INVALID_REQUEST, "box 只能是 todo、mine、all 或 record")
         user = ctx.identity.user_id
         with self._uow.begin() as uow:
             if box == "todo":
                 is_member = Directory(self.deps.directory).membership()
                 records = [r for r in self.deps.store.pending(uow) if pending_nodes(r.progress, user, is_member)]
-            else:
+            elif box == "mine":
                 records = self.deps.store.by_applicant(uow, user)
+            elif box == "all":
+                is_member = Directory(self.deps.directory).membership()
+                records = [r for r in self.deps.store.everything(uow) if involved(r.progress, user, is_member)]
+            else:
+                records = self._of_record(uow, ctx, page, record_key)
         return ApprovalList(rows=[summary(r) for r in records[max(start_row, 0):max(end_row, 0)]], total=len(records))
+
+    def _of_record(self, uow: UnitOfWork, ctx: ExecutionContext, page: str | None,
+                   record_key: str | None) -> list[ApprovalRecord]:
+        """一张单据的审批：这张单据（页面主表实体、主键）作为来源发起的审批，加上冻结着它的审批（冻结记录按页面主表实体的
+        表登记，C08 第 1 节）；待审的排在前面，其余按审批编号倒序。页面不存在为 404、当前角色不能访问为 403（配置快照的
+        `page_view`）。
+
+        对照旧系统 `ApprovalRuntimeService.progress(pageCode, tableCode, billId)`（第 106–170 行）：按来源单据找审批，
+        进行中的优先，其次最新，只显示一个；新平台列出全部，由前端按同样的先后挑选显示（frontend-page FP-21）。"""
+        if not page or not record_key:
+            raise PlatformError(ErrorCode.INVALID_REQUEST, "box 为 record 时要给出 page 和 recordKey")
+        entity = ctx.config.page_view(page).master.entity
+        table = ctx.config.entity(entity).table
+        found = {r.approval_id: r for r in self.deps.store.by_source(uow, entity, record_key)}
+        locking = [e.approval_id for e in self.deps.store.frozen(uow, table, [record_key]).values()]
+        for r in self.deps.store.by_ids(uow, [i for i in locking if i not in found]):
+            found[r.approval_id] = r
+        return sorted(found.values(), key=lambda r: (r.status != "pending", -int(r.approval_id)))
 
     # ---------------------------------------------------------------- 详情和预览
 
@@ -102,6 +168,7 @@ class ApprovalService:
         unsaved: Literal[True] | None = None
         with self._uow.begin() as uow:
             record = load(self.deps, uow, approval_id)
+            processed = self.deps.store.records(uow, approval_id)
             if record.progress.status == "pending":
                 affected = self.deps.store.affected(uow, approval_id)
                 directory = Directory(self.deps.directory)
@@ -128,7 +195,7 @@ class ApprovalService:
                               operation=base.operation, operation_label=base.operation_label, source=base.source,
                               applicant=base.applicant, submitted_at=base.submitted_at, current_level=record.progress.level,
                               steps=steps, view=view, fingerprint=fingerprint, params=params, actions=actions,
-                              view_unsaved=unsaved)
+                              history=history(record, processed), view_unsaved=unsaved)
 
     def preview(self, ctx: ExecutionContext, approval_id: str, request: PreviewRequest) -> PreviewResponse:
         """审批人改了勾选：按提交的勾选重新计算 `view` 和指纹，不保存勾选（AP-08）。"""
@@ -201,4 +268,4 @@ class ApprovalService:
         return self._execute(ctx, approval_id, "approval.withdraw", request.request_key, {"comment": request.comment})
 
 
-__all__ = ["ApprovalService", "Box", "summary"]
+__all__ = ["BOXES", "ApprovalService", "Box", "history", "involved", "summary"]

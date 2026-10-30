@@ -190,7 +190,23 @@ export class E37Backend {
         canPass: mine,
         canReject: mine,
         canWithdraw: person === YANGNA && this.passed.length === 0 && this.status() === 'pending'
-      }
+      },
+      history: [
+        {
+          action: 'submit',
+          level: 1,
+          by: { userId: YANGNA.userId, displayName: YANGNA.displayName },
+          at: '2026-10-29T09:30:00',
+          comment: null
+        },
+        ...this.passed.map(p => ({
+          action: 'pass' as const,
+          level: p.person === ADMIN ? 1 : 2,
+          by: { userId: p.person.userId, displayName: p.person.displayName },
+          at: p.at,
+          comment: p.comment
+        }))
+      ]
     };
   }
 

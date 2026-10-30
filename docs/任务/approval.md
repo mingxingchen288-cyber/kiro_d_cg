@@ -84,3 +84,15 @@
 - 交付物：上述功能。
 - 验收标准：或签节点配了两个人，一人通过后，审批详情和页面上的审批进度弹窗中另一人显示"已跳过"，不能再处理；会签节点一人通过后另一人仍待处理；之前通过的或签节点显示时同样换算。
 - 状态与证据：模拟验证和真实验证通过，浏览器没有核对（2026-10-30，B2 组，`batch5/approval-copy-skip`）。模拟验证：`tests/approval/test_routing.py` 2 个（或签李四通过后张三已跳过、不能再处理；会签不跳过），`test_view.py` 2 个（系统管理员通过后采购员已跳过、审批进入第 2 级；进度中还记着 pending 的显示为 skipped，存下的不变）；前端 `tests/approval/e37.test.ts`（详情的审批人"第二审批人（已跳过）"）、`tests/page/approval-progress.test.ts`（弹窗的审批人文字）。真实验证（d_cg）：`tests/approval/test_oracle_or_sign.py`，进程内接真实的权限、写入管道、审批阶段和服务，配置为 seed 加测试审批流 PF_TEST_OR_SIGN（只在内存中，d_cg 的 PF_CONFIG_ITEM 不动）：第 1 级"两人或签"配 admin 和 chengben01，admin 新建测试成本单、改原辅料备注提交审批，admin 通过后详情为"系统管理员 passed、成本会计一 skipped"，PF_APPROVAL.PROGRESS 中存的也是 skipped，chengben01 不能再通过；驳回后第 1 级不变；成本单、审批、命令记录都删掉。浏览器核对要在 d_cg 的共用配置里建一个或签配两个人的审批流（会发 config.changed，别组同时在跑前端端到端用例），这次没有做。
+
+### T-AP-9 全部审批、一张单据的审批、审批记录、修改内容的列宽
+- 归属与目标：AP-24、AP-25、AP-26，C09 v14。盘点（`.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B1、B3、B4、B5，第五节 U1；`乙-旧系统功能对照.md` 第 2.6、2.7、2.9 节）列出的旧系统在用、新平台没有的审批功能，用户 2026-10-30 回复"其它无异议"同意按旧系统补。来源：旧系统 `ApprovalNotificationService.java`（summary 第 49 行、approvalItems scope=all）、`ApprovalRuntimeService.java` 第 106–170 行（progress：按来源单据找审批、`WF_APPROVAL_LOG`）、`ApprovalPresentationGrid.vue` 第 188 行。
+- 前置输入：处理记录表 `PF_APPROVAL_RECORD`、冻结表 `PF_APPROVAL_FREEZE`（ap_0001）；C06 7.5 `display[].columns[].width`。
+- 负责范围：`approval/service.py`（`list` 的 `all`、`record`，`involved`、`history`）、`store.py`（`everything`、`by_source`、`by_ids`）、`router.py`（`page`、`recordKey`）、`view.py` 和 `restore.py`（`widths`）；contracts 随 C09 v14 改 `types.py`（`ApprovalHistoryItem`、`ApprovalDetail.history`、三种表的 `widths`）和 C09 第 6 节。
+- 交付物：`GET /api/approvals?box=all`、`?box=record&page=&recordKey=`；详情的 `history`、`view.*.widths`。
+- 验收标准：模拟验证（`tests/approval/test_history.py`，业务例子 E37）：admin 通过后审批从 `todo` 消失、仍在 `all`，发起人的 `all` 中没有；成本核算 2550（来源）和物料清单 25（被冻结）都查到这个审批，通过后 25 解冻查不到；撤回后再提交，进行中的排在前面；审批记录为提交、通过（带意见），另一个为提交、撤回（带撤回原因）；各表 `widths` 与列对齐；接口缺 `recordKey` 为 400。真实验证（d_cg，只读、回滚）：已有审批都能读出，按来源单据、按编号、处理记录的查询在 Oracle 上执行。
+- 状态与证据：模拟验证、真实验证和浏览器业务例子通过，待独立复核（2026-10-31，AP 组，`batch7/approval-history`，本卡所在的提交；原始输出在 `.reports/batch7-20261030/ap-approval/`）。
+  - 后端单元：全部 1299 个通过（`pytest-unit.txt`），新增 `test_history.py` 6 个；`uv run lint-imports --no-cache` 5 条约定都保持（`lint-imports.txt`）。
+  - 真实（`-m "oracle or redis" tests/approval`）：14 个通过（`pytest-oracle.txt`），新增 `test_oracle.py::test_lists_and_history_read_existing_approvals_on_d_cg`。
+  - 浏览器：`frontend/tests/e2e/batch7-approval.spec.ts`（见 frontend-approval T-FA-2）。
+  - 与旧系统的差别：全部审批另算处理过的、不算没进入的节点（AP-24）；一张单据的审批列出全部，由前端挑选显示（AP-24）；审批记录不单列 FINISH、SKIP（AP-25）。

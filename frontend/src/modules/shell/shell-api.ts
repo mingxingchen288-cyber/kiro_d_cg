@@ -15,6 +15,7 @@ export interface ShellApiParts {
   session: Pick<ShellSession, 'user' | 'role' | 'configVersion'>;
   tabs: ShellApi['tabs'];
   message: ShellApi['message'];
+  bell: ShellApi['bell'];
 }
 
 export function createShellApi(parts: ShellApiParts): ShellApi {
@@ -29,6 +30,7 @@ export function createShellApi(parts: ShellApiParts): ShellApi {
       configVersion: computed(() => session.configVersion.value)
     },
     tabs: parts.tabs,
-    message: parts.message
+    message: parts.message,
+    bell: parts.bell
   };
 }

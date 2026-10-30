@@ -117,7 +117,11 @@ const datasource: IServerSideDatasource<GridRow> = {
         sortModel: request.sortModel.map(s => ({ colId: s.colId, sort: s.sort })),
         filterModel: (request.filterModel ?? {}) as Record<string, Record<string, JsonValue>>
       })
-      .then(result => params.success({ rowData: result.rows, rowCount: result.total }))
+      .then(result => {
+        params.success({ rowData: result.rows, rowCount: result.total });
+        // 定位的单据（FP-20）：选中它，选中后运行时显示它的明细
+        if (result.focus) port.select(result.focus);
+      })
       .catch(error => {
         runtime.state.error = messageOf(error);
         params.fail();

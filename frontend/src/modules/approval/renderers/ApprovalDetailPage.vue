@@ -2,17 +2,19 @@
 /**
  * 审批详情页（FA-01～FA-09），样式对照旧系统 `ApprovalDetailDialog.vue`：顶部"← 返回待办"、标题和状态，基本信息一行；
  * 卡片依次为审批进度、来源单据主表（审批中时带"待生效"）、修改明细（每张明细表一个卡片 Tab）、受影响单据（每块一个卡片 Tab，
- * 标题后显示条数）、处理（意见、人工参数、撤回 / 驳回 / 通过）。旧系统是全屏弹窗，这里是路由 `/approval/:approvalId` 的页面。
- * 旧系统折叠显示的"审批记录"（动作日志）在 C09 的审批详情中没有对应字段，各次处理的人、时间和意见在审批进度中显示。
+ * 标题后显示条数）、处理（意见、人工参数、撤回 / 驳回 / 通过），最后是默认收起的"审批记录（N）"（FA-12，C09 v14 的
+ * `history`，同旧系统第 779–791 行：每次提交、通过、驳回、撤回的动作、操作人、处理时间、意见、说明，撤回原因在意见中）。
+ * 旧系统是全屏弹窗，这里是路由 `/approval/:approvalId` 的页面。修改内容的列宽按审批流展示配置（FA-13，C09 v14 的 `widths`）。
  * 已结束的审批，修改内容为结束那一刻存下的值（C06 7.6）；结束时没有保存的（`viewUnsaved`），写明没有保存，对照旧系统
  * "该审批未保存修改内容展示数据"。
  */
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import type { ShellApi } from '../../../contracts/shell';
 import { createPlatformApi } from '../../../contracts/api';
 import { ApprovalDetailRuntime, type ParamValue } from '../detail-runtime';
 import { detailPath } from '../todo-runtime';
 import { formatTime, pageText, sourceText, statusLabel, type ViewAffectedTable } from '../view-model';
+import ApprovalHistoryGrid from './ApprovalHistoryGrid.vue';
 import ApprovalStepsGrid from './ApprovalStepsGrid.vue';
 import ApprovalViewGrid from './ApprovalViewGrid.vue';
 
@@ -34,6 +36,8 @@ const unsaved = computed(() => detail.value?.viewUnsaved === true);
 const actions = computed(() => detail.value?.actions ?? { canPass: false, canReject: false, canWithdraw: false });
 const hasActions = computed(() => actions.value.canPass || actions.value.canReject || actions.value.canWithdraw);
 const busy = computed(() => state.loading || state.previewing || state.submitting);
+/** 审批记录默认收起，展开后才画表格（同旧系统 historyExpanded） */
+const historyOpen = ref(false);
 const blocked = computed(() => busy.value || Boolean(state.error));
 const flowNames = computed(() => runtime.flowNames());
 const params = computed(() => (actions.value.canPass ? (detail.value?.params ?? []) : []));
@@ -159,7 +163,12 @@ onMounted(() => {
                 {{ pending ? '修改后的值为本次待审修改按计算规则重算的结果，尚未生效' : '显示审批结束时的修改前、修改后的值' }}
               </NTooltip>
             </h2>
-            <ApprovalViewGrid kind="master" :columns="view.master.columns" :rows="view.master.rows" />
+            <ApprovalViewGrid
+              kind="master"
+              :columns="view.master.columns"
+              :widths="view.master.widths"
+              :rows="view.master.rows"
+            />
           </section>
 
           <section v-if="view.details.length" class="approval-card">
@@ -187,7 +196,13 @@ onMounted(() => {
                 :name="table.key"
                 :tab="`${table.title}（${table.rows.length}）`"
               >
-                <ApprovalViewGrid kind="detail" :columns="table.columns" :rows="table.rows" :flow-names="flowNames" />
+                <ApprovalViewGrid
+                  kind="detail"
+                  :columns="table.columns"
+                  :widths="table.widths"
+                  :rows="table.rows"
+                  :flow-names="flowNames"
+                />
               </NTabPane>
             </NTabs>
           </section>
@@ -220,6 +235,7 @@ onMounted(() => {
                 <ApprovalViewGrid
                   kind="affected"
                   :columns="block.columns"
+                  :widths="block.widths"
                   :rows="block.rows"
                   :checked-keys="blocks.get(blockName(block))?.checked"
                   :selectable-keys="blocks.get(blockName(block))?.selectable"
@@ -308,6 +324,16 @@ onMounted(() => {
             </NButton>
           </div>
         </section>
+
+        <details
+          v-if="detail?.history.length"
+          class="approval-card approval-history"
+          :open="historyOpen"
+          @toggle="(event: Event) => (historyOpen = (event.currentTarget as HTMLDetailsElement).open)"
+        >
+          <summary>审批记录（{{ detail.history.length }}）</summary>
+          <ApprovalHistoryGrid v-if="historyOpen" :detail="detail" />
+        </details>
       </NSpin>
     </main>
   </div>
@@ -456,6 +482,14 @@ h2 {
 .approval-decision > .approval-hint {
   grid-column: 1 / -1;
   margin: 0;
+}
+/* 审批记录（同旧系统 ApprovalDetailDialog.vue 第 972–978 行） */
+.approval-history summary {
+  color: #657896;
+  cursor: pointer;
+}
+.approval-history[open] summary {
+  margin-bottom: 6px;
 }
 @media (max-width: 850px) {
   .approval-detail-header {

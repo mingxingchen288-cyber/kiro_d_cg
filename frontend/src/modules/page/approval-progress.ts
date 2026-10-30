@@ -26,6 +26,14 @@ export const MEMBER_STATUS: Record<string, string> = {
 
 export const MODE: Record<string, string> = { or: '或签', and: '会签' };
 
+/** 审批的状态（"查看审批进度"会显示已结束的审批，FP-21），文字同旧系统 `statusText` */
+export const APPROVAL_STATUS: Record<string, string> = {
+  pending: '审批中',
+  approved: '已通过',
+  rejected: '已驳回',
+  withdrawn: '已撤回'
+};
+
 /** 一个节点的审批人："系统管理员（已通过，系统管理员 2026-10-30 10:00:00）；测试审批人（已跳过）" */
 export function membersText(step: ProgressStep) {
   return step.members

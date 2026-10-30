@@ -5,12 +5,21 @@
  *   没有触发时显示"随审批等待"；新增行"变化"为绿色，删除行灰字。
  * - 受影响单据（kind 为 affected）最前面是勾选框，表头有全选；同一主键的几行合并勾选框和相同的格子（旧系统用 rowSpan，
  *   这里用 AG Grid 35 的 cell span）。记录已不存在的行整行红底，第一列前标"记录已不存在"，没有勾选框。
+ * - 列宽（FA-13，C09 v14）：配了宽度的列按配置，没配的 170 起随表格伸展，同旧系统第 188 行。
  * - 列虚拟化只在测试模式下关掉（grid-theme.ts 的 suppressColumnVirtualisation，用户 2026-10-30 同意），正式模式不变。
  */
 import { computed, onBeforeUnmount, watch } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import type { ColDef, ICellRendererParams, IHeaderComp, RowClassRules, SpanRowsParams } from 'ag-grid-community';
-import { type GridRowModel, type ViewRow, gridRows, triggerLabel, WAITING } from '../view-model';
+import {
+  DEFAULT_COLUMN_WIDTH,
+  type GridRowModel,
+  type ViewRow,
+  WAITING,
+  columnWidth,
+  gridRows,
+  triggerLabel
+} from '../view-model';
 import { HEADER_HEIGHT, ROW_HEIGHT, presentationTheme, suppressColumnVirtualisation } from './grid-theme';
 
 defineOptions({ name: 'ApprovalViewGrid' });
@@ -19,6 +28,8 @@ const props = withDefaults(
   defineProps<{
     kind: 'master' | 'detail' | 'affected';
     columns: string[];
+    /** 各列的宽度（C09 v14 的 `widths`），没配的为 null */
+    widths?: ReadonlyArray<number | null> | null;
     rows: ViewRow[];
     flowNames?: ReadonlyMap<string, string>;
     /** 受影响单据：当前勾选的主键 */
@@ -27,7 +38,7 @@ const props = withDefaults(
     selectableKeys?: readonly string[];
     disabled?: boolean;
   }>(),
-  { flowNames: () => new Map(), checkedKeys: () => [], selectableKeys: () => [], disabled: false }
+  { widths: null, flowNames: () => new Map(), checkedKeys: () => [], selectableKeys: () => [], disabled: false }
 );
 
 const emit = defineEmits<{ (e: 'toggle', key: string, checked: boolean): void; (e: 'toggleAll', checked: boolean): void }>();
@@ -179,8 +190,10 @@ const columnDefs = computed<ColDef<Row>[]>(() => [
     (label, index): ColDef<Row> => ({
       colId: `c${index}`,
       headerName: label,
-      minWidth: 90,
-      flex: 1,
+      // 配了宽度的列按配置的宽度，没配的从 170 起随表格伸展（同旧系统 width: column.width || 170、flex 只给没配的列）
+      width: columnWidth(props.widths, index) ?? DEFAULT_COLUMN_WIDTH,
+      minWidth: 60,
+      flex: columnWidth(props.widths, index) === null ? 1 : undefined,
       valueGetter: p => (p.data ? `${p.data.missing ? '!' : ''}${p.data.texts[index] ?? ''}|${p.data.changed[index]}` : ''),
       cellRenderer: renderValue(index),
       spanRows: affected.value ? (p: SpanRowsParams<Row>) => sameKey(p) && p.valueA === p.valueB : undefined,

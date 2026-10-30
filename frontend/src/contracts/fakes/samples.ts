@@ -712,6 +712,12 @@ export const approvalDetailSample: ApprovalDetail = {
             }
           ]
         }
+      ],
+      "widths": [
+        null,
+        null,
+        null,
+        null
       ]
     },
     "details": [],
@@ -840,6 +846,15 @@ export const approvalDetailSample: ApprovalDetail = {
               }
             ]
           }
+        ],
+        "widths": [
+          120,
+          200,
+          null,
+          null,
+          null,
+          null,
+          null
         ]
       }
     ]
@@ -850,7 +865,19 @@ export const approvalDetailSample: ApprovalDetail = {
     "canPass": true,
     "canReject": true,
     "canWithdraw": false
-  }
+  },
+  "history": [
+    {
+      "action": "submit",
+      "level": 1,
+      "by": {
+        "userId": "112",
+        "displayName": "杨娜"
+      },
+      "at": "2026-10-24T09:30:00",
+      "comment": null
+    }
+  ]
 };
 
 /** C10 第 1 节 */
@@ -1272,6 +1299,12 @@ export const previewResponseSample: PreviewResponse = {
             }
           ]
         }
+      ],
+      "widths": [
+        null,
+        null,
+        null,
+        null
       ]
     },
     "details": [],

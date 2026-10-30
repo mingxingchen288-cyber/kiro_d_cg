@@ -63,10 +63,12 @@ def approval_router(service: ApprovalService, context: ContextProvider) -> APIRo
 
     @router.get("/api/approvals")
     async def approvals(request: Request, box: str = "todo", start_row: int = Query(0, alias="startRow"),
-                        end_row: int = Query(50, alias="endRow")) -> JSONResponse:
+                        end_row: int = Query(50, alias="endRow"), page: str | None = None,
+                        record_key: str | None = Query(None, alias="recordKey")) -> JSONResponse:
+        """`box=record` 时带 `page`、`recordKey`（C09 v14）。"""
         def run() -> JSONResponse:
             ctx = context(request, False)
-            return reply(ApprovalList, service.list(ctx, box, start_row, end_row))
+            return reply(ApprovalList, service.list(ctx, box, start_row, end_row, page=page, record_key=record_key))
         return await run_in_threadpool(run)
 
     @router.get("/api/approvals/{approval_id}")
