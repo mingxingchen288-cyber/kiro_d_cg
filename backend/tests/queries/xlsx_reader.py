@@ -14,8 +14,8 @@ NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
 
 @dataclass
 class CellData:
-    value: str | bool
-    kind: str  # s：文本（共享字符串）；b：是非
+    value: str | bool  # 数值单元格为 `<v>` 的原文
+    kind: str  # s：文本（共享字符串）；b：是非；n：数值
     style: int
 
 

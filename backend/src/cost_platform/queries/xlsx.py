@@ -1,4 +1,4 @@
-"""最小的 xlsx 写入（Office Open XML，标准库 zipfile）：文本、是非两种单元格，工作簿内超链接，列宽，字体和表头样式。
+"""最小的 xlsx 写入（Office Open XML，标准库 zipfile）：文本、数值、是非三种单元格，工作簿内超链接，列宽，字体和表头样式。
 
 项目依赖中没有 Excel 库（缺口见 contract-gaps.md），这里只写导出需要的部分。样式取自旧系统
 `CustomExportService`（EasyExcel + POI）：
@@ -6,8 +6,11 @@
 - 主表表头 `HEADER`：同一字体、不加粗，左对齐、垂直居中、自动换行，GREY_25_PERCENT 底色（索引色 22），细边框；
 - 明细块表头 `BLOCK_HEADER`：同一字体、不加粗，左对齐、垂直居中，灰色底色，无边框；
 - 超链接 `LINK`：同一字体，蓝色（索引色 12）、单下划线。
-列宽按旧系统 LongestMatchColumnWidthStyleStrategy：每列最长内容的字节数（UTF-8，中文 3 字节），最多 255，单位为字符。
-数值写成文本单元格（QE-06），内容就是十进制文本，不经过浮点。
+列宽按旧系统 LongestMatchColumnWidthStyleStrategy：每列最长内容的字节数（UTF-8，中文 3 字节），最多 255，单位为字符；
+数值按它的十进制文本算。
+数值（Decimal）写成数值单元格（QE-06）：`<c r="O2"><v>1292.385444247787610619469026548672566372</v></c>`，不带 `t`，
+`<v>` 中是数据库原样的十进制文本，不经过浮点、不用科学计数法。Excel 打开时按双精度读，只保留 15 位有效数字（上例显示为
+1292.38544424779），与旧系统相同（旧系统经 EasyExcel 写成 double）。
 """
 
 from __future__ import annotations
@@ -16,7 +19,10 @@ import io
 import re
 import zipfile
 from dataclasses import dataclass, field
+from decimal import Decimal
 from xml.sax.saxutils import escape, quoteattr
+
+from cost_platform.contracts.decimal_text import format_decimal
 
 BODY, HEADER, BLOCK_HEADER, LINK = 0, 1, 2, 3
 MAX_WIDTH = 255
@@ -46,9 +52,22 @@ def location(sheet: str, row: int, column: int = 0) -> str:
     return f"'{sheet.replace(chr(39), chr(39) * 2)}'!{column_letter(column)}{row + 1}"
 
 
+CellValue = str | bool | Decimal | None
+"""单元格的值：文本、是非、数值（Decimal）；为空时不写单元格。"""
+
+
+def cell_text(value: str | bool | Decimal) -> str:
+    """单元格内容的文本：数值为十进制文本，是非为 true/false。列宽按它算，导出按它推断链接列。"""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, Decimal):
+        return format_decimal(value)
+    return value
+
+
 @dataclass(frozen=True)
 class Cell:
-    value: str | bool | None
+    value: CellValue
     style: int = BODY
     link: str | None = None
     """工作簿内的位置（`location` 生成）；为空时没有链接。"""
@@ -65,8 +84,7 @@ class Sheet:
         for i, cell in enumerate(cells):
             if cell.value is None:
                 continue
-            text = cell.value if isinstance(cell.value, str) else str(cell.value).lower()
-            width = min(len(_clean(text).encode("utf-8")), MAX_WIDTH)
+            width = min(len(_clean(cell_text(cell.value)).encode("utf-8")), MAX_WIDTH)
             if width > self.widths.get(i, -1):
                 self.widths[i] = width
         self.rows.append(cells)
@@ -175,6 +193,8 @@ def _sheet_xml(sheet: Sheet, strings: dict[str, int]) -> str:
             style = f' s="{cell.style}"' if cell.style else ""
             if isinstance(cell.value, bool):
                 row.append(f'<c r="{ref}"{style} t="b"><v>{1 if cell.value else 0}</v></c>')
+            elif isinstance(cell.value, Decimal):
+                row.append(f'<c r="{ref}"{style}><v>{format_decimal(cell.value)}</v></c>')
             else:
                 text = _clean(cell.value)
                 index = strings.setdefault(text, len(strings))

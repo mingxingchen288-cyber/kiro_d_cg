@@ -362,7 +362,7 @@ def test_delivery_failure_does_not_affect_business(monkeypatch: pytest.MonkeyPat
 # ---------------------------------------------------------------- 7：列表和导出符合行权限
 
 def xlsx_rows(content: bytes) -> list[list[str]]:
-    """第一张工作表的各行（单元格都是共享字符串，QE-06）。"""
+    """第一张工作表的各行：文本为共享字符串，数值单元格取 `<v>` 的原文（QE-06）。"""
     ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     with zipfile.ZipFile(io.BytesIO(content)) as book:
         strings = ["".join(t.text or "" for t in si.iter(f"{{{ns['m']}}}t"))

@@ -16,6 +16,8 @@
 链接列按旧系统 resolveLinkColumnIndex 定位：先按导出列的 `field`（去掉下划线、不区分大小写），再按 `header`，再按前 20 行
 的值推断唯一相等的列（cost-pinggu-export 的 DOCID 不在导出列中，推断到 "Summary ID"）。
 表头为一行，`header` 原样写出（旧系统不按 `/` 拆多级表头，cost-pinggu-export 的表头本身含 `/`），不加粗。
+单元格的值与旧系统 normalizeCellValue 相同：数值写成数值单元格（`<v>` 为数据库原样的十进制文本，见 xlsx.py），日期时间写成
+文本，是非为是非单元格，其余为文本。链接列推断和列宽仍按单元格的文本（数值为十进制文本）。
 
 读取：在只读事务中（Oracle 为 `SET TRANSACTION READ ONLY`，主表和明细的多条查询看到同一时点的数据，导出期间其他提交
 不造成重复或遗漏），每条查询按批读取（`yield_per`）。
@@ -27,6 +29,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from urllib.parse import quote
 
 from sqlalchemy import text
@@ -50,7 +53,7 @@ from cost_platform.contracts.values import to_wire
 from .catalog import CatalogOf
 from .lists import PageScope, master_clauses, page_scope
 from .sql import Binds, Columns, Conditions, db_value, dialect, key_text, order_sql, row_number, row_values, where_sql
-from .xlsx import BLOCK_HEADER, BODY, HEADER, LINK, Cell, Sheet, Workbook, location
+from .xlsx import BLOCK_HEADER, BODY, HEADER, LINK, Cell, CellValue, Sheet, Workbook, cell_text, location
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 BATCH = 1000
@@ -68,10 +71,11 @@ class ExportFile:
         return f"attachment; filename*=UTF-8''{quote(self.file_name, safe='')}"
 
 
-def _cell_text(value: Value | object) -> str | bool | None:
-    """导出 SQL 的值：数值为十进制文本，日期时间为 yyyy-MM-dd HH:mm:ss，日期为 yyyy-MM-dd（与旧系统 normalizeCellValue 相同）。"""
+def _cell_value(value: Value | object) -> CellValue:
+    """导出 SQL 的值（与旧系统 normalizeCellValue 相同）：数值（整数也转成 Decimal）写成数值单元格，日期时间写成
+    yyyy-MM-dd HH:mm:ss、日期写成 yyyy-MM-dd 的文本，LOB 读出文本。"""
     value = db_value(value)
-    if value is None or isinstance(value, bool):
+    if value is None or isinstance(value, (bool, Decimal)):
         return value
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d %H:%M:%S")
@@ -80,10 +84,12 @@ def _cell_text(value: Value | object) -> str | bool | None:
     return key_text(value)
 
 
-def _field_text(field: EntityField, value: Value) -> str | bool | None:
-    """默认导出的值按字段类型：数值为十进制文本，日期时间与旧系统相同写成 yyyy-MM-dd HH:mm:ss，是非为是非单元格。"""
+def _field_value(field: EntityField, value: Value) -> CellValue:
+    """默认导出的值按字段类型：数值字段写成数值单元格，日期时间与旧系统相同写成 yyyy-MM-dd HH:mm:ss，是非为是非单元格。"""
     if value is None or field.type == "boolean":
         return None if value is None else bool(value)
+    if field.type == "number" and isinstance(value, Decimal):
+        return value
     if field.type == "datetime" and isinstance(value, datetime):
         return value.strftime("%Y-%m-%d %H:%M:%S")
     wire = to_wire(field.type, value)
@@ -127,11 +133,11 @@ class _Rows:
     """一条导出 SQL 的结果：导出列的值（单元格）和链接列的值。"""
 
     columns: list[ExportColumn]
-    cells: list[list[str | bool | None]]
+    cells: list[list[CellValue]]
     links: list[str | None]
 
     def link_index(self, link_column: str) -> int:
-        """链接列在导出列中的位置（旧系统 resolveLinkColumnIndex）；找不到时为 -1。"""
+        """链接列在导出列中的位置（旧系统 resolveLinkColumnIndex）；找不到时为 -1。按值推断时比较单元格的文本。"""
         target = _normalize_column(link_column)
         for attr in ("field", "header"):
             for i, column in enumerate(self.columns):
@@ -142,7 +148,7 @@ class _Rows:
         for cells, key in zip(self.cells, self.links, strict=True):
             if key is None:
                 continue
-            matched = {i for i, v in enumerate(cells) if v is not None and not isinstance(v, bool) and v.strip() == key}
+            matched = {i for i, v in enumerate(cells) if v is not None and not isinstance(v, bool) and cell_text(v).strip() == key}
             candidates = matched if candidates is None else candidates & matched
             if not candidates:
                 return -1
@@ -190,7 +196,7 @@ class Exports:
             ordered = source.ordered()
             for record in uow.connection.execute(text(sql), binds.values, execution_options={"yield_per": self._batch}):
                 values = row_values(ordered, record)
-                sheet.append([Cell(_field_text(f, values[f.name])) for f in fields])
+                sheet.append([Cell(_field_value(f, values[f.name])) for f in fields])
         return ExportFile(file_name=f"{scope.view.title}.xlsx", content=workbook.to_bytes())
 
     # ---------------------------------------------------------------- 按导出配置
@@ -234,7 +240,7 @@ class Exports:
         link = names.index(link_column)
         rows = _Rows(columns=columns, cells=[], links=[])
         for record in result:
-            rows.cells.append([None if p is None else _cell_text(record[p]) for p in positions])
+            rows.cells.append([None if p is None else _cell_value(record[p]) for p in positions])
             rows.links.append(None if link is None else _link_value(record[link]))
         return rows
 
@@ -320,5 +326,5 @@ def _subset(rows: _Rows, index: Iterable[int]) -> _Rows:
     return _Rows(columns=rows.columns, cells=[rows.cells[i] for i in picked], links=[rows.links[i] for i in picked])
 
 
-def _cells(values: Sequence[str | bool | None], link_at: int, target: str | None) -> list[Cell]:
+def _cells(values: Sequence[CellValue], link_at: int, target: str | None) -> list[Cell]:
     return [Cell(v, LINK, target) if i == link_at and target and v is not None else Cell(v) for i, v in enumerate(values)]
