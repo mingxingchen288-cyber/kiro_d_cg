@@ -170,6 +170,8 @@ export class FakeGrid implements GridPort {
   reloads: boolean[] = [];
   applied: PersonalColumn[] | null = null;
   state: PersonalColumn[] = [];
+  /** orderColumns 每次给出的列的先后 */
+  readonly ordered: string[][] = [];
 
   updateRows(ids: string[]) {
     this.updated.push(ids);
@@ -206,6 +208,9 @@ export class FakeGrid implements GridPort {
   }
   applyColumnState(columns: PersonalColumn[]) {
     this.applied = columns;
+  }
+  orderColumns(ids: string[]) {
+    this.ordered.push([...ids]);
   }
   stopEditing() {}
   neighbor(id: string, offset: -1 | 1) {

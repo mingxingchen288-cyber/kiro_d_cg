@@ -2,6 +2,8 @@
 /**
  * grid-adapter：一个区域（主表区或某个明细）的 AG Grid，实现页面运行时的 GridPort。
  * 主表用服务端行模型，明细用客户端行模型（FP-02）；关闭 AG Grid 自带的撤销（FP-04，撤销由编辑缓冲负责）。
+ * 只给各行模型传它支持的参数：`cacheBlockSize` 只给主表（服务端行模型），`groupDefaultExpanded` 只给明细（客户端行模型），
+ * 否则 AG Grid 在控制台警告"… is not supported with the '…' row model"。
  */
 import { computed, onBeforeUnmount, shallowRef } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
@@ -221,6 +223,10 @@ const port: GridPort = {
       applyOrder: true
     });
   },
+  orderColumns(ids) {
+    // 只给 colId：列宽、固定、显隐不变；不在 ids 中的列（表单展开列等）按原来的先后排在后面，锁定在左边的仍在左边
+    api.value?.applyColumnState({ state: ids.map(colId => ({ colId })), applyOrder: true });
+  },
   stopEditing() {
     api.value?.stopEditing();
   },
@@ -244,6 +250,11 @@ onBeforeUnmount(() => {
 
 function onSelectionChanged() {
   runtime.onSelection(props.entity, port.selectedIds());
+}
+
+/** 表格换上了新的列（初次建表、配置变更、字典加载后）：配置变更后由运行时按页面视图重排（FP-09） */
+function onNewColumnsLoaded() {
+  runtime.columnsLoaded(props.entity);
 }
 
 /** FP-16：被冻结的单据双击不进入编辑，弹出审批进度；Lookup 字段双击打开 Lookup 对话框（FP-15） */
@@ -294,7 +305,7 @@ function getContextMenuItems(params: GetContextMenuItemsParams<GridRow>): MenuIt
     :get-row-id="getRowId"
     :row-model-type="master ? 'serverSide' : 'clientSide'"
     :server-side-datasource="master ? datasource : undefined"
-    :cache-block-size="100"
+    :cache-block-size="master ? 100 : undefined"
     :row-selection="rowSelection"
     :row-class-rules="rowClassRules"
     :get-row-style="getRowStyle"
@@ -306,9 +317,10 @@ function getContextMenuItems(params: GetContextMenuItemsParams<GridRow>): MenuIt
     :stop-editing-when-cells-lose-focus="true"
     :tooltip-show-delay="300"
     :get-context-menu-items="getContextMenuItems"
-    :group-default-expanded="-1"
+    :group-default-expanded="master ? undefined : -1"
     @grid-ready="onGridReady"
     @selection-changed="onSelectionChanged"
+    @new-columns-loaded="onNewColumnsLoaded"
     @cell-double-clicked="onCellDoubleClicked"
     @paste-start="onPasteStart"
     @paste-end="onPasteEnd"

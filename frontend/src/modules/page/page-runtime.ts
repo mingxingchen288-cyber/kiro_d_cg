@@ -31,8 +31,9 @@ import type { ShellApi } from '../../contracts/shell';
 import { type CopySelection, copyDetailRows, copyMaster, defaultMasterSelection } from './copy';
 import type { RowId } from './edit-buffer';
 import { MASTER_GRID, fieldOf, newRowValues, regionKey } from './fields';
+import { failureText } from './failure';
 import { canOpenLookup, fillsBack, lookupFill, lookupRequest } from './lookup';
-import { columnsToApply, mergePersonal, personalChanges } from './personal';
+import { columnOrder, columnsToApply, mergePersonal, personalChanges } from './personal';
 import { PreviewEngine, buildDisplayRequest, buildPreviewRequest } from './preview';
 import { SUMMARY_ROW_ID, detailSummary, masterSummary, sumFields } from './summary';
 import { PageModel } from './view-model';
@@ -59,6 +60,8 @@ export interface GridPort {
   /** 当前的列状态，只含可见字段，按显示顺序 */
   columnState(): PersonalColumn[];
   applyColumnState(columns: PersonalColumn[]): void;
+  /** 只排列列的先后（按 `ids`，不在其中的列排在后面），不改列宽、固定和显隐 */
+  orderColumns(ids: string[]): void;
   stopEditing(): void;
   /** 表格显示顺序中的上一行、下一行（原地表单的上一条、下一条） */
   neighbor(id: string, offset: -1 | 1): string | null;
@@ -178,6 +181,8 @@ export class PageRuntime {
   private readonly pendingPreviews = new Set<Promise<void>>();
   /** 每张单据最近一次显示求值的序号：先发的结果晚到时不用（以后一次为准） */
   private readonly displaySeq = new Map<string, number>();
+  /** 配置变更后，等表格换上新的列再按页面视图重排列的区域（columnsLoaded） */
+  private readonly reorderPending = new Set<string>();
   private readonly unsubscribers: Array<() => void> = [];
   private loadToken = 0;
   /** 保存、业务按钮的结果写进模型的次数：单据加载期间这个数变了，读到的可能是写入前的数据（见 ensureRecord） */
@@ -268,6 +273,8 @@ export class PageRuntime {
       this.view.value = view;
       if (!view.details.some(d => d.entity === this.state.activeDetail))
         this.state.activeDetail = view.details[0]?.entity ?? '';
+      // 列的先后在表格换上新的列之后按页面视图重排（columnsLoaded）
+      for (const entity of this.ports.keys()) this.reorderPending.add(entity);
       this.state.viewVersion += 1;
       this.loadDicts(view);
       for (const port of this.ports.values()) port.refreshAll();
@@ -295,6 +302,19 @@ export class PageRuntime {
 
   detach(entity: string, port: GridPort) {
     if (this.ports.get(entity) === port) this.ports.delete(entity);
+  }
+
+  /**
+   * 表格换上了新的列（grid-adapter 在 AG Grid 的 newColumnsLoaded 时调用）。配置变更（FP-09）后列的先后按页面视图，
+   * 与刷新页面后相同：个人列配置中的列按个人配置，其余按页面视图的顺序排在后面（personal.ts 的 columnOrder）。
+   * AG Grid 的 maintainColumnOrder 会把重新显示的列放到最右边，所以这里重排一次；列宽、固定、显隐不变。
+   */
+  columnsLoaded(entity: string) {
+    if (!this.reorderPending.delete(entity)) return;
+    const view = this.view.value;
+    const region = view && this.model.region(entity);
+    if (!view || !region) return;
+    this.port(entity)?.orderColumns(columnOrder(region, this.personal.grids?.[regionKey(view, entity)] ?? undefined));
   }
 
   private port(entity: string) {
@@ -684,7 +704,9 @@ export class PageRuntime {
    * 加入 pendingPreviews，`settled()` 一起等待。
    */
   private display(recordIds: string[]): Promise<void> {
-    const task: Promise<void> = this.runDisplay([...new Set(recordIds)]).finally(() => this.pendingPreviews.delete(task));
+    const task: Promise<void> = this.runDisplay([...new Set(recordIds)]).finally(() =>
+      this.pendingPreviews.delete(task)
+    );
     this.pendingPreviews.add(task);
     return task;
   }
@@ -783,8 +805,11 @@ export class PageRuntime {
           message: d.message ?? error.message
         }));
       this.refreshRows(this.model.setErrors(located));
-      const lines = error.details.map(d => d.message).filter(Boolean);
-      this.deps.message.error([error.message, ...lines].join('；'));
+      // 同样的话只说一次，并指出是哪些行（failure.ts）
+      const view = this.view.value;
+      this.deps.message.error(
+        view ? failureText(view, error, (entity, id) => this.model.values(entity, id)) : error.message
+      );
       return;
     }
     this.deps.message.error(messageOf(error));
@@ -923,10 +948,13 @@ export class PageRuntime {
     return typeof value === 'string' ? value : '';
   }
 
-  /** 按命令结果提示：提交审批的单据、规则提示、跳过的修改 */
-  private announce(result: CommandResult, savedText: string) {
+  /**
+   * 按命令结果提示：提交审批的单据、规则提示、跳过的修改。结果为 `unchanged` 时保存提示"没有需要保存的修改"，
+   * 业务按钮按按钮名称说明没有变化（例如"由BOM生成明细：没有需要修改的数据"）。
+   */
+  private announce(result: CommandResult, savedText: string, unchangedText = '没有需要保存的修改') {
     const message = this.deps.message;
-    if (result.outcome === 'unchanged') message.success('没有需要保存的修改');
+    if (result.outcome === 'unchanged') message.success(unchangedText);
     else if (result.outcome === 'approvalSubmitted') {
       const keys = result.approvals.map(a => a.document.recordKey).join('、');
       message.warning(`单据 ${keys} 已提交审批，审批结束前显示正式数据`);
@@ -1004,7 +1032,7 @@ export class PageRuntime {
         .filter((r): r is ResultRow => !('deleted' in r))
         .map(r => (r.entity === view.master.entity ? r.rowKey : this.recordKeyOf(r, result)))
     );
-    this.announce(result, `${button.label}已完成`);
+    this.announce(result, `${button.label}已完成`, `${button.label}：没有需要修改的数据`);
     await this.refreshAggregates();
     return result;
   }

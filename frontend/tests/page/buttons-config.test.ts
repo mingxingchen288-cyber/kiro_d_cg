@@ -111,6 +111,26 @@ describe('按钮（FP-14）', () => {
     expect(fake.messages.at(-1)).toEqual({ kind: 'success', text: '同步采购价已完成' });
   });
 
+  it('业务按钮没有改到数据（outcome 为 unchanged）：按按钮名称说明，不说"没有需要保存的修改"', async () => {
+    const view = costView();
+    view.master.buttons = view.master.buttons.map(b =>
+      b.action === 'syncPrice' ? { ...b, label: '由BOM生成明细', requiresSelection: false } : b
+    );
+    const { runtime, fake } = await openCostPage(view);
+    const unchanged: CommandResult = {
+      requestKey: UUID,
+      outcome: 'unchanged',
+      rows: [],
+      idMap: {},
+      prompts: [],
+      skipped: [],
+      approvals: []
+    };
+    fake.http.on('POST', '/api/commands', unchanged);
+    await runtime.clickButton(view.master, view.master.buttons.find(b => b.action === 'syncPrice')!);
+    expect(fake.messages.at(-1)).toEqual({ kind: 'success', text: '由BOM生成明细：没有需要修改的数据' });
+  });
+
   it('选中成本单 2550 点"由BOM生成明细"：删掉的明细从明细区去掉，后端新增的明细出现在明细区，主表显示重算后的值', async () => {
     const view = costView();
     view.master.buttons = [
@@ -289,14 +309,72 @@ describe('配置原地替换（FP-09）', () => {
     expect(packs.at(-1)).toMatchObject({ path: '/api/rules-packs/COST_PINGGU/8', options: { background: true } });
     expect(fake.realtime.sent[0]).toEqual({ type: 'subscribe', pages: [MASTER] });
   });
+
+  it('管理员把数量 QTY 设为不显示再改回：表格换上新的列后按页面视图重排（与刷新后相同），QTY 回到备注之后', async () => {
+    const ctx = await openCostPage();
+    const { runtime, fake, master, material } = ctx;
+    const push = async (view: ReturnType<typeof costView>) => {
+      fake.http.on('GET', '/api/pages/:pageCode/view', view);
+      // 每次配置变更是一条新事件（同一 eventId 的事件只处理一次）
+      const eventId = `1f2e3d4c-5b6a-4978-8695-a4b3c2d1e0${String(view.version).padStart(2, '0')}`;
+      fake.realtime.push({ ...serverMessageSamples[0], eventId } as (typeof serverMessageSamples)[0]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await runtime.settled();
+    };
+    const hidden = costView();
+    hidden.version = 14;
+    hidden.master.fields = hidden.master.fields.map(f => (f.name === 'QTY' ? { ...f, visible: false } : f));
+    await push(hidden);
+    runtime.columnsLoaded(MASTER);
+    expect(master.ordered.at(-1)).toEqual(['DOCID', 'GOODSNAME', 'MEMO', 'TOTAL_COST', 'CREATE_BY', 'STATUS']);
+    await push({ ...costView(), version: 15 });
+    // 表格还没换上新的列时不排；换上之后排一次（AG Grid 的 maintainColumnOrder 原来把 QTY 放到最右边）
+    expect(master.ordered).toHaveLength(1);
+    runtime.columnsLoaded(MASTER);
+    runtime.columnsLoaded(MATERIAL);
+    expect(master.ordered.at(-1)).toEqual(['DOCID', 'GOODSNAME', 'MEMO', 'QTY', 'TOTAL_COST', 'CREATE_BY', 'STATUS']);
+    expect(material.ordered.at(-1)).toEqual(['DTLID', 'GOODSID', 'GOODSNAME', 'PRICE', 'USAGE', 'AMOUNT', 'MEMO']);
+    // 之后表格再换列（例如字典加载后）不再重排，用户在页面上拖过的先后不变
+    runtime.columnsLoaded(MASTER);
+    expect(master.ordered).toHaveLength(2);
+  });
+
+  it('有个人列配置时：个人配置中的列按个人配置，重新显示的列按页面视图的先后排在后面（与刷新后相同）', async () => {
+    const ctx = await openCostPage();
+    const { runtime, fake, master } = ctx;
+    // 已保存的个人配置把备注拖到最前面（FORM 是页面视图中不可见的字段，不参与）
+    runtime.personal = {
+      grids: {
+        master: {
+          columns: [
+            { field: 'MEMO', width: 200, pinned: null, hide: false },
+            { field: 'FORM', width: 80, pinned: null, hide: false }
+          ]
+        }
+      }
+    };
+    fake.http.on('GET', '/api/pages/:pageCode/view', { ...costView(), version: 14 });
+    fake.realtime.push(serverMessageSamples[0]);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await runtime.settled();
+    runtime.columnsLoaded(MASTER);
+    expect(master.ordered.at(-1)).toEqual(['MEMO', 'DOCID', 'GOODSNAME', 'QTY', 'TOTAL_COST', 'CREATE_BY', 'STATUS']);
+  });
 });
 
 describe('字典', () => {
   it('字段有 dictType 时按 GET /api/dicts/{dictType} 读取一次，显示标签、保存值', async () => {
     const view = costView();
-    view.master.fields = view.master.fields.map(f => (f.name === 'STATUS' ? { ...f, dictType: 'COST_STATUS', default: null } : f));
+    view.master.fields = view.master.fields.map(f =>
+      f.name === 'STATUS' ? { ...f, dictType: 'COST_STATUS', default: null } : f
+    );
     const ctx = await openCostPage(view, fake =>
-      fake.http.on('GET', '/api/dicts/:dictType', { items: [{ value: '1', label: '草稿' }, { value: '2', label: '评估中' }] })
+      fake.http.on('GET', '/api/dicts/:dictType', {
+        items: [
+          { value: '1', label: '草稿' },
+          { value: '2', label: '评估中' }
+        ]
+      })
     );
     const { runtime, fake } = ctx;
     await new Promise(resolve => {
@@ -308,7 +386,11 @@ describe('字典', () => {
       ['2', '评估中']
     ]);
     runtime.edit(MASTER, '2550', 'STATUS', '2');
-    expect(runtime.model.buffer.documents()[0].master).toEqual({ op: 'modify', rowKey: '2550', changes: { STATUS: '2' } });
+    expect(runtime.model.buffer.documents()[0].master).toEqual({
+      op: 'modify',
+      rowKey: '2550',
+      changes: { STATUS: '2' }
+    });
   });
 });
 

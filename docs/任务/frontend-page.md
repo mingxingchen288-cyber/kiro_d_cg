@@ -96,3 +96,15 @@
 - 交付物：新增行用产品 Lookup 选产品后保存，产品ID、产品名称等写库；复制出的成本单保存后产品ID 不变；已保存的成本单换产品时回填的字段一起保存。
 - 接入责任：d_cg 要先建三个 Lookup 数据源视图（`.reports/batch3-20261030/h3-new-doc/建Lookup视图-待人工审核.sql`），再按合并后的代码把配置项写进 d_cg（同目录 `save_config.py`）。
 - 验收标准：模拟验证：新增一行、产品 Lookup 选产品 392，命令的 `values` 带产品ID 和不可编辑的回填目标；复制 200721 只复制主表，命令带产品ID 392、产品名称；明细的物料名称照旧不进命令。真实验证（浏览器、d_cg）：新增成本单选产品 392 保存后库里产品ID 为 392，"由BOM生成明细"生成 BOM 的 11 行；复制 200721 保存后产品ID 仍是 392。
+
+### T-FP-10 成本核算页的显示问题（批次 2 核对时记下的 5 处）
+
+- 归属与目标：FP-06、FP-14、FP-17、FP-02、FP-09 的显示细节。来源：`.reports/batch2-20261030/g0-verify/findings.md` 场景 4b、5-2、8，`.reports/batch2-20261030/g5-acceptance/findings.md`。
+- 负责范围：page 的 `failure.ts`（新）、page-runtime（`failed`、`announce`、`columnsLoaded`）、personal（`columnOrder`）、grid-adapter（`columns.ts`、`PageGrid.vue`）。
+- 交付物：
+  1. 保存被拒绝时顶部提示同样的话只出现一次，并列出涉及的行（明细用物料名称，主表用单据号和产品名称）；
+  2. 汇总行的布尔列（"客户指定"）不画复选框；
+  3. `cacheBlockSize` 只给主表、`groupDefaultExpanded` 只给明细，控制台不再有两条"not supported with the … row model"警告；
+  4. 业务按钮返回 `unchanged` 时提示"<按钮名称>：没有需要修改的数据"；
+  5. 配置变更后列的先后按页面视图（与刷新后相同），重新显示的列不再跑到最右边。
+- 验收标准：模拟验证：`save.test.ts`（2919 那样同一条规则拒绝两行、两种文字和主表行）、`buttons-config.test.ts`（按钮 unchanged；QTY 设为不显示再改回后按页面视图重排；有个人列配置时按个人配置）、`summary.test.ts`（汇总行的布尔列）。真实验证（浏览器）：5 处都在成本核算页上看到。

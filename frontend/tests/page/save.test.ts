@@ -201,7 +201,54 @@ describe('保存（FP-06）', () => {
     expect(runtime.state.dirtyCount).toBe(2);
     expect(runtime.model.errorsOf(MATERIAL, '206323')).toEqual([{ field: 'PRICE', message: '单价超出范围' }]);
     expect(material.updatedIds).toContain('206323');
-    expect(fake.messages.at(-1)).toEqual({ kind: 'error', text: '规则拒绝；单价超出范围' });
+    // 错误的文字与明细不同时放在前面；明细指出是原料/辅料的哪一行（物料名称）
+    expect(fake.messages.at(-1)).toEqual({ kind: 'error', text: '规则拒绝：单价超出范围（原料/辅料 聚维酮K30）' });
+  });
+
+  it('成本单 2919 那样被同一条规则拒绝两行：同样的话只说一次，列出两行的物料名称；主表行用单据号和产品名称', async () => {
+    const ctx = await openCostPage();
+    const { runtime, fake } = ctx;
+    await selectRecord(ctx, '2550');
+    runtime.edit(MATERIAL, '206324', 'PRICE', '72');
+    const detail = (entity: string, rowKey: string, field: string) => ({
+      message: '每片含量必填且必须大于0',
+      entity,
+      rowKey,
+      clientRowId: null,
+      field,
+      approvalId: null,
+      configType: null,
+      configKey: null,
+      path: null
+    });
+    fake.http.fail(
+      'POST',
+      '/api/commands',
+      new PlatformError(422, 'RULE_REJECTED', '每片含量必填且必须大于0', [
+        detail(MATERIAL, '206323', 'USAGE'),
+        detail(MATERIAL, '206324', 'USAGE')
+      ])
+    );
+    await runtime.save();
+    expect(fake.messages.at(-1)).toEqual({
+      kind: 'error',
+      text: '每片含量必填且必须大于0（原料/辅料 聚维酮K30、硬脂酸镁）'
+    });
+    // 两种文字、主表和明细都有：按文字分组，主表行写单据号和产品名称
+    fake.http.fail(
+      'POST',
+      '/api/commands',
+      new PlatformError(422, 'RULE_REJECTED', '规则拒绝', [
+        { ...detail(MASTER, '2550', 'MEMO'), message: '备注必填' },
+        detail(MATERIAL, '206323', 'USAGE'),
+        detail(MATERIAL, '206323', 'PRICE')
+      ])
+    );
+    await runtime.save();
+    expect(fake.messages.at(-1)).toEqual({
+      kind: 'error',
+      text: '规则拒绝：备注必填（单据 2550 250mg乙酰唑胺片）；每片含量必填且必须大于0（原料/辅料 聚维酮K30）'
+    });
   });
 
   it('没有收到响应时同样保留修改，提示检查网络', async () => {
