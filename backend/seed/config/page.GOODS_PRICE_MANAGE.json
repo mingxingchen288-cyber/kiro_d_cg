@@ -10,6 +10,35 @@
     "saveOperation": "GOODS_PRICE_MANAGE.save",
     "master": {
       "entity": "COST_GOODS_PRICE",
+      "fields": {
+        "GOODSID": {
+          "searchable": true
+        },
+        "GOODSNAME": {
+          "searchable": true
+        },
+        "PRICE": {
+          "searchable": true
+        },
+        "USEFLAG": {
+          "searchable": true
+        },
+        "GOODSTYPE": {
+          "searchable": true
+        },
+        "PACKTYPE": {
+          "searchable": true
+        },
+        "FACTORYNAME": {
+          "searchable": true
+        },
+        "ISERP": {
+          "searchable": true
+        },
+        "STANDARDTYPE": {
+          "searchable": true
+        }
+      },
       "buttons": [
         {
           "action": "addRow",

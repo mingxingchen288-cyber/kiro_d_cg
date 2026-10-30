@@ -561,6 +561,8 @@ class ViewField(Wire):
     """千分位：取自实体字段（C06 第 2 节），数值显示时整数部分每三位加英文逗号；为 false 时省略。"""
     dict_free_text: Bool = False
     """字典下拉中可以填写字典以外的值：取自页面配置（C06 第 3 节）；为 false 时省略。"""
+    searchable: Bool = False
+    """页面配置的 `searchable` 为 true 且字段可见：高级查询对话框一打开就列出这个字段的条件（C05 v7）。为 false 时省略。"""
 
 
 class ViewButton(Wire):
@@ -794,6 +796,8 @@ class FieldSetting(Wire):
     """为 true 时字典下拉中还可以填写字典以外的值（C06 第 3 节，旧系统"下拉（可填写）"）。"""
     lookup: LookupSetting | None = None
     aggregate: Aggregate | None = None
+    searchable: Bool | None = None
+    """查询（C06 第 3 节，旧系统列配置的"查询"）：为 true 时高级查询对话框一打开就列出这个字段的条件；省略为不预置。"""
 
 
 class ButtonConfig(Wire):

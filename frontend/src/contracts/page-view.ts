@@ -78,6 +78,11 @@ export const ViewField = object('ViewField', {
   grouping: optional(bool),
   /** C05 v6：字典下拉中可以填写字典以外的值（页面配置的 `dictFreeText`，旧系统"下拉（可填写）"）；为 false 时省略 */
   dictFreeText: optional(bool),
+  /**
+   * C05 v7：页面配置的 `searchable`（查询，C06 v23 第 3 节）为 true 且字段可见时为 true，否则省略：
+   * 高级查询对话框一打开就列出这个字段的条件（旧系统列配置的"查询"）。
+   */
+  searchable: optional(bool),
   default: optional(nullable(FieldDefault)),
   compare: optional(nullable(FieldCompareView))
 });

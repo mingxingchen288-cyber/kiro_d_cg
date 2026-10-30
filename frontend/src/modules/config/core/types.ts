@@ -112,6 +112,8 @@ export interface FieldSetting extends FieldFlags {
   lookup?: LookupSetting | null;
   /** 汇总行求和（C06 第 3 节），只能用于数值字段 */
   aggregate?: 'sum' | null;
+  /** 查询（C06 v23 第 3 节）：为 true 时高级查询对话框一打开就列出这个字段的条件 */
+  searchable?: boolean | null;
 }
 
 export interface ButtonConfig {

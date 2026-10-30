@@ -171,3 +171,14 @@
 - 验收标准：模拟验证（`tests/page/approval-progress.test.ts`）：定位时主表按主键取一行、返回要选中的行、去掉地址中的 `record`，再查询照常、"显示全部"从第一页查；查看审批进度按单据查、显示进行中的、没有进行中的显示最近一个、没有时"暂无审批记录"、没选中时提示；"查看审批详情"打开审批详情页签并关闭弹窗；冻结时的弹窗标题不变。业务例子：见 frontend-approval T-FA-2 的 `batch7-approval.spec.ts`（第 1、5、6 步）。
 - 状态与证据：模拟验证和浏览器业务例子通过，待独立复核（2026-10-31，AP 组，`batch7/approval-history`，本卡所在的提交；原始输出在 `.reports/batch7-20261030/ap-approval/`，`pnpm-test.txt`、`e2e-2.txt`）。
   - 与旧系统的差别：定位用按主键取行（旧系统加查询条件）；"查看审批进度"是工具栏上一个按钮，不做成"送审"下拉（新平台不做送审、撤销送审），每个页面都有（旧系统授给全部业务角色）；进度弹窗不显示修改内容，从"查看审批详情"进审批详情页（旧系统是同一个对话框）。
+
+### T-FP-16 高级查询按旧系统：预置条件、值用 Lookup 选
+
+- 归属与目标：FP-22；同时改 contracts（C06 v23、C05 v7 的 `searchable`）、config（页面视图带 `searchable`，CF-03）、frontend-config（"表与列"的"查询"，FC-13）和 seed。用户 2026-10-30 回复"其它无异议"同意按旧系统补（盘点 `.reports/inventory-20261030/乙-旧系统功能对照.md` 第 1.2 节"高级查询"、第 2.11 节）。来源：旧系统 `cost-web/src/v3/components/AdvancedSearchDialog.vue`、`composables/meta-v3/useAdvancedSearch.ts`（第 248 行只列可见且勾了"查询"的列，第 301–309 行默认运算符）、`advanced-search-values.ts`、配置页 `SectionTables.vue` 第 79–82 行；cmx `T_COST_COLUMN_METADATA.SEARCHABLE`。
+- 前置输入：C09 第 4 节 `ListRequest.advanced`（格式不变，后端不改）；FP-15 的 Lookup 对话框；cmx 旧列配置的"查询"标记（`.reports/batch7-20261030/qs-advanced-search/02-旧列查询标记.out.txt`、`03-旧列未勾查询.out.txt`）。
+- 负责范围：后端 `contracts/types.py`（`FieldSetting.searchable`、`ViewField.searchable`）、`config/views.py`、`config/page_view.py`；seed `page.COST_PINGGU.json`、`page.GOODS_PRICE_MANAGE.json` 只加 `searchable: true`；前端 `contracts/page-view.ts`、`modules/config/core/types.ts`、`views/table-fields.ts`、`views/TableFieldsCard.vue`、`modules/page/advanced-search.ts`、`page-runtime.ts`（`openSearchLookup`）、`renderers/AdvancedSearchDialog.vue`。
+- 交付物：高级查询对话框一打开就列出预置条件，填值即勾上，有 Lookup 的字段能用 Lookup 选值（IN、NOT IN 时多选，追加去重）；条件可以隐藏、在"显示字段"中恢复；"添加条件"保留。"表与列"有"查询"勾选列。
+- 验收标准：模拟验证：预置条件的范围和顺序、默认运算符、填值勾上和清空取消、明细预置条件在同一组、隐藏和重新打开保留、重置；客户ID 选 IN 后两次用 Lookup 选值追加、请求带 `in`；"表与列"读写 `searchable`；seed 的页面视图带 `searchable`。业务例子（浏览器、d_cg，正式用例 `frontend/tests/e2e/advanced-search.spec.ts`）：admin 打开成本核算点"高级查询"，预置条件有产品名称等，产品名称填"片"后查出的单据与列头筛选"产品名称含片"相同；客户ID 用 Lookup 选两个客户（IN），查出的单据只属于这两个客户。只读。
+- 状态与证据：模拟验证通过，浏览器用例已写好、待主代理把 seed 的 `searchable` 经配置接口写进 d_cg 后运行（2026-10-30，第 7 批 QS 组，`batch7/advanced-search`；原始输出在 `.reports/batch7-20261030/qs-advanced-search/`）。
+  - 模拟验证：前端 `tests/page/advanced-search.test.ts` 5 个、`tests/config/table-fields.test.ts` 新增 1 个（另 3 个按 seed 多了 `searchable` 改了期望），`copy-lookup.test.ts` 的 E30 改为条件已勾上；`pnpm test` 38 个文件 551 个通过（`pnpm-test.txt`），`pnpm typecheck`、`pnpm lint:deps` 通过。后端 `tests/config/test_views.py` 新增 `test_seed_page_view_searchable`；`pytest -m "not oracle and not redis"` 1294 passed（`pytest.txt`），`lint-imports` 5 kept。
+  - 没做：seed 的 FMNAME、FMRATE、USESTATUS 归 CF 组，没加 `searchable`（旧系统三者都勾了"查询"），合并时补。

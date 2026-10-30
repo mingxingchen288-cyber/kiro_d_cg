@@ -47,6 +47,7 @@
   - "导出"：本页面的导出配置（`export:<编码>`）。
   按钮分组参考旧系统权限页（`cost-web/src/views/_builtin/permission/index.vue`）。代码在 `role/role-model.ts`（`PAGE_BUTTONS`、`areaPermissionRows`、`buttonGroups`）和 `role/RoleButtonDialog.vue`。
 - FC-11："表与列"的表信息中有"修改人列"，对应实体的 `updatedByColumn`（C06 第 2 节，2026-10-30 按旧系统每次保存写 UPDATE_BY 加入）：填目标表中的列名，例如物料清单填 UPDATE_BY；清空时去掉这一项。随"保存表信息"保存，保存时由 config 校验列在表中、不是字段的列。
+- FC-13："表与列"的字段表有"查询"勾选列，同旧系统 `SectionTables.vue` 第 79–82 行的"查询"（`searchable`）：勾选时保存为本页面字段设置的 `searchable: true`（C06 v23 第 3 节），不勾时不写；页面上高级查询对话框一打开就列出这个字段的条件（frontend-page 的 FP-22）。任何类型的字段都能勾；"本页面"和"实体默认"两个范围下都是本页面的设置，同"求和"。
 
 ## 4. 依赖
 
