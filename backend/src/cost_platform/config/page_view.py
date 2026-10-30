@@ -36,6 +36,7 @@ def _view_field(field: EntityField, entity: EntityConfig, setting: FieldSetting 
         width=setting.width if setting else None, pinned=setting.pinned if setting else None,
         dict_type=setting.dict_type if setting else None, lookup=setting.lookup if setting else None,
         aggregate=setting.aggregate if setting else None,
+        searchable=visible and setting is not None and setting.searchable is True,
     )
 
 

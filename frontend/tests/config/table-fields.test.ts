@@ -132,7 +132,10 @@ describe('表与列显示实际能否编辑（FC-09）', () => {
     expect(writable(backend, 'COST_MATERIAL')).toEqual(materialBefore);
     const saved = backend.get('page', 'COST_PINGGU')!;
     const content = saved.content as unknown as PageContent;
-    expect(content.master.fields).toEqual({ ...seedPage.master.fields, PACKTYPE: { editable: false } });
+    expect(content.master.fields).toEqual({
+      ...seedPage.master.fields,
+      PACKTYPE: { editable: false, searchable: true }
+    });
     expect(content.details).toEqual(seedPage.details);
     expect([saved.version, backend.get('operation', SAVE_OPERATION)!.version]).toEqual([2, 2]);
     expect(opened.n.messages.filter(m => m.kind === 'error')).toEqual([]);
@@ -146,7 +149,7 @@ describe('表与列显示实际能否编辑（FC-09）', () => {
     master.row('APEX_PL').editable = false;
     expect(await master.save()).toBe(true);
     const saved = backend.get('page', 'COST_PINGGU')!.content as unknown as PageContent;
-    expect(saved.master.fields?.APEX_PL).toEqual({ editable: false });
+    expect(saved.master.fields?.APEX_PL).toEqual({ editable: false, searchable: true });
     expect(writable(backend, 'COST_PINGGU')).toContain('APEX_PL');
     // seed 的可写字段就是按这条规则算出来的：只改页面的 APEX_PL 后，保存操作没有变化，不另存一版
     expect(backend.get('operation', SAVE_OPERATION)!.version).toBe(1);
@@ -171,8 +174,31 @@ describe('求和（C06 第 3 节 aggregate，同旧系统列表格的"求和"）
     master.row('APEX_PL').aggregate = true;
     expect(await master.save()).toBe(true);
     const content = backend.get('page', 'COST_PINGGU')!.content as unknown as PageContent;
-    expect(content.master.fields).toEqual({ ...seedPage.master.fields, APEX_PL: { aggregate: 'sum' } });
-    expect(content.master.fields?.TOTAL_COST).toEqual({ aggregate: 'sum' });
+    expect(content.master.fields).toEqual({
+      ...seedPage.master.fields,
+      APEX_PL: { aggregate: 'sum', searchable: true }
+    });
+    expect(content.master.fields?.TOTAL_COST).toEqual({ aggregate: 'sum', searchable: true });
+    expect(opened.n.messages.filter(m => m.kind === 'error')).toEqual([]);
+  });
+});
+
+describe('查询（C06 v23 第 3 节 searchable，同旧系统列表格的"查询"）', () => {
+  it('seed 的成本核算主表单据号、产品名称、客户ID 和原辅料的物料ID 已勾选查询；取消单据号的查询并保存：页面只少了单据号的 searchable', async () => {
+    const opened = await openPage();
+    const { backend } = opened;
+    const seedPage = seedItems().find(i => i.type === 'page' && i.key === 'COST_PINGGU')!
+      .content as unknown as PageContent;
+    const master = await openTable(opened, 'COST_PINGGU', 'page');
+    expect(['DOCID', 'GOODSNAME', 'CUSTOMID'].map(name => master.row(name).searchable)).toEqual([true, true, true]);
+    const material = await openTable(opened, 'COST_MATERIAL', 'page');
+    expect(material.row('GOODSID').searchable).toBe(true);
+
+    master.row('DOCID').searchable = false;
+    expect(await master.save()).toBe(true);
+    const content = backend.get('page', 'COST_PINGGU')!.content as unknown as PageContent;
+    expect(content.master.fields).toEqual({ ...seedPage.master.fields, DOCID: { pinned: 'left' } });
+    expect(content.details).toEqual(seedPage.details);
     expect(opened.n.messages.filter(m => m.kind === 'error')).toEqual([]);
   });
 });

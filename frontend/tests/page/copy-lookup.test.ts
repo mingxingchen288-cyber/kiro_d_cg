@@ -197,8 +197,9 @@ describe('对比显示（FP-15，E29）', () => {
 describe('高级查询', () => {
   it('E30：原辅料明细的物料为 115 且价格大于 3：两个条件在同一组，请求带 advanced', async () => {
     const view = costView();
-    const first = { ...emptyCondition(view, MATERIAL), field: 'GOODSID', operator: 'eq', value: '115' };
-    const second = { ...emptyCondition(view, MATERIAL), field: 'PRICE', operator: 'gt', value: '3' };
+    // "添加条件"加的两行，填了值即勾上（FP-20）
+    const first = { ...emptyCondition(view, MATERIAL), field: 'GOODSID', operator: 'eq', value: '115', enabled: true };
+    const second = { ...emptyCondition(view, MATERIAL), field: 'PRICE', operator: 'gt', value: '3', enabled: true };
     const advanced = buildAdvanced(view, [first, second], 'and');
     expect(advanced).toEqual({
       op: 'and',

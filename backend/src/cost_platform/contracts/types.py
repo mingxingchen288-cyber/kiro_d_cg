@@ -538,6 +538,8 @@ class ViewField(Wire):
     fill_writable: Bool = False
     """字段不可编辑，但它是本区域可编辑字段的 Lookup 回填目标（`fillBack` 为 true），且保存时能写（在保存操作的
     `writableFields` 中、有写入列，authz 的 AZ-04）：前端把 Lookup 回填和复制带来的值写进命令。为 false 时省略。"""
+    searchable: Bool = False
+    """页面配置的 `searchable` 为 true 且字段可见：高级查询对话框一打开就列出这个字段的条件（C05 v7）。为 false 时省略。"""
 
 
 class ViewButton(Wire):
@@ -760,6 +762,8 @@ class FieldSetting(Wire):
     dict_type: Code | None = None
     lookup: LookupSetting | None = None
     aggregate: Aggregate | None = None
+    searchable: Bool | None = None
+    """查询（C06 第 3 节，旧系统列配置的"查询"）：为 true 时高级查询对话框一打开就列出这个字段的条件；省略为不预置。"""
 
 
 class ButtonConfig(Wire):

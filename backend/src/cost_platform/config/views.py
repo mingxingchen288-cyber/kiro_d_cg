@@ -5,6 +5,7 @@
 （只在 readView 中）、没有 `erpRow` 的实体的 ERP 列、`erpRow.column` 本身（只由平台写，C06 第 2 节）。
 可编辑再与页面保存操作的 `writableFields` 取交集（C05）：后端保存时按它拒绝（authz 的 `writable_fields`），
 页面上显示能编辑的字段，保存时一定能写。不可编辑、但随可编辑字段的 Lookup 回填写库的字段标 `fillWritable`（C05）。
+页面字段设置的 `searchable` 为 true、且叠加后可见的字段标 `searchable`（C05 v7，高级查询的预置条件）。
 
 按钮：区域按钮按页面配置的顺序，只留当前角色有权限的：`addRow`、`deleteRow` 是页面级按钮，要 `system:<动作>`
 （同时列在 `systemButtons` 中），前端只在页面配置放了这两个按钮的区域显示它们（C05、frontend-page 的 FP-14）；
@@ -69,6 +70,7 @@ def _view_field(field: EntityField, entity: EntityConfig, setting: FieldSetting 
         required=required, width=setting.width if setting else None, pinned=setting.pinned if setting else None,
         dict_type=setting.dict_type if setting else None, lookup=setting.lookup if setting else None,
         aggregate=setting.aggregate if setting else None,
+        searchable=visible and setting is not None and setting.searchable is True,
     )
 
 

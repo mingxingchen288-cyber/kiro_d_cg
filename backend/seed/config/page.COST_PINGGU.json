@@ -12,7 +12,8 @@
       "entity": "COST_PINGGU",
       "fields": {
         "DOCID": {
-          "pinned": "left"
+          "pinned": "left",
+          "searchable": true
         },
         "GOODSID": {
           "lookup": {
@@ -32,7 +33,8 @@
               "LIVERY": "LIVERY",
               "GOODSNAME_EN": "GOODSNAME_EN"
             }
-          }
+          },
+          "searchable": true
         },
         "CUSTOMID": {
           "lookup": {
@@ -44,7 +46,8 @@
               "TRANPOSID": "TRANPOSID",
               "LIVERY": "LIVERY"
             }
-          }
+          },
+          "searchable": true
         },
         "BUSINESS_USER": {
           "lookup": {
@@ -53,49 +56,130 @@
               "BUSINESS_USER": "REAL_NAME"
             },
             "multiple": true
-          }
+          },
+          "searchable": true
         },
         "TOTAL_FL": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "TOTAL_BC": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "TOTAL_YL": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "TOTAL_COST": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "COST_PERBOX": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "OUT_PRICE_RMB": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "SALEMONEY": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "JGF_BATCH": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "COST_PERQP": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "JGF_PERQP": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "ML_PERQP": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "Y_JG_RE": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "Y_ML": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
         },
         "Y_SALE": {
-          "aggregate": "sum"
+          "aggregate": "sum",
+          "searchable": true
+        },
+        "GOODSNAME": {
+          "searchable": true
+        },
+        "GOODSNAME_EN": {
+          "searchable": true
+        },
+        "STRENGTH": {
+          "searchable": true
+        },
+        "MA_NO": {
+          "searchable": true
+        },
+        "ANNUAL_QTY": {
+          "searchable": true
+        },
+        "APEX_PL": {
+          "searchable": true
+        },
+        "MAH": {
+          "searchable": true
+        },
+        "P_PERPACK": {
+          "searchable": true
+        },
+        "S_PERBACK": {
+          "searchable": true
+        },
+        "PACKTYPE": {
+          "searchable": true
+        },
+        "X_PERBACK": {
+          "searchable": true
+        },
+        "M_PERPACK": {
+          "searchable": true
+        },
+        "DOSAGE": {
+          "searchable": true
+        },
+        "YIELD": {
+          "searchable": true
+        },
+        "OUT_PRICE_F": {
+          "searchable": true
+        },
+        "CUSTOMNAME": {
+          "searchable": true
+        },
+        "PROJECTNO": {
+          "searchable": true
+        },
+        "MEMO": {
+          "searchable": true
+        },
+        "COUNTRY": {
+          "searchable": true
+        },
+        "TRANPOSID": {
+          "searchable": true
+        },
+        "LIVERY": {
+          "searchable": true
+        },
+        "PINGGU_CLASS": {
+          "searchable": true
         }
       },
       "buttons": [
@@ -146,16 +230,62 @@
                 "GOODSNAME_EN": "GOODSNAME_EN",
                 "DTL_USEFLAG": "USEFLAG"
               }
-            }
+            },
+            "searchable": true
           },
           "PER_HL": {
-            "required": true
+            "required": true,
+            "searchable": true
           },
           "PRICE": {
-            "required": true
+            "required": true,
+            "searchable": true
           },
           "COST_BATCH": {
-            "aggregate": "sum"
+            "aggregate": "sum",
+            "searchable": true
+          },
+          "DTLID": {
+            "searchable": true
+          },
+          "DOCID": {
+            "searchable": true
+          },
+          "DTL_USEFLAG": {
+            "searchable": true
+          },
+          "GOODSNAME": {
+            "searchable": true
+          },
+          "CUSTOMER_SPECIFIED": {
+            "searchable": true
+          },
+          "EXADD_MATER": {
+            "searchable": true
+          },
+          "BATCH_QTY": {
+            "searchable": true
+          },
+          "SUQTY": {
+            "searchable": true
+          },
+          "BASE_PRICE": {
+            "searchable": true
+          },
+          "FACTORYNAME": {
+            "searchable": true
+          },
+          "STANDARDTYPE": {
+            "searchable": true
+          },
+          "GOODSTYPE": {
+            "searchable": true
+          },
+          "MEMO": {
+            "searchable": true
+          },
+          "GOODSNAME_EN": {
+            "searchable": true
           }
         },
         "buttons": [
@@ -199,10 +329,60 @@
                 "GOODSNAME_EN": "GOODSNAME_EN",
                 "DTL_USEFLAG": "USEFLAG"
               }
-            }
+            },
+            "searchable": true
           },
           "COST_BATCH": {
-            "aggregate": "sum"
+            "aggregate": "sum",
+            "searchable": true
+          },
+          "DTLID": {
+            "searchable": true
+          },
+          "DOCID": {
+            "searchable": true
+          },
+          "DTL_USEFLAG": {
+            "searchable": true
+          },
+          "GOODSNAME": {
+            "searchable": true
+          },
+          "CUSTOMER_SPECIFIED": {
+            "searchable": true
+          },
+          "PER_HL": {
+            "searchable": true
+          },
+          "EXADD_MATER": {
+            "searchable": true
+          },
+          "BATCH_QTY": {
+            "searchable": true
+          },
+          "SUQTY": {
+            "searchable": true
+          },
+          "PRICE": {
+            "searchable": true
+          },
+          "BASE_PRICE": {
+            "searchable": true
+          },
+          "FACTORYNAME": {
+            "searchable": true
+          },
+          "STANDARDTYPE": {
+            "searchable": true
+          },
+          "GOODSTYPE": {
+            "searchable": true
+          },
+          "MEMO": {
+            "searchable": true
+          },
+          "GOODSNAME_EN": {
+            "searchable": true
           }
         },
         "buttons": [

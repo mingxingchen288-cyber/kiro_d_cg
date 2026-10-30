@@ -6,7 +6,7 @@
  * - 主表用服务端行模型，明细用客户端行模型（FP-02）；选中主表行后加载这张单据的明细。
  * - 编辑、新增、删除、撤销重做经编辑缓冲（FP-04）；编辑后在 Worker 中预览（FP-05）。
  * - 保存（FP-06、FP-07）、按钮（FP-14）、冻结时弹出审批进度（FP-16）、复制（FP-13）、Lookup 和默认值（FP-15）、
- *   个人列配置（FP-11）、高级查询、自定义导出（FP-19）。
+ *   个人列配置（FP-11）、高级查询（FP-20，条件用 Lookup 选值见 openSearchLookup）、自定义导出（FP-19）。
  */
 import { reactive, shallowRef } from 'vue';
 import type { Ref } from 'vue';
@@ -98,6 +98,8 @@ export interface LookupState {
   total: number;
   loading: boolean;
   error: string;
+  /** 高级查询的条件用 Lookup 选值时（openSearchLookup）：选定的行交给它，不回填到行，`id` 为空 */
+  select?: (rows: FieldValues[]) => void;
 }
 
 export interface CopyState {
@@ -1140,12 +1142,42 @@ export class PageRuntime {
     await this.searchLookup('');
   }
 
+  /**
+   * 高级查询的条件用这个字段的 Lookup 选值（FP-20）：同一个 Lookup 对话框，先用空关键字查询，没有行，不按行过滤；
+   * `multiple` 为 true 时多选（运算符为 IN、NOT IN）；选定的行交给 `select`，不回填。
+   */
+  async openSearchLookup(
+    entity: string,
+    field: string,
+    { multiple, select }: { multiple: boolean; select: (rows: FieldValues[]) => void }
+  ) {
+    const view = this.view.value;
+    const meta = view && fieldOf(view, entity, field);
+    if (!meta?.lookup) return;
+    this.ui.lookup.value = {
+      entity,
+      id: '',
+      field,
+      title: meta.label,
+      fillBack: true,
+      multiple,
+      keyword: '',
+      keywordSearch: true,
+      rows: [],
+      total: 0,
+      loading: false,
+      error: '',
+      select
+    };
+    await this.searchLookup('');
+  }
+
   async searchLookup(keyword: string) {
     const lookup = this.ui.lookup.value;
     const view = this.view.value;
     if (!lookup || !view) return;
     const setting = fieldOf(view, lookup.entity, lookup.field)!.lookup!;
-    const row = this.model.values(lookup.entity, lookup.id);
+    const row: FieldValues = lookup.select ? {} : this.model.values(lookup.entity, lookup.id);
     const loading = { ...lookup, keyword, loading: true, error: '' };
     this.ui.lookup.value = loading;
     try {
@@ -1172,6 +1204,10 @@ export class PageRuntime {
     const lookup = this.ui.lookup.value;
     const view = this.view.value;
     this.ui.lookup.value = null;
+    if (lookup?.select) {
+      if (selected.length) lookup.select(selected);
+      return;
+    }
     if (!lookup || !view || !lookup.fillBack || !selected.length) return;
     const setting = fieldOf(view, lookup.entity, lookup.field)!.lookup!;
     this.model.buffer.setValues(lookup.entity, lookup.id, lookupFill(setting, selected));

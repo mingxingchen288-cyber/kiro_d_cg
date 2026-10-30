@@ -59,6 +59,11 @@ export const ViewField = object('ViewField', {
    * 用户不能直接填写，Lookup 回填和复制带来的值写进命令（authz AZ-04 接受）。
    */
   fillWritable: optional(bool),
+  /**
+   * C05 v7：页面配置的 `searchable`（查询，C06 v23 第 3 节）为 true 且字段可见时为 true，否则省略：
+   * 高级查询对话框一打开就列出这个字段的条件（旧系统列配置的"查询"）。
+   */
+  searchable: optional(bool),
   default: optional(nullable(FieldDefault)),
   compare: optional(nullable(FieldCompareView))
 });

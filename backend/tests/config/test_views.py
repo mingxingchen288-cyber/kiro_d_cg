@@ -203,6 +203,34 @@ def test_seed_page_view_summary_fields() -> None:
     assert "aggregate" not in next(f for f in master if f["name"] == "DOCID")
 
 
+CF_FIELDS = {"FMNAME", "FMRATE", "USESTATUS"}
+"""成本核算主表中归 CF 组改的字段：旧系统也勾了"查询"，第 7 批合并时随 CF 组的 seed 一起补，这里不要求。"""
+
+
+def test_seed_page_view_searchable() -> None:
+    """查询（C06 v23 第 3 节 `searchable`，由旧系统列配置的"查询"推出）：seed 按 cmx 的 cost-pinggu、goods-price-manage 列配置
+    （.reports/batch7-20261030/qs-advanced-search/02-旧列查询标记.out.txt）。成本核算主表 43 个字段旧系统全勾，原辅料、包材
+    各 18 个全勾；物料清单 9 个，单价 ZX_PRICE、ROW_CLASS_FLAG 不勾。角色隐藏的字段（主表备注）不带 `searchable`；
+    序列化时只在为 true 时带。"""
+    role = draft("role", "COST_ACCOUNTANT", {"name": "成本会计", "admin": False, "pages": {
+        "COST_PINGGU": {"buttons": ["*"], "columns": {"master": {"MEMO": {"visible": False}}}},
+        "GOODS_PRICE_MANAGE": {"buttons": ["*"]}}})
+    items = [*seed_drafts(), role]
+    view = _view(items, "COST_PINGGU", "COST_ACCOUNTANT")
+    searchable = {f.name for f in view.master.fields if f.searchable}
+    assert searchable >= {f.name for f in view.master.fields} - CF_FIELDS - {"MEMO"}
+    assert "MEMO" not in searchable and {"GOODSNAME", "CUSTOMID", "DOCID"} <= searchable
+    assert all(f.visible for f in view.master.fields if f.searchable)
+    assert [[f.name for f in d.fields if f.searchable] for d in view.details] == [[f.name for f in d.fields] for d in view.details]
+    assert [len(d.fields) for d in view.details] == [18, 18]
+    wire = {f["name"]: f for f in dump_wire(PageView, view)["master"]["fields"]}
+    assert wire["GOODSNAME"]["searchable"] is True and "searchable" not in wire["MEMO"]
+
+    goods = _view(items, "GOODS_PRICE_MANAGE", "COST_ACCOUNTANT")
+    assert [f.name for f in goods.master.fields if f.searchable] == [
+        "GOODSID", "GOODSNAME", "PRICE", "USEFLAG", "GOODSTYPE", "PACKTYPE", "FACTORYNAME", "ISERP", "STANDARDTYPE"]
+
+
 def test_erp_row_entity() -> None:
     """有 erpRow 的物料清单：ERP 列按页面设置可编辑（前端在 ERP 行上再显示为只读），erpRow.column 本身不可编辑。
     PRICE 同时列入保存操作的 writableFields（页面视图的 editable 与它取交集）。"""
