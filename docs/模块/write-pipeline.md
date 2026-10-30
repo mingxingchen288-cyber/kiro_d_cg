@@ -37,6 +37,7 @@
 - WP-12：命令结果中的受影响行取自候选数据，不再查询数据库，每行包含实体的全部字段。
 - WP-13：命令只执行一次，写入管道不自动重试。
 - WP-18：动作执行中，operations 把每个动作展开为 `CommandState.intents`（C08 第 6 节）。write-pipeline 取出 `intents`，其中所属单据不在"确定涉及的单据"阶段给出的 `involved` 中的（例如按钮的 `updateRecords` 按关联查询找到的单据、`updateRows` 按 SQL 找到的单据，或审批流受影响单据中不在冻结范围内的行所属的单据），先把这些单据加入 `involved`，按（实体、主键）排序用 WP-03 的方式加数据库行锁并读入 `current`，再对它们执行一次冻结检查阶段（approval AP-03，来源为本审批时放行本审批的冻结），都通过后才把 `intents` 合并进 `candidate` 并清空；被别的审批冻结时整个命令返回 409 FROZEN_BY_APPROVAL，超出行权限返回 403 PERMISSION_DENIED（来源为审批时不查行权限，C08 第 7 节）。行锁在命令结束时释放，不登记冻结记录。这次加锁在已有的锁之后，可能与其他命令交叉等待：等锁超时，或 Oracle 检出死锁，都返回 409 DOCUMENT_BUSY，整个命令回滚。
+- WP-20：实体配了 `updatedByColumn`（C06 第 2 节）时，写入变更阶段新增、修改这个实体的行，在同一条语句里把这一列写成当前用户的登录名（执行上下文的 `identity.username`），不多出 SQL；审批通过时写入的行写执行通过的审批人（来源为审批的命令沿用审批人的身份）。删除不写。这一列不是实体字段，不进命令结果和审计差异。来源：旧系统 `DynamicDataService.java` 第 290–293、392–393 行每次新增、修改写 UPDATE_BY = `SecurityUtils.getCurrentUsername()`（登录用户名）；审批通过时 `ConfiguredApprovalRuntime.java` 的 `applyPending` 在审批人的请求中调同一段保存；用户 2026-10-30 同意按旧系统做。物料清单视图按它显示 ERP 行"已被修改"的黄底（h5 的核对，`.reports/batch3-20261030/h5-goods-page/findings.md`）。
 - WP-19：`TableWriter` 写没在平台注册的表（审批流通过后的操作，C06 7.5）：按主键用 WP-03 的方式加行锁读出整行，approval 做冻结检查后，按主键只写指定的列，不校验、不计算；数值按 WP-15 处理小数位；改前、改后的列值记入命令记录的审计差异（WP-11，不看页面的 `audit`）。新增行的主键取序列 `<表名>_SEQ`。等锁超时返回 409 DOCUMENT_BUSY；表、列不存在等数据库错误按 C08 第 2 节映射，整个命令回滚。
 
 ## 4. 依赖

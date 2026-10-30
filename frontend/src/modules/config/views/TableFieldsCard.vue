@@ -40,6 +40,17 @@ const showLookup = ref(false);
 const showCompare = ref(false);
 const content = computed(() => entity.state.current?.content ?? null);
 const erpRow = () => content.value?.erpRow ?? null;
+/** 写入修改人的列（C06 第 2 节 `updatedByColumn`）：清空时去掉这一项（省略为"无"，不写空字符串） */
+const updatedByColumn = computed({
+  get: () => content.value?.updatedByColumn ?? '',
+  set: (value: string) => {
+    const c = content.value;
+    if (!c) return;
+    const column = value.trim();
+    if (column) c.updatedByColumn = column;
+    else delete c.updatedByColumn;
+  }
+});
 
 /** 显示、编辑、必填：不能改的格子显示实际结果、不能勾，悬停显示原因 */
 function flagColumn(flag: Flag, headerName: string): ColDef {
@@ -197,6 +208,12 @@ onMounted(load);
           <span class="hint">没有 ERP 行标识时，ERP 列在所有行上都只读</span>
         </NSpace>
       </NDescriptionsItem>
+      <NDescriptionsItem label="修改人列" :span="3">
+        <NSpace size="small" align="center">
+          <NInput v-model:value="updatedByColumn" size="small" placeholder="可空，如 UPDATE_BY" class="updated-by-input" />
+          <span class="hint">目标表中的列（不是字段），新增、修改时写当前用户的登录名，审批通过时写审批人</span>
+        </NSpace>
+      </NDescriptionsItem>
     </NDescriptions>
     <div class="table-actions">
       <NButton size="tiny" :loading="entity.state.busy" @click="saveTableInfo">保存表信息</NButton>
@@ -253,6 +270,7 @@ onMounted(load);
 .scope { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .scope-note { margin: -4px 0 8px; }
 .hint { color: #999; font-size: 12px; }
+.updated-by-input { width: 160px; }
 .grid-actions { margin-top: 8px; }
 .add-column-meta { color: #666; font-size: 13px; margin-bottom: 8px; }
 </style>

@@ -7,21 +7,50 @@
 4. 主表行的修改；
 5. 主表行的删除。
 同一实体的同一种操作按写入的列分组，每组一条批量语句；主表写 0 或 1 条语句（每张单据）。
+
+实体配了 `updatedByColumn`（C06 第 2 节）时，新增、修改的行在同一条语句里另写这一列为当前用户的登录名（WP-20），
+不多出语句；它不是实体字段，不进命令结果和审计差异。
 """
 
 from __future__ import annotations
 
+import dataclasses
 from collections import defaultdict
+from collections.abc import Callable
 
 from cost_platform.contracts.ports import UnitOfWork
-from cost_platform.contracts.types import CommandState, DocumentRef, ExecutionContext, RowChange
+from cost_platform.contracts.types import CommandState, DocumentRef, EntityConfig, EntityField, ExecutionContext, RowChange
 from cost_platform.contracts.values import from_wire
 
 from .document_store import RowStore
 
+UPDATED_BY = "@updatedBy"
+"""写给 `RowStore` 的修改人字段名：不是实体字段，只在写入时加到实体和变更计划的副本上。"""
+
+Write = Callable[[UnitOfWork, EntityConfig, list[RowChange]], None]
+
 
 def _is_master(change: RowChange) -> bool:
     return change.entity == change.document.entity
+
+
+def _stamped(entity: EntityConfig, changes: list[RowChange], username: str) -> tuple[EntityConfig, list[RowChange]]:
+    """WP-20：实体配了 `updatedByColumn` 时，返回带修改人字段的实体副本和变更计划副本（每行加上当前用户的登录名）；
+    没配时原样返回。同旧系统 DynamicDataService.java 的 insert、update 每次写 UPDATE_BY = 当前用户名。"""
+    column = entity.updated_by_column
+    if column is None:
+        return entity, changes
+    extra = EntityField(name=UPDATED_BY, column=column, label="修改人", type="text", source="own", role="system")
+    target = entity.model_copy(update={"fields": [*entity.fields, extra]})
+    return target, [dataclasses.replace(c, values={**c.values, UPDATED_BY: username}) for c in changes]
+
+
+def _write_stamped(write: Write, uow: UnitOfWork, entity: EntityConfig, changes: list[RowChange], username: str) -> None:
+    """新增、修改：按 `_stamped` 写；新增行取得的主键写回原来的 `RowChange`。"""
+    target, rows = _stamped(entity, changes, username)
+    write(uow, target, rows)
+    for original, written in zip(changes, rows, strict=True):
+        original.row_key = written.row_key
 
 
 class ChangeWriter:
@@ -44,8 +73,9 @@ class ChangeWriter:
 
         masters = [c for c in plan if _is_master(c)]
         details = [c for c in plan if not _is_master(c)]
+        username = ctx.identity.username
         for code, group in by_entity([c for c in masters if c.op == "add"]).items():
-            self._store.insert(uow, entity(code), group)
+            _write_stamped(self._store.insert, uow, entity(code), group, username)
             for change in group:
                 self._master_added(state, ctx, change, plan)
 
@@ -66,13 +96,19 @@ class ChangeWriter:
         kept = [c for c in details if c.document not in removed]
         for op, write in (("delete", self._store.delete), ("modify", self._store.update), ("add", self._store.insert)):
             for code, group in by_entity([c for c in kept if c.op == op]).items():
-                write(uow, entity(code), group)
+                if op == "delete":
+                    write(uow, entity(code), group)
+                else:
+                    _write_stamped(write, uow, entity(code), group, username)
                 if op == "add":
                     for change in group:
                         self._detail_added(state, ctx, change)
         for op, write in (("modify", self._store.update), ("delete", self._store.delete)):
             for code, group in by_entity([c for c in masters if c.op == op]).items():
-                write(uow, entity(code), group)
+                if op == "delete":
+                    write(uow, entity(code), group)
+                else:
+                    _write_stamped(write, uow, entity(code), group, username)
 
     @staticmethod
     def _master_added(state: CommandState, ctx: ExecutionContext, change: RowChange, plan: list[RowChange]) -> None:

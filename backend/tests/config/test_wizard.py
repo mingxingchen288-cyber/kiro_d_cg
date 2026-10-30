@@ -54,7 +54,8 @@ def test_generate_single_page(env: Env) -> None:
                                     ("operation", "GOODS_WIZARD.save"), ("menu", "main"), ("role", "ADMIN")}
     entity = env.stored("entity", "COST_GOODS_WIZARD")
     fields = {f["name"]: f for f in entity["fields"]}
-    view_only = {"DELETED", "CREATE_TIME", "UPDATE_TIME", "CREATE_BY", "UPDATE_BY", "ROW_CLASS_FLAG"}
+    # d_cg 的 T_COST_GOODS 有 UPDATE_BY 列（.reports/batch3-20261030/h5-goods-page/q04），它不算视图独有的列
+    view_only = {"DELETED", "CREATE_TIME", "UPDATE_TIME", "CREATE_BY", "ROW_CLASS_FLAG"}
     assert len(fields) == 17 and {n for n, f in fields.items() if f["column"] is None} == view_only
     assert (entity["primaryKey"], fields["GOODSID"]["role"], fields["ZX_PRICE"]["label"]) == ("GOODSID", "system", "执行价")
     page = env.stored("page", "GOODS_WIZARD")

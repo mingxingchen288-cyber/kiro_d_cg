@@ -83,6 +83,8 @@ export interface EntityContent {
   freezable: boolean;
   readView?: string | null;
   erpRow?: { column: string; value: string; localValue: string } | null;
+  /** 写入修改人的列（表中的列名，不是字段），新增、修改时由写入管道写当前用户的登录名（C06 第 2 节） */
+  updatedByColumn?: string | null;
   fields: EntityField[];
   details?: Array<{ entity: string; parentKey: string }>;
   fieldDefaults?: Record<string, FieldFlags>;
