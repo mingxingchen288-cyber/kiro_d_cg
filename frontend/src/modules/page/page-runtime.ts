@@ -6,7 +6,7 @@
  * - 主表用服务端行模型，明细用客户端行模型（FP-02）；选中主表行后加载这张单据的明细。
  * - 编辑、新增、删除、撤销重做经编辑缓冲（FP-04）；编辑后在 Worker 中预览（FP-05）。
  * - 保存（FP-06、FP-07）、按钮（FP-14）、冻结时弹出审批进度（FP-16）、复制（FP-13）、Lookup 和默认值（FP-15）、
- *   个人列配置（FP-11）、高级查询。
+ *   个人列配置（FP-11）、高级查询、自定义导出（FP-19）。
  */
 import { reactive, shallowRef } from 'vue';
 import type { Ref } from 'vue';
@@ -18,6 +18,7 @@ import type {
   ApprovalDetail,
   CurrentUser,
   DataRow,
+  ExportList,
   ListRequest,
   PersonalColumn,
   PersonalConfig,
@@ -33,6 +34,7 @@ import type { RowId } from './edit-buffer';
 import { MASTER_GRID, fieldOf, newRowValues, regionKey } from './fields';
 import { failureText } from './failure';
 import { canOpenLookup, fillsBack, lookupFill, lookupRequest } from './lookup';
+import { type ExportMenuItem, type ExportScope, exportMenuItems, exportRequest, fileNameOf, saveFile } from './export';
 import { columnOrder, columnsToApply, mergePersonal, personalChanges } from './personal';
 import { PreviewEngine, buildDisplayRequest, buildPreviewRequest } from './preview';
 import { SUMMARY_ROW_ID, detailSummary, masterSummary, sumFields } from './summary';
@@ -79,6 +81,8 @@ export interface PageRuntimeDeps {
   now?: () => Date;
   /** 编辑后多久开始预览（毫秒）；测试用 0 */
   previewDelay?: number;
+  /** 把导出的文件交给浏览器下载；默认 a 标签 + object URL（export.ts 的 saveFile），测试替换 */
+  saveFile?: (blob: Blob, fileName: string) => void;
 }
 
 export interface LookupState {
@@ -169,7 +173,9 @@ export class PageRuntime {
     lookup: shallowRef<LookupState | null>(null),
     copy: shallowRef<CopyState | null>(null),
     /** 审批进度弹窗（FP-16） */
-    frozen: shallowRef<FrozenState | null>(null)
+    frozen: shallowRef<FrozenState | null>(null),
+    /** 当前角色可用的导出配置（FP-19）：打开页面时取一次，配置变更后重新取 */
+    exports: shallowRef<ExportList['items']>([])
   };
 
   model!: PageModel;
@@ -200,7 +206,7 @@ export class PageRuntime {
   /** 配置变更后重新读取的规则包是后台请求（C09 第 1 节） */
   private backgroundPack = false;
 
-  /** 最近一次主表列表请求（排序、筛选、高级查询），保存后重新取汇总时用 */
+  /** 最近一次主表列表请求（排序、筛选、高级查询），保存后重新取汇总、自定义导出的"导出当前"时用 */
   private lastQuery: ListRequest | null = null;
 
   private get api() {
@@ -227,6 +233,7 @@ export class PageRuntime {
       this.state.detailMode = this.personal.detailMode ?? view.detailMode;
       this.state.status = 'ready';
       this.loadDicts(view);
+      void this.loadExports();
       this.deps.realtime.subscribe([this.pageCode]);
       this.unsubscribers.push(
         this.deps.realtime.onEvent('config.changed', payload => {
@@ -277,6 +284,8 @@ export class PageRuntime {
       for (const entity of this.ports.keys()) this.reorderPending.add(entity);
       this.state.viewVersion += 1;
       this.loadDicts(view);
+      // 导出配置或角色的导出权限可能变了：可用的导出配置跟着重新取
+      void this.loadExports(true);
       for (const port of this.ports.values()) port.refreshAll();
       // 规则包可能换了版本：重新预览有修改的单据，已显示的单据重新做显示求值
       for (const recordId of this.model.buffer.dirtyRecords()) this.schedulePreview(recordId);
@@ -1276,6 +1285,37 @@ export class PageRuntime {
   applyAdvanced(query: AdvancedQuery | null) {
     this.ui.advanced.value = query;
     this.port(this.model.master)?.reload(true);
+  }
+
+  // ================================================================ 自定义导出（FP-19）
+
+  /** 取当前角色可用的导出配置（C09 第 4 节）；读取失败时提示后端给的信息（旧系统 useCustomExport 的 loadConfigs） */
+  private async loadExports(background = false) {
+    try {
+      this.ui.exports.value = (await this.api.exports(this.pageCode, background)).items;
+    } catch (error) {
+      this.deps.message.error(messageOf(error) || '导出失败');
+    }
+  }
+
+  /** 主表右键菜单"自定义导出"子菜单的项；没有可用的导出配置时为空 */
+  exportMenu(): ExportMenuItem[] {
+    return exportMenuItems(this.ui.exports.value);
+  }
+
+  /**
+   * 按导出配置导出并下载：导出当前带主表当前列表请求的筛选、高级查询和排序，导出所有都不带（export.ts 的 exportRequest）。
+   * 开始时提示"导出已开始"；文件名取响应头 Content-Disposition，取不到为 export.xlsx；失败时提示后端给的信息，没有时为"导出失败"。
+   */
+  async exportFile(exportCode: string, scope: ExportScope) {
+    const body = exportRequest(exportCode, scope, this.lastQuery);
+    this.deps.message.success('导出已开始');
+    try {
+      const file = await this.api.exportFile(this.pageCode, body);
+      (this.deps.saveFile ?? saveFile)(file.blob, fileNameOf(file.contentDisposition));
+    } catch (error) {
+      this.deps.message.error(messageOf(error) || '导出失败');
+    }
   }
 
   // ================================================================ 原地表单（FP-03）

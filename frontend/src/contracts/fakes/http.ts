@@ -3,7 +3,7 @@
  * 测试可以按（方法、路径模板）预设返回值或错误，并读取收到的调用。
  */
 import { PlatformError } from '../errors';
-import type { HttpClient, HttpRequestOptions } from '../shell';
+import type { DownloadedFile, HttpClient, HttpRequestOptions } from '../shell';
 import * as s from './samples';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -42,6 +42,15 @@ const clone = <T>(value: T): T => structuredClone(value);
 const sample = (value: unknown) => () => clone(value);
 const noContent = () => undefined;
 
+/**
+ * 导出接口返回的文件（C11 v2 的 `DownloadedFile`）：模拟实现给出一个空的 xlsx 类型文件，`Content-Disposition` 的写法同后端
+ * （`attachment; filename*=UTF-8''<百分号编码的文件名>`），文件名为 export.xlsx；测试可以用 `on` 预设别的文件和响应头。
+ */
+const exportFile = (): DownloadedFile => ({
+  blob: new Blob([], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+  contentDisposition: "attachment; filename*=UTF-8''export.xlsx"
+});
+
 /** C09 各接口的默认响应 */
 const DEFAULTS: Array<[HttpMethod, string, FakeHandler]> = [
   ['POST', '/api/auth/login', sample(s.loginResponseSample)],
@@ -72,6 +81,7 @@ const DEFAULTS: Array<[HttpMethod, string, FakeHandler]> = [
   ['GET', '/api/pages/:pageCode/personal', sample(s.personalConfigSample)],
   ['PUT', '/api/pages/:pageCode/personal', call => clone(call.body)],
   ['GET', '/api/pages/:pageCode/exports', sample(s.exportListSample)],
+  ['POST', '/api/pages/:pageCode/export', exportFile],
   ['POST', '/api/commands', sample(s.resultSavedSample)],
   ['GET', '/api/approvals', sample(s.approvalListSample)],
   ['GET', '/api/approvals/:approvalId', sample(s.approvalDetailSample)],
@@ -87,9 +97,6 @@ const DEFAULTS: Array<[HttpMethod, string, FakeHandler]> = [
   ['PUT', '/api/admin/command-review', noContent],
   ['GET', '/health', sample(s.healthSample)]
 ];
-
-/** 导出接口返回的文件：模拟实现给出一个空的 xlsx 类型文件 */
-const EXPORT_TEMPLATE = '/api/pages/:pageCode/export';
 
 export class FakeHttp implements HttpClient {
   readonly calls: FakeCall[] = [];
@@ -155,12 +162,9 @@ export class FakeHttp implements HttpClient {
     return this.dispatch('DELETE', path, undefined, options) as Promise<T>;
   }
 
-  async download(path: string, body: unknown, options?: HttpRequestOptions) {
-    const { regex } = compile(EXPORT_TEMPLATE);
-    if (!regex.test(path)) return this.dispatch('POST', path, body, options) as Promise<Blob>;
-    this.calls.push({ method: 'POST', path, params: {}, body: clone(body), options });
-    await Promise.resolve();
-    return new Blob([], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  /** 返回文件的接口与其他接口一样按（方法、路径模板）找响应，记为 POST 调用 */
+  download(path: string, body: unknown, options?: HttpRequestOptions) {
+    return this.dispatch('POST', path, body, options) as Promise<DownloadedFile>;
   }
 }
 

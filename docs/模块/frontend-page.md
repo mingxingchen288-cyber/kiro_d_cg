@@ -4,7 +4,7 @@
 
 ## 1. 职责
 
-- 负责：按页面视图（[C05](../契约/C05-页面视图.md)）渲染单表页和主从页；原地表单；编辑缓冲；在 Worker 中本地预览；保存和局部刷新；Lookup、字典、高级查询、按钮；个人列配置；冻结和审批中状态的显示；配置变更后原地替换。
+- 负责：按页面视图（[C05](../契约/C05-页面视图.md)）渲染单表页和主从页；原地表单；编辑缓冲；在 Worker 中本地预览；保存和局部刷新；Lookup、字典、高级查询、按钮、自定义导出；个人列配置；冻结和审批中状态的显示；配置变更后原地替换。
 - 不负责：外壳和页签（frontend-shell）；表单布局的编辑（frontend-config）；审批界面（frontend-approval）。
 
 ## 2. 所有权
@@ -56,10 +56,16 @@
   - 勾选的字段不论能不能编辑都写进新行，同旧系统（`copy-row-fields.ts` 复制源行全部字段，`useWorkingSetStore.ts` 第 834–876 行新增行提交全部字段；用户 2026-10-30 同意）：复制出的行记下来源，命令中带 `copyOf`（源行主键），勾选了的、不可写但可见、能写进表的字段（例如成本单的币种、项目号；不含计算字段和没有 `erpRow` 的实体的 ERP 列）有值时也写进 `values`，后端取源行的值（C02 第 1 节、WP-21）。源行是还没保存的复制行时沿用它的来源，复制的字段取两次都勾选的；源行是还没保存的普通新增行时不带 `copyOf`，不可写的字段不写。
   - 计算字段照样复制显示，随后由预览重新计算；生成命令时按 C02 不带计算字段，保存时以后端的计算为准。`erpRow.column` 由平台设为本地，不从源行复制；ERP 列照样复制，新行是本地行，可以编辑。
   - 复制出的主表行放在源行下方，明细行放在最后一个选中行的下方；复制结果只在编辑缓冲中，保存后才写入；撤销一次即撤回整个复制。
+- FP-19：自定义导出，同旧系统成本核算页主表右键的"自定义导出"（旧系统按钮权限"自定义导出:cost-pinggu-export"；用户 2026-10-30 同意）。来源：旧系统 `cost-web/src/v3/composables/meta-v3/useGridContextMenu.ts` 第 367–406 行（子菜单）、`useCustomExport.ts`（取配置、导出当前和导出所有的条件、提示）、`cost-web/src/service/api/export-config.ts` 第 47–59 行（文件名）、第 96–110 行（下载）。代码在 `export.ts`、`page-runtime.ts`、`grid-adapter/PageGrid.vue`。
+  - 打开页面时取一次当前角色可用的导出配置（C09 第 4 节 `GET /api/pages/{pageCode}/exports`，后端按角色的 `export:<编码>` 按钮或 `*` 过滤）；收到 `config.changed` 后与页面视图一起重新取，是后台请求（FP-09）。
+  - 只在主表的右键菜单：区域按钮（FP-14）之后加分隔线和"自定义导出"子菜单，每个可用的导出配置两项"<导出名称> - 导出当前""<导出名称> - 导出所有"，例如"物料成本核算表导出 - 导出当前"。没有可用的导出配置时不出现，例如 d_cg 上 chengben01（成本会计）、jishu01（技术中心）打开成本核算。明细的右键菜单和工具栏没有导出；也没有"默认导出当前页面"（C09 的 `mode: page`）的入口，旧系统没有。
+  - 导出当前：`POST /api/pages/{pageCode}/export`，`{"mode": "config", "exportCode", "scope": "current", "request"}`，`request` 带主表当前列表请求（服务端行模型最近一次取数）的筛选、高级查询和排序。导出所有：`scope` 为 `all`，`request` 不带筛选、高级查询和排序：后端在 `all` 时也按 `sortModel` 排序，旧系统导出所有不带排序。导出不分页，`startRow`、`endRow` 为 0。
+  - 开始时提示"导出已开始"；文件交给浏览器下载（a 标签 + object URL），文件名取响应头 `Content-Disposition` 的 `filename*=UTF-8''…` 并解码（C11 v2 的 `DownloadedFile`，正则同旧系统 `parseFileName`），取不到时为 export.xlsx；失败时提示后端给的信息，没有时为"导出失败"。
+  - 与旧系统的差别：旧系统开始时用 info 提示"导出已开始"，文件下载后再用 success 提示一次同样的文字；`ShellApi.message` 没有 info，这里只在开始时提示一次。旧系统的导出当前只取表格的筛选和排序（`getFilterModel`、`getSortModel`），高级查询的条件存在别处、不带；这里的导出当前同时带高级查询，导出的行与主表列表的行相同。
 
 ## 4. 依赖
 
-契约 C01、C02、C03、C05、C07、C09、C10、C11；预览只经 `ShellApi.calc` 调用，不直接引用 rules-core 的产物。
+契约 C01、C02、C03、C05、C07、C09、C10、C11（v2，导出下载给出 `Content-Disposition`）；预览只经 `ShellApi.calc` 调用，不直接引用 rules-core 的产物。
 
 ## 5. 内部流程
 

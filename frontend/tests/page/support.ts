@@ -8,7 +8,7 @@ import type { DataRow, PersonalColumn, RecordResponse } from '../../src/contract
 import type { PageView, ViewField } from '../../src/contracts/page-view';
 import { createPlatformApi } from '../../src/contracts/api';
 import { createFakeShell } from '../../src/contracts/fakes/shell';
-import { type GridPort, PageRuntime } from '../../src/modules/page/page-runtime';
+import { type GridPort, PageRuntime, type PageRuntimeDeps } from '../../src/modules/page/page-runtime';
 
 export const MASTER = 'COST_PINGGU';
 export const MATERIAL = 'COST_MATERIAL';
@@ -224,11 +224,14 @@ export class FakeGrid implements GridPort {
 
 /**
  * 打开成本核算页：主表第一页是 2550、2551，单据加载按 RECORDS；`records` 给出时主表第一页和单据加载都按它（按给出的顺序）。
+ * `deps` 替换运行时的其他依赖（例如导出时的 `saveFile`）。
  */
+// eslint-disable-next-line max-params -- 页面视图、预设接口、单据、其他依赖都有默认值，用例只给要换的
 export async function openCostPage(
   view: PageView = costView(),
   setup?: (fake: ReturnType<typeof createFakeShell>) => void,
-  records: Record<string, RecordResponse> = RECORDS
+  records: Record<string, RecordResponse> = RECORDS,
+  deps: Partial<PageRuntimeDeps> = {}
 ) {
   const fake = createFakeShell({
     user: { userId: '1', username: 'zhangsan', displayName: '张三', departmentId: '10' },
@@ -254,7 +257,8 @@ export async function openCostPage(
     tabs: fake.shell.tabs,
     path: `/page/${MASTER}`,
     previewDelay: 0,
-    now: () => new Date(2026, 9, 29, 9, 30, 0)
+    now: () => new Date(2026, 9, 29, 9, 30, 0),
+    ...deps
   });
   await runtime.load();
   const master = new FakeGrid();

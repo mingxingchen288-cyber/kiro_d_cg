@@ -150,3 +150,15 @@
   - `pnpm test` 35 个文件 535 个通过，`pnpm typecheck`、`pnpm lint:deps` 通过。
   - 用时：全量（4 个 worker）回归 改前 4.0m / 4.1m、改后 4.4m / 5.5m；开发 改前 4.4m / 6.0m、改后 4.4m / 4.5m。同一份代码两次相差 1.4–1.6 分钟（机器负载 3%–78%，别的组也在用），总用时看不出变化。单 worker 跑 4 条（`*-w1-*.txt`）：g0 场景 1 汇总行 改前 9.3 / 8.1s → 改后 6.4 / 6.6s；E01 改前 19.6 / 14.4s → 改后 16.3 / 16.5s；cost-detail 两条情况相同。不再逐列滚动的用例变快，反复打开主表、保存重读的用例可能每条多 1–2s（全部列都渲染，格子多了），幅度小于负载的波动。
   - d_cg 只读核对（`q01-结束后核对.out.txt`）：没有 PF_TEST 残留，冻结 0，审批仍是原来的 6 条。
+
+### T-FP-14 主表右键的"自定义导出"
+
+- 归属与目标：FP-19。用户 2026-10-30 同意"通用页面加'自定义导出'按钮（旧系统成本核算页有，按钮权限 自定义导出:cost-pinggu-export）"，行为同旧系统。来源：旧系统 `cost-web/src/v3/composables/meta-v3/useGridContextMenu.ts` 第 367–406 行、`useCustomExport.ts`、`cost-web/src/service/api/export-config.ts` 第 47–59 行和第 96–110 行。
+- 前置输入：C09 第 4 节的 `GET /api/pages/{pageCode}/exports`、`POST /api/pages/{pageCode}/export`（`mode: config`，queries-export 的 QE-06）；d_cg 上的导出配置 cost-pinggu-export（seed 提交 616f14a）。
+- 负责范围：page 的 `export.ts`（新文件：子菜单项、导出请求、文件名、浏览器下载）、`page-runtime.ts`（`ui.exports`、`loadExports`、`exportMenu`、`exportFile`）、`grid-adapter/PageGrid.vue`（主表右键菜单）；contracts 随 C11 v2 改 `shell.ts`（`DownloadedFile`）、`api.ts`（`exports` 可标为后台请求）、`fakes/http.ts`（下载走路由表）；`service/platform.ts`（读 `Content-Disposition`）；后端只加测试辅助 `backend/tests/e2e/xlsx_sheets.py`（读下载文件的工作表名称，只读本地文件）。
+- 交付物：主表右键菜单在区域按钮之后有分隔线和"自定义导出"子菜单，每个可用的导出配置有"导出当前""导出所有"两项；导出当前带主表当前的筛选、高级查询和排序，导出所有都不带；浏览器下载的文件名取 `Content-Disposition`，取不到为 export.xlsx。
+- 验收标准：模拟验证：子菜单项、没有可用配置时为空、配置变更后以后台请求重新取、导出当前的请求带当前条件、导出所有的请求不带条件、文件名解析。业务例子（浏览器、d_cg，正式用例 `frontend/tests/e2e/export-menu.spec.ts`）：admin 打开成本核算，按单据号筛选 2550，主表右键 → 自定义导出 → "物料成本核算表导出 - 导出当前"，下载到"物料成本核算表导出.xlsx"，文件里是"物料成本核算""明细_2550"两张工作表。
+- 状态与证据：模拟验证和浏览器业务例子通过，待独立复核（2026-10-30，FP 组，`batch6/export-menu`，本卡所在的提交；原始输出在 `.reports/batch6-20261030/fp-export-menu/`）。
+  - 模拟验证：`frontend/tests/page/export.test.ts` 7 个通过（`vitest-export.txt`）；`tests/contracts/fakes.test.ts` 的导出用例改为核对文件和响应头。`pnpm test` 37 个文件 545 个通过（`pnpm-test.txt`），`pnpm typecheck`、`pnpm lint:deps` 通过（`lint-deps.txt`）。
+  - 浏览器（`pnpm build:test` 后由后端 8091 托管，d_cg）：`export-menu.spec.ts` 跑两次，每次 setup 3 个加本用例共 4 个通过（`e2e-1.txt`、`e2e-2.txt`，用例 8.6s）：导出请求为 `scope: current`、`filterModel.DOCID` 为 2550，提示"导出已开始"，下载文件名"物料成本核算表导出.xlsx"，工作表"物料成本核算""明细_2550"。只读，不改数据。
+  - 与旧系统的两处差别（FP-19 末项）：提示"导出已开始"只出现一次（旧系统开始 info、下载后 success 各一次）；导出当前同时带高级查询（旧系统只带表格的筛选和排序）。

@@ -66,6 +66,10 @@ export function createPlatformHttp(csrfToken: () => string): HttpClient {
     post: async (path, body, options) => json(await send('POST', path, { body, options })),
     put: async (path, body, options) => json(await send('PUT', path, { body, options })),
     delete: async (path, options) => json(await send('DELETE', path, { options })),
-    download: async (path, body, options) => (await send('POST', path, { body, options })).blob()
+    download: async (path, body, options) => {
+      const response = await send('POST', path, { body, options });
+      // 接口与页面同源（构建产物由后端托管，开发服务器经代理），响应头 Content-Disposition 读得到
+      return { blob: await response.blob(), contentDisposition: response.headers.get('Content-Disposition') };
+    }
   };
 }
