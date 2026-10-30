@@ -1,0 +1,184 @@
+{
+  "kind": "evaluate",
+  "name": "成本核算-校验和整行红底-commit",
+  "source": "旧系统成本核算的两条校验（PER_HL > 0、PRICE ≥ 0，拒绝保存）和主表 MEMO='ERP未搭建BOM' 整行红底（旧 GRID_STYLE）；d_cg 单据 2919 的真实主表和原辅料（PER_HL 为空），单价改成 -1 为假设的修改",
+  "pack": "packs/cost-pinggu.json",
+  "match": "full",
+  "request": {
+    "purpose": "operation",
+    "operation": "COST_PINGGU.save",
+    "page": "COST_PINGGU",
+    "phase": "commit",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "COST_PINGGU",
+      "master": {
+        "rowKey": "2919",
+        "values": {
+          "DOCID": "2919",
+          "GOODSNAME": "比沙可啶肠溶片",
+          "MEMO": "ERP未搭建BOM",
+          "APEX_PL": "850000",
+          "P_PERPACK": "30",
+          "S_PERBACK": "352",
+          "X_PERBACK": "12",
+          "M_PERPACK": null,
+          "OUT_PRICE_F": "3.432",
+          "FMRATE": "8.1845",
+          "YIELD": "90",
+          "COST_PERQP": "18",
+          "ANNUAL_QTY": "6000000",
+          "TOTAL_YL": "0",
+          "TOTAL_FL": "0",
+          "TOTAL_BC": "0",
+          "TOTAL_COST": "0",
+          "OUT_PRICE_RMB": "0",
+          "SALEMONEY": "0",
+          "JGF_BATCH": "0",
+          "COST_PERBOX": "0",
+          "JGF_PERQP": "0",
+          "ML_PERQP": "0",
+          "Y_JG_RE": "0",
+          "Y_ML": "0",
+          "Y_SALE": "0"
+        }
+      },
+      "details": {
+        "COST_MATERIAL": [
+          {
+            "rowKey": "100713",
+            "values": {
+              "DTLID": "100713",
+              "DOCID": "2919",
+              "GOODSID": "4726",
+              "GOODSNAME": "比沙可啶",
+              "DTL_USEFLAG": "原料",
+              "PER_HL": null,
+              "EXADD_MATER": null,
+              "PRICE": "2489.725",
+              "BATCH_QTY": "0",
+              "COST_BATCH": "0"
+            }
+          },
+          {
+            "rowKey": "100714",
+            "values": {
+              "DTLID": "100714",
+              "DOCID": "2919",
+              "GOODSID": "311",
+              "GOODSNAME": "一水乳糖（200目）",
+              "DTL_USEFLAG": "辅料",
+              "PER_HL": null,
+              "EXADD_MATER": null,
+              "PRICE": "-1",
+              "BATCH_QTY": "0",
+              "COST_BATCH": "0"
+            },
+            "old": {
+              "PRICE": "26"
+            }
+          }
+        ],
+        "COST_PACKAGE": []
+      }
+    },
+    "changed": [
+      {
+        "entity": "COST_MATERIAL",
+        "rowKey": "100714",
+        "op": "modify",
+        "fields": [
+          "PRICE"
+        ]
+      }
+    ],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "COST_PINGGU",
+        "rowKey": "2919",
+        "computed": {
+          "TOTAL_YL": "0",
+          "TOTAL_FL": "0",
+          "TOTAL_BC": "0",
+          "TOTAL_COST": "0",
+          "OUT_PRICE_RMB": "28.089204",
+          "SALEMONEY": "716274.702",
+          "JGF_BATCH": "716274.702",
+          "COST_PERBOX": "0",
+          "JGF_PERQP": "842.67612",
+          "ML_PERQP": "824.67612",
+          "Y_JG_RE": "5056056.72",
+          "Y_ML": "4948056.72",
+          "Y_SALE": "5056056.72"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_MATERIAL",
+        "rowKey": "100713",
+        "computed": {
+          "BATCH_QTY": "0",
+          "COST_BATCH": "0"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "COST_MATERIAL",
+        "rowKey": "100714",
+        "computed": {
+          "BATCH_QTY": "0",
+          "COST_BATCH": "0"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      }
+    ],
+    "effects": [
+      {
+        "kind": "reject",
+        "rule": "R_MAT_PER_HL_GT0",
+        "message": "每片含量必填且必须大于0",
+        "entity": "COST_MATERIAL",
+        "rowKey": "100713",
+        "field": "PER_HL"
+      },
+      {
+        "kind": "reject",
+        "rule": "R_MAT_PER_HL_GT0",
+        "message": "每片含量必填且必须大于0",
+        "entity": "COST_MATERIAL",
+        "rowKey": "100714",
+        "field": "PER_HL"
+      },
+      {
+        "kind": "reject",
+        "rule": "R_MAT_PRICE_GE0",
+        "message": "单价必填且不能为负数",
+        "entity": "COST_MATERIAL",
+        "rowKey": "100714",
+        "field": "PRICE"
+      }
+    ]
+  }
+}

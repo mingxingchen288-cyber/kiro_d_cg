@@ -1,14 +1,16 @@
 """生成样例集用的规则包（C07 第 1 节）。
 
 规则按 C06 第 5 节的写法给出（field、expression 或 branches、when），按 rules-core 的 JDM 约定（README 第 2 节）
-转成 JDM：输入 → 表达式（一个表达式，key 为作用的字段）→ 输出。
+转成 JDM：输入 → 表达式 → 输出。计算规则的表达式节点只有一个表达式，key 为作用的字段：
 - 只有 expression：值为表达式；
 - 有 when：`(when) ? (expression) : 字段`，不成立时字段不变；
 - branches：按顺序取第一个 when 成立的分支，`(w1) ? (e1) : ((w2) ? (e2) : 字段)`，都不成立时字段不变。
+校验、界面规则的写法见 `check_items`。
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 
@@ -26,11 +28,15 @@ def calc_expression(rule: dict[str, Any]) -> str:
 
 
 def jdm(name: str, key: str, value: str) -> dict[str, Any]:
+    return jdm_items(name, [(key, value)])
+
+
+def jdm_items(name: str, items: list[tuple[str, str]]) -> dict[str, Any]:
     return {
         "nodes": [
             {"id": "in", "name": "输入", "type": "inputNode", "content": {}},
             {"id": "expr", "name": name, "type": "expressionNode",
-             "content": {"expressions": [{"id": "e1", "key": key, "value": value}]}},
+             "content": {"expressions": [{"id": f"e{i + 1}", "key": k, "value": v} for i, (k, v) in enumerate(items)]}},
             {"id": "out", "name": "输出", "type": "outputNode", "content": {}},
         ],
         "edges": [
@@ -38,6 +44,29 @@ def jdm(name: str, key: str, value: str) -> dict[str, Any]:
             {"id": "e-out", "sourceId": "expr", "targetId": "out"},
         ],
     }
+
+
+def lit(text: str) -> str:
+    """ZEN 的字符串常量：没有转义，到下一个同样的引号为止；含单引号时用双引号。"""
+    return f'"{text}"' if "'" in text else f"'{text}'"
+
+
+def check_items(rule: dict[str, Any]) -> list[tuple[str, str]]:
+    """校验、界面规则的 JDM 表达式（与 config `packs.py` 相同）：matched（条件）、field（作用的字段，整行时没有），
+    校验另有 level、message；界面另有 effect 中写了的 editable、required、rowStyle、cellStyle（样式 JSON 文本）。"""
+    items = [("matched", rule.get("when") or "true")]
+    if rule.get("field"):
+        items.append(("field", lit(rule["field"])))
+    if rule["category"] == "validate":
+        return items + [("level", lit(rule.get("level", "reject"))), ("message", lit(rule.get("message", "")))]
+    effect = rule.get("effect", {})
+    for key in ("editable", "required"):
+        if key in effect:
+            items.append((key, "true" if effect[key] else "false"))
+    for key in ("rowStyle", "cellStyle"):
+        if key in effect:
+            items.append((key, lit(json.dumps(effect[key], ensure_ascii=False, separators=(",", ":")))))
+    return items
 
 
 def pack(pack_id: str, version: int, fields: dict[str, dict[str, Any]], rules: list[dict[str, Any]]) -> dict[str, Any]:
@@ -52,8 +81,7 @@ def pack(pack_id: str, version: int, fields: dict[str, dict[str, Any]], rules: l
         if entry["category"] == "calc":
             graphs[r["id"]] = jdm(r["id"], r["field"], calc_expression(r))
         else:
-            # validate、ui 以后实现；先给出条件表达式，load_pack 照常检查和编译
-            graphs[r["id"]] = jdm(r["id"], "matched", r["when"])
+            graphs[r["id"]] = jdm_items(r["id"], check_items(r))
     return {"packId": pack_id, "version": version, "coreVersion": "0.1.0", "fields": fields,
             "rules": out_rules, "jdm": graphs}
 
@@ -124,9 +152,14 @@ COST_RULES: list[dict[str, Any]] = [
     {"id": "R_MAT_BATCH_QTY", "entity": "COST_MATERIAL", "field": "BATCH_QTY", "order": 15, "branches": BATCH_QTY_BRANCHES},
     {"id": "R_PKG_COST_BATCH", "entity": "COST_PACKAGE", "field": "COST_BATCH", "order": 16, "expression": "BATCH_QTY * PRICE"},
     {"id": "R_PKG_BATCH_QTY", "entity": "COST_PACKAGE", "field": "BATCH_QTY", "order": 17, "branches": BATCH_QTY_BRANCHES},
-    # 以下两类以后实现：求值时没有提示、没有效果
-    {"id": "R_V_PRICE", "entity": "COST_MATERIAL", "category": "validate", "order": 100, "when": "PRICE < 0"},
-    {"id": "R_UI_ERP", "layer": "page", "page": "COST_PINGGU", "category": "ui", "order": 200, "when": "DTL_USEFLAG == '原料'"},
+    # 旧系统成本核算 material 的 VALIDATION（失败时不保存 → reject，提示文字照旧配置）和 masterGrid 的 GRID_STYLE
+    # （.reports/editable-20261029/01-旧页面规则.out.txt）；与 backend/seed/config/rule.<编码>.json 相同
+    {"id": "R_MAT_PER_HL_GT0", "entity": "COST_MATERIAL", "category": "validate", "field": "PER_HL", "order": 100,
+     "when": "PER_HL <= 0", "level": "reject", "message": "每片含量必填且必须大于0"},
+    {"id": "R_MAT_PRICE_GE0", "entity": "COST_MATERIAL", "category": "validate", "field": "PRICE", "order": 101,
+     "when": "PRICE < 0", "level": "reject", "message": "单价必填且不能为负数"},
+    {"id": "R_MASTER_NO_BOM_RED", "layer": "page", "page": "COST_PINGGU", "entity": "COST_PINGGU", "category": "ui", "order": 200,
+     "when": "(MEMO == 'ERP未搭建BOM')", "effect": {"rowStyle": {"backgroundColor": "#ffcccc"}}},
 ]
 
 
@@ -150,6 +183,11 @@ DEMO_RULES: list[dict[str, Any]] = [
     {"id": "R_QTY_DELTA", "entity": "DEMO_ORDER", "field": "QTY_DELTA", "order": 41, "expression": "QTY - old.QTY"},
     {"id": "R_NET", "layer": "operation", "operation": "DEMO_ORDER.save", "entity": "DEMO_ORDER", "field": "NET", "order": 50,
      "serverOnly": True, "expression": "AMOUNT * (1 - data.discountRate)"},
+    # 界面规则（只在 preview 执行）：整行不可编辑（C06 第 5 节的例子，field 为空），单价必填并改字体颜色（假设的规则）
+    {"id": "R_UI_ROW_LOCK", "layer": "page", "page": "DEMO_ORDER", "entity": "DEMO_ORDER", "category": "ui", "order": 300,
+     "when": "QTY >= 100", "effect": {"editable": False}},
+    {"id": "R_UI_PRICE_REQUIRED", "layer": "page", "page": "DEMO_ORDER", "entity": "DEMO_ORDER", "category": "ui", "field": "PRICE",
+     "order": 301, "when": "QTY >= 100", "effect": {"required": True, "cellStyle": {"color": "#999999"}}},
 ]
 
 
@@ -168,6 +206,45 @@ EXPR_RULES = [
 
 def expr_pack() -> dict[str, Any]:
     return pack("EXPR_DEMO", 1, EXPR_FIELDS, EXPR_RULES)
+
+
+# ---------------------------------------------------------------- T-RC-3：模块说明第 8 节的数值处理规则表，每一行至少一条规则
+
+NUM_CALCULATED = ["NULL_ADD", "DIV0", "ZERO_ZERO", "OVER", "BAD", "COND", "KEEP", "THIRD", "SUM_V", "SUM_E", "COUNT_E", "AVG_E", "MAX_E", "MIN_E"]
+NUM_FIELDS = {
+    "NUM_DEMO": {"ID": num("system", 0), "A": num(), "Z": num(), "E": num(), "BIG": num(), "S": text(), "NAME": text(),
+                 **{f: num("calculated") for f in NUM_CALCULATED}},
+    "NUM_DTL": {"DTLID": num("system", 0), "V": num()},
+    "NUM_EMPTY": {"DTLID": num("system", 0), "V": num()},
+}
+NUM_EXPRESSIONS = [
+    ("NULL_ADD", "E + NOFIELD + 1"),          # 字段为空（E）、行中没有这个字段（NOFIELD）：按 0
+    ("DIV0", "A / Z"),                         # 除以 0
+    ("ZERO_ZERO", "Z / Z"),                    # 0/0
+    ("OVER", "BIG * 10"),                      # 溢出：超出 28 位有效数字
+    ("BAD", "S * 2"),                          # 计算规则求值出错：文本乘数值
+    ("THIRD", "A / 3"),                        # 不舍入
+    ("SUM_V", "sum(map(NUM_DTL, #.V))"),       # 汇总时某行的字段为空
+    ("SUM_E", "sum(map(NUM_EMPTY, #.V))"),     # 汇总时没有行
+    ("COUNT_E", "count(NUM_EMPTY, true)"),
+    ("AVG_E", "avg(map(NUM_EMPTY, #.V))"),
+    ("MAX_E", "max(map(NUM_EMPTY, #.V))"),
+    ("MIN_E", "min(map(NUM_EMPTY, #.V))"),
+]
+NUM_RULES: list[dict[str, Any]] = [
+    *({"id": f"R_{f}", "entity": "NUM_DEMO", "field": f, "order": i + 1, "expression": e} for i, (f, e) in enumerate(NUM_EXPRESSIONS)),
+    # 条件（when）求值出错按成立：NAME 为空时 matches 出错
+    {"id": "R_COND", "entity": "NUM_DEMO", "field": "COND", "order": 20, "when": "matches(NAME, '胶囊')", "expression": "A + 1"},
+    # 分支都不匹配：字段保持原值
+    {"id": "R_KEEP", "entity": "NUM_DEMO", "field": "KEEP", "order": 21, "when": "S == '胶囊'", "expression": "A * 100"},
+    # 校验规则的条件出错同样按成立
+    {"id": "R_V_COND", "entity": "NUM_DEMO", "category": "validate", "field": "NAME", "order": 30,
+     "when": "matches(NAME, '胶囊')", "level": "prompt", "message": "名称含胶囊"},
+]
+
+
+def numeric_pack() -> dict[str, Any]:
+    return pack("NUM_DEMO", 1, NUM_FIELDS, NUM_RULES)
 
 
 # ---------------------------------------------------------------- 跨实体依赖成环：主表汇总明细 X，明细 X 又引用主表汇总

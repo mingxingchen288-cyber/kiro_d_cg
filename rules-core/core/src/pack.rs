@@ -109,7 +109,9 @@ pub struct CalcRule {
     /// `/`、`%` 右边的操作数：求值出错时据此判断是不是除以 0（模块说明第 8 节）。
     pub divisors: Vec<String>,
     pub decision: Decision,
-    /// `when`、`branches` 编成的条件表达式拆开后的各段；整条表达式求值出错时逐段求值，条件出错按成立处理（模块说明第 8 节）。
+    /// 表达式拆成的各段：`when`、`branches` 编成的条件表达式按分支拆开，其他表达式只有最后一段。
+    /// zen-engine 求值出错时给出的错误不带原因（表达式节点只写"Failed to evaluate expression"），这时逐段直接求值：
+    /// 得到原因，判断溢出和除以 0，条件出错按成立处理（模块说明第 8 节）。
     pub branches: Option<Branches>,
 }
 
@@ -119,7 +121,7 @@ pub struct Part {
     pub divisors: Vec<String>,
 }
 
-/// `(w1) ? (e1) : ((w2) ? (e2) : 字段)` 拆成 `[(w1, e1), (w2, e2)]` 和最后的 `字段`。
+/// `(w1) ? (e1) : ((w2) ? (e2) : 字段)` 拆成 `[(w1, e1), (w2, e2)]` 和最后的 `字段`；不是条件写法时 arms 为空。
 pub struct Branches {
     pub arms: Vec<(Expression<Standard>, Part)>,
     pub otherwise: Part,
@@ -243,21 +245,24 @@ fn plain_refs(chains: &[Vec<String>]) -> Vec<String> {
     chains.iter().filter(|c| c.len() == 1 && !c[0].starts_with(['#', '$'])).map(|c| c[0].clone()).collect()
 }
 
-/// config 编出的条件表达式拆成各个分支（README 第 2 节）；不是这种写法、或某段不能单独编译时为 None。
+/// config 编出的条件表达式拆成各个分支（README 第 2 节）；不是条件写法、或某段不能单独编译时，整条表达式作为最后一段。
+/// 整条表达式也不能编译时为 None。
 fn branches(expression: &str) -> Option<Branches> {
     let part = |text: &str| -> Option<Part> {
         Some(Part { expression: compile_expression(text).ok()?, divisors: scan(text).divisors })
     };
+    let whole = || part(expression).map(|otherwise| Branches { arms: Vec::new(), otherwise });
     let mut arms = Vec::new();
     let mut rest = expression.to_string();
     while let Some((cond, then, other)) = conditional(strip_parens(&rest)) {
-        arms.push((compile_expression(&cond).ok()?, part(&then)?));
+        let (Ok(condition), Some(then)) = (compile_expression(&cond), part(&then)) else { return whole() };
+        arms.push((condition, then));
         rest = other;
     }
-    if arms.is_empty() {
-        return None;
+    match part(strip_parens(&rest)) {
+        Some(otherwise) => Some(Branches { arms, otherwise }),
+        None => whole(),
     }
-    Some(Branches { arms, otherwise: part(strip_parens(&rest))? })
 }
 
 /// 校验、界面规则的 JDM（config `packs.py` 生成）：表达式节点依次为 `matched`（条件，空为 `true`）、`field`（作用的字段，

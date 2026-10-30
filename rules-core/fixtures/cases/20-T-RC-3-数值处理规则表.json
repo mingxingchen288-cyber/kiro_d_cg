@@ -1,0 +1,181 @@
+{
+  "kind": "evaluate",
+  "name": "T-RC-3-数值处理规则表",
+  "source": "模块说明第 8 节每一行一条规则：空值和缺失字段按 0、除以 0 和 0/0 为 0、溢出为 0、求值出错为 0 并提示、条件出错按成立（计算和校验）、汇总时空值按 0、没有行时汇总为 0、分支都不匹配保持原值、不舍入",
+  "pack": "packs/numeric.json",
+  "match": "full",
+  "request": {
+    "purpose": "operation",
+    "operation": "NUM_DEMO.save",
+    "page": "NUM_DEMO",
+    "phase": "preview",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "NUM_DEMO",
+      "master": {
+        "rowKey": "1",
+        "values": {
+          "ID": "1",
+          "A": "5",
+          "Z": "0",
+          "E": null,
+          "BIG": "10000000000000000000000000000",
+          "S": "abc",
+          "NAME": null,
+          "NULL_ADD": null,
+          "DIV0": null,
+          "ZERO_ZERO": null,
+          "OVER": null,
+          "BAD": null,
+          "COND": null,
+          "KEEP": "7",
+          "THIRD": null,
+          "SUM_V": null,
+          "SUM_E": null,
+          "COUNT_E": null,
+          "AVG_E": null,
+          "MAX_E": null,
+          "MIN_E": null
+        }
+      },
+      "details": {
+        "NUM_DTL": [
+          {
+            "rowKey": "11",
+            "values": {
+              "DTLID": "11",
+              "V": "2"
+            }
+          },
+          {
+            "rowKey": "12",
+            "values": {
+              "DTLID": "12",
+              "V": null
+            }
+          },
+          {
+            "rowKey": "13",
+            "values": {
+              "DTLID": "13",
+              "V": "3"
+            }
+          }
+        ],
+        "NUM_EMPTY": []
+      }
+    },
+    "changed": [],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "NUM_DEMO",
+        "rowKey": "1",
+        "computed": {
+          "NULL_ADD": "1",
+          "DIV0": "0",
+          "ZERO_ZERO": "0",
+          "OVER": "0",
+          "BAD": "0",
+          "THIRD": "1.6666666666666666666666666667",
+          "SUM_V": "5",
+          "SUM_E": "0",
+          "COUNT_E": "0",
+          "AVG_E": "0",
+          "MAX_E": "0",
+          "MIN_E": "0",
+          "COND": "6",
+          "KEEP": "7"
+        },
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "NUM_DTL",
+        "rowKey": "11",
+        "computed": {},
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "NUM_DTL",
+        "rowKey": "12",
+        "computed": {},
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "NUM_DTL",
+        "rowKey": "13",
+        "computed": {},
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      }
+    ],
+    "effects": [
+      {
+        "kind": "prompt",
+        "rule": "R_BAD",
+        "message": "计算规则 R_BAD 求值出错，BAD 按 0 处理：VM error: Opcode Multiply: Unsupported type",
+        "entity": "NUM_DEMO",
+        "rowKey": "1",
+        "field": "BAD"
+      },
+      {
+        "kind": "prompt",
+        "rule": "R_V_COND",
+        "message": "名称含胶囊",
+        "entity": "NUM_DEMO",
+        "rowKey": "1",
+        "field": "NAME"
+      }
+    ]
+  },
+  "oldSystem": {
+    "engine": "my-project cost-web/src/v3/logic/calc-engine/calculator.ts（mathjs 15.1.0，JavaScript 浮点），2026-10-30 用 node 24 运行",
+    "computed": {
+      "NULL_ADD": "1",
+      "DIV0": "0",
+      "ZERO_ZERO": "0",
+      "OVER": "100000000000000000000000000000",
+      "BAD": "0",
+      "THIRD": "1.6666666666666667",
+      "COND": "6",
+      "KEEP": "7",
+      "SUM_V": "5",
+      "SUM_E": "0",
+      "COUNT_E": "0",
+      "AVG_E": "0",
+      "MAX_E": "0",
+      "MIN_E": "0"
+    },
+    "differences": [
+      "THIRD：旧系统浮点 1.6666666666666667，新平台 1.6666666666666666666666666667，浮点误差，按 C01 第 3 节一致",
+      "OVER：旧系统 1e29（JavaScript 浮点到 1.8e308 才是 Infinity），新平台超出 28 位有效数字按第 8 节为 0；数的表示范围不同，不是计算出错",
+      "BAD：都是 0；旧系统只在控制台告警，新平台另给一条 prompt（第 8 节）",
+      "COND：都是 6；旧系统按成立的原因是 evalCondition 的 new Function 遇到作用域里名为 in 的函数报 SyntaxError，所以旧系统 condition 写法的条件总按成立（同一输入的 KEEP 写成 condition 时旧系统得 500，写成多公式时得 7）",
+      "R_V_COND：旧系统的校验（validator.ts）没有条件写法，没有可对照的结果"
+    ]
+  }
+}

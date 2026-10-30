@@ -35,13 +35,20 @@ def row(values: dict[str, Any], key: str | None = None, client: str | None = Non
     return out
 
 
-def result_row(entity: str, r: dict[str, Any], computed: dict[str, Any]) -> dict[str, Any]:
+def result_row(entity: str, r: dict[str, Any], computed: dict[str, Any], fields: dict[str, Any] | None = None,
+               style_row: dict[str, Any] | None = None, cells: dict[str, Any] | None = None) -> dict[str, Any]:
+    """C07 第 3 节的一行：界面规则给出的字段状态在 fields，行样式和单元格样式在 style。"""
     ident = {"rowKey": r["rowKey"]} if "rowKey" in r else {"clientRowId": r["clientRowId"]}
-    return {"entity": entity, **ident, "computed": computed, "fields": {}, "style": {"row": None, "cells": {}}}
+    return {"entity": entity, **ident, "computed": computed, "fields": fields or {}, "style": {"row": style_row, "cells": cells or {}}}
 
 
-def ok(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    return {"ok": True, "rows": rows, "effects": []}
+def ok(rows: list[dict[str, Any]], effects: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    return {"ok": True, "rows": rows, "effects": effects or []}
+
+
+def effect(kind: str, rule: str, message: str, entity: str, row_key: str, field: str) -> dict[str, Any]:
+    """C07 第 3 节的效果，定位到实体、行和字段。"""
+    return {"kind": kind, "rule": rule, "message": message, "entity": entity, "rowKey": row_key, "field": field}
 
 
 def fixture(name: str, source: str, pack: str, req: dict[str, Any], expected: dict[str, Any], match: str = "full") -> dict[str, Any]:
@@ -84,19 +91,21 @@ def dtl(dtlid: str, docid: str, goodsid: str, name: str, flag: str, per_hl: str 
 
 def cost_fixture(name: str, source: str, master_values: dict[str, Any], details: dict[str, list[dict[str, Any]]], *,
                  phase: str = "preview", changed: list[dict[str, Any]] | None = None, deleted: set[str] = frozenset(),
-                 check: dict[tuple[str, int], dict[str, str]] | None = None) -> dict[str, Any]:
-    """details 中的每行为 row(...)；deleted 为标为删除的 rowKey，不进入汇总和结果。check：与业务例子或 cmx 核对的值。"""
+                 check: dict[tuple[str, int], dict[str, str]] | None = None, effects: list[dict[str, Any]] | None = None,
+                 master_style: dict[str, Any] | None = None) -> dict[str, Any]:
+    """details 中的每行为 row(...)；deleted 为标为删除的 rowKey，不进入汇总和结果。check：与业务例子或 cmx 核对的值。
+    effects：校验规则给出的效果；master_style：界面规则给主表行的样式。"""
     master = row(master_values, key=master_values["DOCID"])
     live = {e: [r for r in rs if r.get("rowKey") not in deleted] for e, rs in details.items()}
     calc = oracle.cost_document(master_values, {e: [r["values"] for r in rs] for e, rs in live.items()})
     for (entity, i), want in (check or {}).items():
         for f, v in want.items():
             assert oracle.D(calc["details"][entity][i][f]) == oracle.D(v), (name, entity, i, f, calc["details"][entity][i][f], v)
-    rows = [result_row("COST_PINGGU", master, calc["master"])]
+    rows = [result_row("COST_PINGGU", master, calc["master"], style_row=master_style)]
     for entity, rs in live.items():
         rows += [result_row(entity, r, c) for r, c in zip(rs, calc["details"][entity])]
     req = request("COST_PINGGU", master, details, phase=phase, changed=changed)
-    return fixture(name, source, "packs/cost-pinggu.json", req, ok(rows))
+    return fixture(name, source, "packs/cost-pinggu.json", req, ok(rows, effects))
 
 
 def e02(phase: str) -> dict[str, Any]:
@@ -174,15 +183,90 @@ def cost_branches() -> dict[str, Any]:
                                ("COST_PACKAGE", 1): {"BATCH_QTY": "370.16", "COST_BATCH": "5922.56"}})
 
 
+# d_cg 单据 2919 的真实主表和原辅料明细（.reports/batch1-20261029/rules-core/03-单据2919.out.txt）：MEMO 为 ERP未搭建BOM，
+# 两行原辅料的 PER_HL 都为空；包材明细（9 行）略去。d_cg 中 PRICE < 0 的行没有，把一水乳糖的单价从 26 改成 -1 是假设的修改。
+M2919 = dict(GOODSNAME="比沙可啶肠溶片", MEMO="ERP未搭建BOM", APEX_PL="850000", P_PERPACK="30", S_PERBACK="352", X_PERBACK="12",
+             M_PERPACK=None, OUT_PRICE_F="3.432", FMRATE="8.1845", YIELD="90", COST_PERQP="18", ANNUAL_QTY="6000000")
+PER_HL_MESSAGE, PRICE_MESSAGE = "每片含量必填且必须大于0", "单价必填且不能为负数"
+
+
+def cost_2919(phase: str) -> dict[str, Any]:
+    mat = [row(dtl("100713", "2919", "4726", "比沙可啶", "原料", None, None, "2489.725"), key="100713"),
+           row(dtl("100714", "2919", "311", "一水乳糖（200目）", "辅料", None, None, "-1"), key="100714", old={"PRICE": "26"})]
+    changed = [{"entity": "COST_MATERIAL", "rowKey": "100714", "op": "modify", "fields": ["PRICE"]}]
+    # 校验规则按 order 执行，每条规则逐行检查：先两行的每片含量，再一水乳糖的单价
+    effects = [effect("reject", "R_MAT_PER_HL_GT0", PER_HL_MESSAGE, "COST_MATERIAL", "100713", "PER_HL"),
+               effect("reject", "R_MAT_PER_HL_GT0", PER_HL_MESSAGE, "COST_MATERIAL", "100714", "PER_HL"),
+               effect("reject", "R_MAT_PRICE_GE0", PRICE_MESSAGE, "COST_MATERIAL", "100714", "PRICE")]
+    # 整行红底是页面规则，只在 preview 执行（C07 第 2 节）
+    style = {"backgroundColor": "#ffcccc"} if phase == "preview" else None
+    return cost_fixture(f"成本核算-校验和整行红底-{phase}",
+                        "旧系统成本核算的两条校验（PER_HL > 0、PRICE ≥ 0，拒绝保存）和主表 MEMO='ERP未搭建BOM' 整行红底（旧 GRID_STYLE）；"
+                        "d_cg 单据 2919 的真实主表和原辅料（PER_HL 为空），单价改成 -1 为假设的修改",
+                        cost_master("2919", **M2919), {"COST_MATERIAL": mat, "COST_PACKAGE": []}, phase=phase, changed=changed,
+                        effects=effects, master_style=style)
+
+
 # ---------------------------------------------------------------- 单表演示
 
-def demo_fixture(name: str, source: str, values: dict[str, Any], old: dict[str, Any], phase: str, data: dict[str, Any] | None) -> dict[str, Any]:
+def demo_fixture(name: str, source: str, values: dict[str, Any], old: dict[str, Any], phase: str, data: dict[str, Any] | None,
+                 fields: dict[str, Any] | None = None, cells: dict[str, Any] | None = None) -> dict[str, Any]:
     full = {"ID": "1", "QTY": None, "PRICE": None, **{f: None for f in ("AMOUNT", "THIRD", "BACK", "PRICE_DELTA", "QTY_DELTA", "NET")}, **values}
     master = row(full, key="1", old=old)
     changed = [{"entity": "DEMO_ORDER", "rowKey": "1", "op": "modify", "fields": sorted(old)}]
     req = request("DEMO_ORDER", master, {}, phase=phase, changed=changed, data=data if phase == "commit" else None)
-    expected = ok([result_row("DEMO_ORDER", master, oracle.demo(full, old, data if phase == "commit" else None))])
+    expected = ok([result_row("DEMO_ORDER", master, oracle.demo(full, old, data if phase == "commit" else None), fields=fields, cells=cells)])
     return fixture(name, source, "packs/demo-order.json", req, expected)
+
+
+def demo_ui() -> dict[str, Any]:
+    """界面规则：R_UI_ROW_LOCK 整行不可编辑（field 为空，给到 DEMO_ORDER 的每个字段），R_UI_PRICE_REQUIRED 单价必填、字体变灰。"""
+    fields: dict[str, Any] = {f: {"editable": False} for f in sorted(gen_packs.DEMO_FIELDS["DEMO_ORDER"])}
+    fields["PRICE"] = {"editable": False, "required": True}
+    return demo_fixture("界面规则-整行不可编辑和单价必填", "C06 第 5 节：ui 规则的 field 为空时作用于整行；指定字段的 required 和 cellStyle（假设的规则）",
+                        {"QTY": "100", "PRICE": "2.5"}, {}, "preview", None, fields=fields, cells={"PRICE": {"color": "#999999"}})
+
+
+# ---------------------------------------------------------------- T-RC-3：模块说明第 8 节的数值处理规则表
+
+# 旧系统前端计算引擎（my-project cost-web/src/v3/logic/calc-engine/calculator.ts）对同一输入的结果：
+# 用 node 24 直接运行旧引擎得到，见 .reports/batch1-20261029/rules-core/old-engine/（run-old.mts、old-results.json）。这里是抄录的结果。
+OLD_ENGINE: dict[str, Any] = {
+    "engine": "my-project cost-web/src/v3/logic/calc-engine/calculator.ts（mathjs 15.1.0，JavaScript 浮点），2026-10-30 用 node 24 运行",
+    "computed": {"NULL_ADD": "1", "DIV0": "0", "ZERO_ZERO": "0", "OVER": "100000000000000000000000000000", "BAD": "0",
+                 "THIRD": "1.6666666666666667", "COND": "6", "KEEP": "7", "SUM_V": "5", "SUM_E": "0", "COUNT_E": "0", "AVG_E": "0",
+                 "MAX_E": "0", "MIN_E": "0"},
+    "differences": [
+        "THIRD：旧系统浮点 1.6666666666666667，新平台 1.6666666666666666666666666667，浮点误差，按 C01 第 3 节一致",
+        "OVER：旧系统 1e29（JavaScript 浮点到 1.8e308 才是 Infinity），新平台超出 28 位有效数字按第 8 节为 0；数的表示范围不同，不是计算出错",
+        "BAD：都是 0；旧系统只在控制台告警，新平台另给一条 prompt（第 8 节）",
+        "COND：都是 6；旧系统按成立的原因是 evalCondition 的 new Function 遇到作用域里名为 in 的函数报 SyntaxError，"
+        "所以旧系统 condition 写法的条件总按成立（同一输入的 KEEP 写成 condition 时旧系统得 500，写成多公式时得 7）",
+        "R_V_COND：旧系统的校验（validator.ts）没有条件写法，没有可对照的结果",
+    ],
+}
+
+
+def numeric() -> dict[str, Any]:
+    values = {"ID": "1", "A": "5", "Z": "0", "E": None, "BIG": "10000000000000000000000000000", "S": "abc", "NAME": None,
+              **{f: None for f in gen_packs.NUM_CALCULATED}, "KEEP": "7"}
+    master = row(values, key="1")
+    dtl_rows = [row({"DTLID": "11", "V": "2"}, key="11"), row({"DTLID": "12", "V": None}, key="12"), row({"DTLID": "13", "V": "3"}, key="13")]
+    computed = {"NULL_ADD": "1", "DIV0": "0", "ZERO_ZERO": "0", "OVER": "0", "BAD": "0", "THIRD": oracle.fmt(oracle.fit(oracle.D(5) / 3)),
+                "SUM_V": "5", "SUM_E": "0", "COUNT_E": "0", "AVG_E": "0", "MAX_E": "0", "MIN_E": "0", "COND": "6", "KEEP": "7"}
+    effects = [{"kind": "prompt", "rule": "R_BAD", "message": BAD_MESSAGE, "entity": "NUM_DEMO", "rowKey": "1", "field": "BAD"},
+               {"kind": "prompt", "rule": "R_V_COND", "message": "名称含胶囊", "entity": "NUM_DEMO", "rowKey": "1", "field": "NAME"}]
+    rows = [result_row("NUM_DEMO", master, computed)] + [result_row("NUM_DTL", r, {}) for r in dtl_rows]
+    req = request("NUM_DEMO", master, {"NUM_DTL": dtl_rows, "NUM_EMPTY": []})
+    item = fixture("T-RC-3-数值处理规则表", "模块说明第 8 节每一行一条规则：空值和缺失字段按 0、除以 0 和 0/0 为 0、溢出为 0、"
+                   "求值出错为 0 并提示、条件出错按成立（计算和校验）、汇总时空值按 0、没有行时汇总为 0、分支都不匹配保持原值、不舍入",
+                   "packs/numeric.json", req, ok(rows, effects))
+    item["oldSystem"] = OLD_ENGINE
+    return item
+
+
+# 计算规则求值出错时的提示：规则编码、字段和 zen-expression 给出的原因（zen-expression 2.1.6）
+BAD_MESSAGE = "计算规则 R_BAD 求值出错，BAD 按 0 处理：VM error: Opcode Multiply: Unsupported type"
 
 
 def main() -> None:
@@ -190,6 +274,7 @@ def main() -> None:
     write(HERE / "packs" / "cost-pinggu.json", gen_packs.cost_pack())
     write(HERE / "packs" / "demo-order.json", gen_packs.demo_pack())
     write(HERE / "packs" / "cycle.json", gen_packs.cycle_pack())
+    write(HERE / "packs" / "numeric.json", gen_packs.numeric_pack())
     t1 = "T-RC-1 样例"
     items = [
         expr_fixture("T-RC-1-0.1加0.2", t1 + "：十进制得 0.3（旧系统浮点为 0.30000000000000004）", "0.1", "0.2", "0.3", "0.5"),
@@ -210,6 +295,8 @@ def main() -> None:
     del broken["phase"]
     items.append(fixture("请求缺phase", "C07 第 3 节：请求不合法返回 INPUT_INVALID", "packs/cost-pinggu.json", broken,
                          {"ok": False, "error": {"code": "INPUT_INVALID"}}, match="errorCode"))
+    # T-RC-2 的校验、界面规则和 T-RC-3（接在后面，前面的编号不变）
+    items += [cost_2919("preview"), cost_2919("commit"), demo_ui(), numeric()]
     for i, item in enumerate(items, 1):
         write(HERE / "cases" / f"{i:02d}-{item['name']}.json", item)
     write(HERE / "cases" / "90-依赖成环.json", {"kind": "packInvalid", "name": "依赖成环", "source": "RC-09：跨实体成环，load_pack 返回 PACK_INVALID",

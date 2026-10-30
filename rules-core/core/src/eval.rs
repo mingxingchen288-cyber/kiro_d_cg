@@ -433,7 +433,7 @@ fn apply(rule: &CalcRule, row: &mut Row, scope: VariableMap, ty: Option<FieldTyp
     let outcome = match pollster::block_on(rule.decision.evaluate(input)) {
         // 表达式节点不写出 null 的 key
         Ok(response) => interpret(Ok(response.result.dot(&rule.field).unwrap_or(Variable::Null)), &rule.divisors, &probe, number),
-        // 有分支时逐段求值：条件出错按成立（模块说明第 8 节），再按选中的那一段判断除以 0
+        // zen-engine 的错误不带原因：逐段直接求值，条件出错按成立（模块说明第 8 节），按选中的那一段判断溢出、除以 0
         Err(_) if rule.branches.is_some() => {
             let (result, divisors) = branch_value(rule.branches.as_ref().expect("有分支"), &probe);
             interpret(result, divisors, &probe, number)

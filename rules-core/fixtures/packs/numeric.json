@@ -1,0 +1,925 @@
+{
+  "packId": "NUM_DEMO",
+  "version": 1,
+  "coreVersion": "0.1.0",
+  "fields": {
+    "NUM_DEMO": {
+      "ID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "A": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "Z": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "E": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "BIG": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      },
+      "S": {
+        "type": "text",
+        "role": "input",
+        "source": "own"
+      },
+      "NAME": {
+        "type": "text",
+        "role": "input",
+        "source": "own"
+      },
+      "NULL_ADD": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "DIV0": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "ZERO_ZERO": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "OVER": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "BAD": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "COND": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "KEEP": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "THIRD": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "SUM_V": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "SUM_E": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "COUNT_E": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "AVG_E": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "MAX_E": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      },
+      "MIN_E": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      }
+    },
+    "NUM_DTL": {
+      "DTLID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "V": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      }
+    },
+    "NUM_EMPTY": {
+      "DTLID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "V": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      }
+    }
+  },
+  "rules": [
+    {
+      "id": "R_NULL_ADD",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 1,
+      "serverOnly": false,
+      "jdm": "R_NULL_ADD"
+    },
+    {
+      "id": "R_DIV0",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 2,
+      "serverOnly": false,
+      "jdm": "R_DIV0"
+    },
+    {
+      "id": "R_ZERO_ZERO",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 3,
+      "serverOnly": false,
+      "jdm": "R_ZERO_ZERO"
+    },
+    {
+      "id": "R_OVER",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 4,
+      "serverOnly": false,
+      "jdm": "R_OVER"
+    },
+    {
+      "id": "R_BAD",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 5,
+      "serverOnly": false,
+      "jdm": "R_BAD"
+    },
+    {
+      "id": "R_THIRD",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 6,
+      "serverOnly": false,
+      "jdm": "R_THIRD"
+    },
+    {
+      "id": "R_SUM_V",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 7,
+      "serverOnly": false,
+      "jdm": "R_SUM_V"
+    },
+    {
+      "id": "R_SUM_E",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 8,
+      "serverOnly": false,
+      "jdm": "R_SUM_E"
+    },
+    {
+      "id": "R_COUNT_E",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 9,
+      "serverOnly": false,
+      "jdm": "R_COUNT_E"
+    },
+    {
+      "id": "R_AVG_E",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 10,
+      "serverOnly": false,
+      "jdm": "R_AVG_E"
+    },
+    {
+      "id": "R_MAX_E",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 11,
+      "serverOnly": false,
+      "jdm": "R_MAX_E"
+    },
+    {
+      "id": "R_MIN_E",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 12,
+      "serverOnly": false,
+      "jdm": "R_MIN_E"
+    },
+    {
+      "id": "R_COND",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 20,
+      "serverOnly": false,
+      "jdm": "R_COND"
+    },
+    {
+      "id": "R_KEEP",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "calc",
+      "order": 21,
+      "serverOnly": false,
+      "jdm": "R_KEEP"
+    },
+    {
+      "id": "R_V_COND",
+      "layer": "entity",
+      "entity": "NUM_DEMO",
+      "category": "validate",
+      "order": 30,
+      "serverOnly": false,
+      "jdm": "R_V_COND"
+    }
+  ],
+  "jdm": {
+    "R_NULL_ADD": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_NULL_ADD",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "NULL_ADD",
+                "value": "E + NOFIELD + 1"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_DIV0": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_DIV0",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "DIV0",
+                "value": "A / Z"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_ZERO_ZERO": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_ZERO_ZERO",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "ZERO_ZERO",
+                "value": "Z / Z"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_OVER": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_OVER",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "OVER",
+                "value": "BIG * 10"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_BAD": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_BAD",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "BAD",
+                "value": "S * 2"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_THIRD": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_THIRD",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "THIRD",
+                "value": "A / 3"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_SUM_V": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_SUM_V",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "SUM_V",
+                "value": "sum(map(NUM_DTL, #.V))"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_SUM_E": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_SUM_E",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "SUM_E",
+                "value": "sum(map(NUM_EMPTY, #.V))"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_COUNT_E": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_COUNT_E",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "COUNT_E",
+                "value": "count(NUM_EMPTY, true)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_AVG_E": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_AVG_E",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "AVG_E",
+                "value": "avg(map(NUM_EMPTY, #.V))"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MAX_E": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MAX_E",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "MAX_E",
+                "value": "max(map(NUM_EMPTY, #.V))"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_MIN_E": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_MIN_E",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "MIN_E",
+                "value": "min(map(NUM_EMPTY, #.V))"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_COND": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_COND",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "COND",
+                "value": "(matches(NAME, '胶囊')) ? (A + 1) : (COND)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_KEEP": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_KEEP",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "KEEP",
+                "value": "(S == '胶囊') ? (A * 100) : (KEEP)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_V_COND": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_V_COND",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "matches(NAME, '胶囊')"
+              },
+              {
+                "id": "e2",
+                "key": "field",
+                "value": "'NAME'"
+              },
+              {
+                "id": "e3",
+                "key": "level",
+                "value": "'prompt'"
+              },
+              {
+                "id": "e4",
+                "key": "message",
+                "value": "'名称含胶囊'"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    }
+  }
+}
