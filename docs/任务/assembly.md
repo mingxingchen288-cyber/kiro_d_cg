@@ -57,6 +57,7 @@
   - 配置保存：A（8086）上 `PUT /api/config/items/page/COST_PINGGU` 把主表 MEMO 列宽改为 321，A、B（8087）上订阅了 COST_PINGGU 的 WebSocket 收到同一条 `config.changed`（eventId 相同，version 为新代号），A、B 的 `X-Config-Version` 都大于改前，B 的页面视图中 MEMO 宽 321；再保存回原内容，两边都收到下一条 `config.changed`，B 的列宽恢复，配置项内容与改前相同。
   - 停用账号：chengben01 分别在 A、B 登录并连 `/ws`；admin 在 A 停用它，两个连接都先收到 `session.revoked`（`accountDisabled`），再以 4401 关闭；chengben01 在 A、B 上的 `/api/me` 都返回 401 SESSION_REQUIRED。恢复启用后 chengben01 能在 B 重新登录，账号的姓名、部门、角色与改前相同。
   - 恢复核对（只读，`q03-as4-恢复核对.out.txt`）：page.COST_PINGGU 版本 5→7、内容长度 2259 与改前相同、不含 MEMO；chengben01 enabled=1、部门 14、角色 COST_ACCOUNTANT。没有改代码。
+  - 复跑（2026-10-30，T-AS-5 把两个后端进程移到 `tests/e2e/conftest.py`、整个测试会话共用之后）：`test_batch_a.py`、`test_batch_b.py`、`test_batch_c.py` 一起运行 13 passed（`e2e-backend-all-1.txt`）；`uv run --refresh-package cost-rules-core --with <wheel> pytest -q -p no:cacheprovider -m "not oracle and not redis"` 1188 passed（`pytest-unit-1.txt`），`uv run lint-imports --no-cache` 5 kept（`lint-imports-1.txt`）。最终只读核对见 `q12-最终核对.out.txt`。
 
 ### T-AS-5 批次 B 联调
 
