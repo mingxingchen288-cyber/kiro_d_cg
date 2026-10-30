@@ -106,6 +106,25 @@ def test_withdrawn_before_change_still_shows_withdrawn() -> None:
     assert h.record(approval_id).progress.nodes[0].status == "pending"
 
 
+def test_affected_table_columns_read_once_per_process() -> None:
+    """修改表的列定义每张表只读一次（approval/columns.py）。物料清单注册过（同 d_cg，写入经写入意图）：第一个审批的详情、
+    最终批准各读一次 T_COST_GOODS（详情页和审批命令各用自己的 Evaluator），第二个审批的详情、预览、核对指纹和最终批准都不再读。
+    改之前每次计算"修改内容"都读一次，第二个审批共读 5 次（详情 1、pass_ 中的详情和预览 2、核对指纹和最终批准 2）。"""
+    h = Harness(["COST_TO_GOODS"], register_goods=True)
+
+    def reads() -> int:
+        return len([c for c in h.deps.schema.calls_to("columns") if c.args == ("T_COST_GOODS",)])  # type: ignore[attr-defined]
+
+    first = e37_save(h, "80").approval_id
+    h.detail(ADMIN, first)
+    h.pass_(ADMIN, first)
+    assert (h.record(first).progress.status, reads()) == ("approved", 2)
+    second = e37_save(h, "78").approval_id
+    h.detail(ADMIN, second)
+    h.pass_(ADMIN, second)
+    assert (h.record(second).progress.status, reads()) == ("approved", 2)
+
+
 def test_after_first_level_steps_record_who_passed() -> None:
     h = Harness(["COST_TO_GOODS"])
     approval = e37_save(h, "90")

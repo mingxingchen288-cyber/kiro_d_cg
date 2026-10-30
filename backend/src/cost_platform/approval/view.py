@@ -50,6 +50,7 @@ from cost_platform.contracts.types import (
 
 from .calc import Recalculator, coerce
 from .catalog import ApprovalCatalog
+from .columns import TableColumns
 from .deps import ApprovalDeps
 from .model import AffectedRow, ApprovalRecord, FlowSnapshot
 from .patch import Applied, Change, apply_patch, bill_key
@@ -170,6 +171,8 @@ class Evaluator:
     def __init__(self, deps: ApprovalDeps) -> None:
         self.deps = deps
         self.calc = Recalculator(deps.rules)
+        # 修改表的列名，每张表只读一次（columns.py）；Evaluator 随阶段和服务在插件 setup 时创建，进程内一直用同一个
+        self.columns = TableColumns(deps.schema)
 
     # ---------------------------------------------------------------- 来源单据和触发行
 
@@ -552,7 +555,7 @@ class Evaluator:
         """一块受影响单据：勾选框按修改表的主键分，主键相同的几行只有第一行带 `ref` 和 `checked`；记录已不存在的行排在最后
         （AP-21）。几个审批流合成的审批，标题后注明审批流名称（C06 7.6）。"""
         table = self.target_table(block)
-        target_columns = {c.upper() for c in (self.deps.schema.columns(table) or {})}
+        target_columns = self.columns.names(table)
         scales = self._affected_scales(block, catalog)
         selection = block.selection or "checked"
         view_rows: list[ViewRow] = []

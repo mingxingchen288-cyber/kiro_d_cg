@@ -51,7 +51,7 @@
 |---|---|---|
 | `CommandExecutor` | orchestration | 执行通过、驳回、撤回 |
 | `UnitOfWork` | db-core | 审批数据的读写；执行入口条件、关联条件和取值 |
-| `SchemaInspector` | db-core | 判断冻结表、修改表注册与否之外的表结构和主键 |
+| `SchemaInspector` | db-core | 判断冻结表、修改表注册与否之外的表结构和主键；"修改内容"用到的修改表列名每张表在进程内只读一次（`approval/columns.py`，同 write-pipeline 的 `ColumnScales`，表结构变更随部署重启生效） |
 | `DocumentReader` | queries-export | 审批详情读取单据 |
 | `TableWriter` | write-pipeline | 最终批准时写没注册的表 |
 | `DirectoryReader` | identity | 审批人和通知接收人 |
