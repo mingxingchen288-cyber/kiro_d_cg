@@ -1,4 +1,7 @@
-"""新建页面向导（CF-14，T-CF-6 的模拟验证）。用物料清单（视图 T_COST_GOODS_PRICE_V、表 T_COST_GOODS）和成本核算的主从结构生成页面。"""
+"""新建页面向导（CF-14，T-CF-6 的模拟验证）。用物料清单（视图 T_COST_GOODS_PRICE_V、表 T_COST_GOODS）和成本核算的主从结构生成页面。
+
+seed 中已有物料清单页 GOODS_PRICE_MANAGE（实体 COST_GOODS_PRICE），向导在同一张表上用另外的编码 GOODS_WIZARD、COST_GOODS_WIZARD
+新建一页。"""
 
 from __future__ import annotations
 
@@ -10,13 +13,13 @@ from cost_platform.contracts.types import ErrorCode, PlatformError, WizardColumn
 
 from .support import Env, seed_drafts
 
-GOODS = {"entity": "COST_GOODS_PRICE", "name": "物料清单", "table": "T_COST_GOODS", "readView": "T_COST_GOODS_PRICE_V",
+GOODS = {"entity": "COST_GOODS_WIZARD", "name": "物料清单", "table": "T_COST_GOODS", "readView": "T_COST_GOODS_PRICE_V",
          "erpRow": {"column": "ISERP", "value": "1", "localValue": "0"}, "erpColumns": ["GOODSNAME", "PRICE"],
          "labels": {"ZX_PRICE": "执行价"}}
 
 
 def _request(**changes: Any) -> WizardGenerateRequest:
-    body = {"parentMenu": "cost", "pageCode": "GOODS_PRICE_MANAGE", "title": "物料清单及成本", "layout": "single",
+    body = {"parentMenu": "cost", "pageCode": "GOODS_WIZARD", "title": "物料清单及成本", "layout": "single",
             "detailMode": "stack", "audit": False, "master": GOODS, "details": [], **changes}
     return parse_wire(WizardGenerateRequest, body)
 
@@ -47,33 +50,33 @@ def test_generate_single_page(env: Env) -> None:
     menu_before = env.stored("menu", "main")
     result = env.service.wizard_generate(_request(), "1")
     assert result.generation == generation + 1 == env.generation()
-    assert set(result.versions) == {("entity", "COST_GOODS_PRICE"), ("page", "GOODS_PRICE_MANAGE"),
-                                    ("operation", "GOODS_PRICE_MANAGE.save"), ("menu", "main"), ("role", "ADMIN")}
-    entity = env.stored("entity", "COST_GOODS_PRICE")
+    assert set(result.versions) == {("entity", "COST_GOODS_WIZARD"), ("page", "GOODS_WIZARD"),
+                                    ("operation", "GOODS_WIZARD.save"), ("menu", "main"), ("role", "ADMIN")}
+    entity = env.stored("entity", "COST_GOODS_WIZARD")
     fields = {f["name"]: f for f in entity["fields"]}
     view_only = {"DELETED", "CREATE_TIME", "UPDATE_TIME", "CREATE_BY", "UPDATE_BY", "ROW_CLASS_FLAG"}
     assert len(fields) == 17 and {n for n, f in fields.items() if f["column"] is None} == view_only
     assert (entity["primaryKey"], fields["GOODSID"]["role"], fields["ZX_PRICE"]["label"]) == ("GOODSID", "system", "执行价")
-    page = env.stored("page", "GOODS_PRICE_MANAGE")
-    assert (page["audit"], page["detailMode"], page["saveOperation"]) == (False, "stack", "GOODS_PRICE_MANAGE.save")
+    page = env.stored("page", "GOODS_WIZARD")
+    assert (page["audit"], page["detailMode"], page["saveOperation"]) == (False, "stack", "GOODS_WIZARD.save")
     assert [b["action"] for b in page["master"]["buttons"]] == ["addRow", "deleteRow", "saveGridConfig"]
-    operation = env.stored("operation", "GOODS_PRICE_MANAGE.save")
-    assert (operation["kind"], operation["propagation"], operation["impact"]) == ("save", "continue", ["COST_GOODS_PRICE"])
+    operation = env.stored("operation", "GOODS_WIZARD.save")
+    assert (operation["kind"], operation["propagation"], operation["impact"]) == ("save", "continue", ["COST_GOODS_WIZARD"])
     assert "rowNotFound" not in operation  # 取默认的 skip
-    writable = operation["writableFields"]["COST_GOODS_PRICE"]
+    writable = operation["writableFields"]["COST_GOODS_WIZARD"]
     assert "GOODSID" not in writable and "ISERP" not in writable and not view_only & set(writable)
     assert {"ZX_PRICE", "PRICE", "GOODSNAME", "USEFLAG"} <= set(writable)  # 有 erpRow：ERP 列在本地行上可写
     menu = env.stored("menu", "main")
     cost = menu["items"][0]
     assert cost["children"][:-1] == menu_before["items"][0]["children"]
-    assert cost["children"][-1] == {"key": "GOODS_PRICE_MANAGE", "title": "物料清单及成本", "kind": "page",
-                                    "pageCode": "GOODS_PRICE_MANAGE"}
+    assert cost["children"][-1] == {"key": "GOODS_WIZARD", "title": "物料清单及成本", "kind": "page",
+                                    "pageCode": "GOODS_WIZARD"}
     admin = env.stored("role", "ADMIN")
-    assert admin["pages"]["GOODS_PRICE_MANAGE"] == {"buttons": ["*"]}
+    assert admin["pages"]["GOODS_WIZARD"] == {"buttons": ["*"]}
     assert admin["pages"]["COST_PINGGU"] == {"buttons": ["*"]}
-    view = env.reader.read("ADMIN").page_view("GOODS_PRICE_MANAGE")
+    view = env.reader.read("ADMIN").page_view("GOODS_WIZARD")
     assert {f.name for f in view.master.fields if not f.editable} >= view_only | {"GOODSID", "ISERP"}
-    assert [e.payload.pages for e in env.publisher.events] == [["GOODS_PRICE_MANAGE"]]
+    assert [e.payload.pages for e in env.publisher.events] == [["GOODS_WIZARD"]]
 
 
 def test_generate_master_detail(env: Env) -> None:

@@ -1,0 +1,273 @@
+{
+  "type": "approvalFlow",
+  "key": "GOODS_TO_COST",
+  "name": "物料清单改价审批",
+  "content": {
+    "page": "GOODS_PRICE_MANAGE",
+    "order": 3,
+    "enabled": true,
+    "operations": {
+      "COST_GOODS_PRICE": [
+        "modify"
+      ]
+    },
+    "levels": [
+      {
+        "level": 1,
+        "nodes": [
+          {
+            "name": "管理员审批",
+            "conditionType": "sql",
+            "condition": "DECODE(:new_ZX_PRICE, :old_ZX_PRICE, 0, 1) = 1",
+            "department": null,
+            "approvers": [
+              {
+                "type": "role",
+                "role": "ADMIN"
+              }
+            ],
+            "mode": "or",
+            "enabled": true
+          }
+        ]
+      }
+    ],
+    "freeze": [
+      {
+        "table": "T_COST_PINGGU_DTL",
+        "condition": "GOODSID = :new_GOODSID",
+        "enabled": true
+      },
+      {
+        "table": "T_COST_PINGGU_DTL_LQ",
+        "condition": "GOODSID = :new_GOODSID",
+        "enabled": true
+      }
+    ],
+    "display": [
+      {
+        "key": "goods",
+        "title": "物料清单",
+        "region": "master",
+        "source": "COST_GOODS_PRICE",
+        "columns": [
+          {
+            "field": "GOODSID",
+            "label": "物料ID"
+          },
+          {
+            "field": "GOODSNAME",
+            "label": "物料名称"
+          },
+          {
+            "field": "PRICE",
+            "label": "参考价格",
+            "precision": 2
+          },
+          {
+            "field": "ZX_PRICE",
+            "label": "单价",
+            "precision": 2
+          }
+        ]
+      },
+      {
+        "key": "costMaterial",
+        "title": "成本核算（原辅料）",
+        "region": "affected",
+        "source": "V_COST_PINGGU_MATERIAL",
+        "condition": "GOODSID = :new_GOODSID",
+        "targetTable": "T_COST_PINGGU_DTL",
+        "keyColumn": "DTLID",
+        "columns": [
+          {
+            "field": "master.DOCID",
+            "label": "单据号"
+          },
+          {
+            "field": "master.GOODSNAME",
+            "label": "产品"
+          },
+          {
+            "field": "GOODSNAME",
+            "label": "物料"
+          },
+          {
+            "field": "PRICE",
+            "label": "单价",
+            "precision": 2
+          },
+          {
+            "field": "COST_BATCH",
+            "label": "金额",
+            "precision": 2
+          },
+          {
+            "field": "master.COST_PERBOX",
+            "label": "每盒成本",
+            "precision": 4
+          },
+          {
+            "field": "master.JGF_PERQP",
+            "label": "千片加工费",
+            "precision": 2
+          }
+        ],
+        "selection": "checked",
+        "actions": [
+          {
+            "action": "updateFields",
+            "fields": [
+              {
+                "column": "PRICE",
+                "value": "NVL(:new_ZX_PRICE, :old_PRICE)"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "costPackage",
+        "title": "成本核算（包材）",
+        "region": "affected",
+        "source": "V_COST_PINGGU_PACKAGE",
+        "condition": "GOODSID = :new_GOODSID",
+        "targetTable": "T_COST_PINGGU_DTL",
+        "keyColumn": "DTLID",
+        "columns": [
+          {
+            "field": "master.DOCID",
+            "label": "单据号"
+          },
+          {
+            "field": "master.GOODSNAME",
+            "label": "产品"
+          },
+          {
+            "field": "GOODSNAME",
+            "label": "物料"
+          },
+          {
+            "field": "PRICE",
+            "label": "单价",
+            "precision": 2
+          },
+          {
+            "field": "COST_BATCH",
+            "label": "金额",
+            "precision": 2
+          }
+        ],
+        "selection": "checked",
+        "actions": [
+          {
+            "action": "updateFields",
+            "fields": [
+              {
+                "column": "PRICE",
+                "value": "NVL(:new_ZX_PRICE, :old_PRICE)"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "lqMaterial",
+        "title": "液体成本核算（原辅料）",
+        "region": "affected",
+        "source": "V_COST_PINGGU_MATERIAL_LQ",
+        "condition": "GOODSID = :new_GOODSID",
+        "targetTable": "T_COST_PINGGU_DTL_LQ",
+        "keyColumn": "DTLID",
+        "columns": [
+          {
+            "field": "DOCID",
+            "label": "单据号"
+          },
+          {
+            "field": "GOODSNAME",
+            "label": "物料"
+          },
+          {
+            "field": "PRICE",
+            "label": "单价",
+            "precision": 2
+          },
+          {
+            "field": "COST_BATCH",
+            "label": "金额",
+            "precision": 2
+          }
+        ],
+        "selection": "checked",
+        "actions": [
+          {
+            "action": "updateFields",
+            "fields": [
+              {
+                "column": "PRICE",
+                "value": "NVL(:new_ZX_PRICE, :old_PRICE)"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "lqPackage",
+        "title": "液体成本核算（包材）",
+        "region": "affected",
+        "source": "V_COST_PINGGU_PACKAGE_LQ",
+        "condition": "GOODSID = :new_GOODSID",
+        "targetTable": "T_COST_PINGGU_DTL_LQ",
+        "keyColumn": "DTLID",
+        "columns": [
+          {
+            "field": "DOCID",
+            "label": "单据号"
+          },
+          {
+            "field": "GOODSNAME",
+            "label": "物料"
+          },
+          {
+            "field": "PRICE",
+            "label": "单价",
+            "precision": 2
+          },
+          {
+            "field": "COST_BATCH",
+            "label": "金额",
+            "precision": 2
+          }
+        ],
+        "selection": "checked",
+        "actions": [
+          {
+            "action": "updateFields",
+            "fields": [
+              {
+                "column": "PRICE",
+                "value": "NVL(:new_ZX_PRICE, :old_PRICE)"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "propagation": "end",
+    "notify": [
+      {
+        "event": "submitted",
+        "to": "levelApprovers"
+      },
+      {
+        "event": "passed",
+        "to": "applicant"
+      },
+      {
+        "event": "rejected",
+        "to": "applicant"
+      }
+    ]
+  }
+}

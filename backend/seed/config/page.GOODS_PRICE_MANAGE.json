@@ -1,0 +1,38 @@
+{
+  "type": "page",
+  "key": "GOODS_PRICE_MANAGE",
+  "name": "物料清单及成本",
+  "content": {
+    "title": "物料清单及成本",
+    "layout": "single",
+    "detailMode": "tabs",
+    "audit": false,
+    "saveOperation": "GOODS_PRICE_MANAGE.save",
+    "master": {
+      "entity": "COST_GOODS_PRICE",
+      "buttons": [
+        {
+          "action": "addRow",
+          "label": "新增"
+        },
+        {
+          "action": "copyRow",
+          "label": "复制"
+        },
+        {
+          "action": "deleteRow",
+          "label": "删除"
+        },
+        {
+          "action": "saveGridConfig",
+          "label": "保存列配置"
+        }
+      ],
+      "grid": {
+        "sideBar": true,
+        "cellSelection": false,
+        "groupBy": []
+      }
+    }
+  }
+}

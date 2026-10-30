@@ -112,7 +112,7 @@ def test_menus_only_accessible_pages() -> None:
     menus = env.reader.read("VIEWER").menus()
     assert [(m.key, [c.key for c in m.children]) for m in menus] == [("cost", ["COST_PINGGU"])]
     admin = env.reader.read("ADMIN").menus()
-    assert [m.key for m in admin] == ["cost", "config"]
+    assert [m.key for m in admin] == ["cost", "goods", "config"]  # seed 的 ADMIN 能访问物料清单页
 
 
 @settings(max_examples=25, deadline=None)

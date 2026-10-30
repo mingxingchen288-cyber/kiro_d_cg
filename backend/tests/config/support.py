@@ -102,7 +102,9 @@ CMX_TABLES: dict[str, list[ColumnInfo]] = {
 }
 SEQUENCES = ["T_COST_PINGGU_SEQ", "T_COST_PINGGU_DTL_SEQ", "T_COST_GOODS_SEQ", "T_COST_PINGGU_LQ_SEQ",
              "T_COST_PINGGU_DTL_LQ_SEQ", "T_CT_GOODS_SEQ"]
-DEPARTMENTS = ["1069", "10"]
+# 1069：C06 7.9 样例中旧系统技术中心的编号；18：d_cg 中技术中心的部门编号（2026-10-30 经系统管理接口新建），
+# seed 的审批流 TECH_CUSTOMER_MATERIAL 引用它
+DEPARTMENTS = ["1069", "10", "18"]
 
 
 def _decode(*args: Any) -> Any:

@@ -1,0 +1,145 @@
+{
+  "type": "approvalFlow",
+  "key": "TECH_CUSTOMER_MATERIAL",
+  "name": "技术中心客指物料变更审批",
+  "content": {
+    "page": "COST_PINGGU",
+    "order": 2,
+    "enabled": true,
+    "operations": {
+      "COST_MATERIAL": [
+        "modify",
+        "delete"
+      ],
+      "COST_PACKAGE": [
+        "modify",
+        "delete"
+      ]
+    },
+    "levels": [
+      {
+        "level": 1,
+        "nodes": [
+          {
+            "name": "管理员审批",
+            "conditionType": "sql",
+            "condition": ":master_old_USESTATUS = '评估中' AND NVL(:old_CUSTOMER_SPECIFIED, 0) <> 0 AND (:operation = 'deleted' OR DECODE(:new_GOODSID, :old_GOODSID, 0, 1) = 1 OR DECODE(:new_CUSTOMER_SPECIFIED, :old_CUSTOMER_SPECIFIED, 0, 1) = 1)",
+            "department": "18",
+            "approvers": [
+              {
+                "type": "role",
+                "role": "ADMIN"
+              }
+            ],
+            "mode": "or",
+            "enabled": true
+          }
+        ]
+      }
+    ],
+    "freeze": [],
+    "display": [
+      {
+        "key": "cost",
+        "title": "成本单及成本变化",
+        "region": "master",
+        "source": "COST_PINGGU",
+        "columns": [
+          {
+            "field": "DOCID",
+            "label": "单据号"
+          },
+          {
+            "field": "GOODSNAME",
+            "label": "产品"
+          },
+          {
+            "field": "COST_PERBOX",
+            "label": "每盒成本",
+            "precision": 4
+          },
+          {
+            "field": "JGF_PERQP",
+            "label": "千片加工费",
+            "precision": 2
+          }
+        ]
+      },
+      {
+        "key": "material",
+        "title": "原辅料",
+        "region": "detail",
+        "source": "COST_MATERIAL",
+        "columns": [
+          {
+            "field": "GOODSID",
+            "label": "物料"
+          },
+          {
+            "field": "GOODSNAME",
+            "label": "物料名称"
+          },
+          {
+            "field": "PRICE",
+            "label": "单价",
+            "precision": 2
+          },
+          {
+            "field": "COST_BATCH",
+            "label": "金额",
+            "precision": 2
+          },
+          {
+            "field": "CUSTOMER_SPECIFIED",
+            "label": "客户指定"
+          }
+        ]
+      },
+      {
+        "key": "package",
+        "title": "包材",
+        "region": "detail",
+        "source": "COST_PACKAGE",
+        "columns": [
+          {
+            "field": "GOODSID",
+            "label": "物料"
+          },
+          {
+            "field": "GOODSNAME",
+            "label": "物料名称"
+          },
+          {
+            "field": "PRICE",
+            "label": "单价",
+            "precision": 2
+          },
+          {
+            "field": "COST_BATCH",
+            "label": "金额",
+            "precision": 2
+          },
+          {
+            "field": "CUSTOMER_SPECIFIED",
+            "label": "客户指定"
+          }
+        ]
+      }
+    ],
+    "propagation": "end",
+    "notify": [
+      {
+        "event": "submitted",
+        "to": "levelApprovers"
+      },
+      {
+        "event": "passed",
+        "to": "applicant"
+      },
+      {
+        "event": "rejected",
+        "to": "applicant"
+      }
+    ]
+  }
+}
