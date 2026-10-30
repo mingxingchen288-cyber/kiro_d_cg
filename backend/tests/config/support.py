@@ -93,6 +93,12 @@ TABLES: dict[str, tuple[str, list[ColumnInfo], str | None]] = {
     "V_COST_PINGGU_MATERIAL_LQ": ("view", _cols(_DTL_LQ_VIEW), None),
     "V_COST_PINGGU_PACKAGE_LQ": ("view", _cols(_DTL_LQ_VIEW), None),
     "T_CT_GOODS": ("table", _cols("GOODSID:N NAME:V PRICE:N"), "GOODSID"),
+    # 成本核算主表的产品、客户、商务人员 Lookup（seed 的 costGoods、costCustomer、costUser）：列同 cmx 的同名视图
+    # （.reports/batch3-20261030/h3-new-doc/q02、q04），d_cg 中要另建（见该目录的待人工审核 SQL）
+    "V_COST_GOODS_LOOKUP": ("view", _cols("GOODSID:N GOODSNAME:V MA_NO:V APEX_PL:N MAH:V P_PERPACK:N S_PERBACK:N CUSTOMID:N "
+                                          "CUSTOMNAME:V MEMO:V STRENGTH:V LIVERY:V GOODSNAME_EN:V"), None),
+    "V_COST_CUSTOMER_LOOKUP": ("view", _cols("CUSTOMID:N CUSTOMNAME:V COUNTRY:V LIVERY:V TRANPOSID:N"), None),
+    "V_COST_USER": ("view", _cols("USERNAME:V REAL_NAME:V"), None),
 }
 CMX_TABLES: dict[str, list[ColumnInfo]] = {
     "T_COST_BOM_GOODS_TREE_V": _cols("TREEID:V PID:V GOODSID:N GOODSNAME:V USEFLAG:V STANDARDTYPE:V LVCODE:N USEQTY:N ENTRYID:N"),

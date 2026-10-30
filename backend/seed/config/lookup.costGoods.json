@@ -1,0 +1,38 @@
+{
+  "type": "lookup",
+  "key": "costGoods",
+  "name": "产品选择",
+  "content": {
+    "table": "V_COST_GOODS_LOOKUP",
+    "columns": [
+      "GOODSID",
+      "GOODSNAME",
+      "MA_NO",
+      "APEX_PL",
+      "MAH",
+      "P_PERPACK",
+      "S_PERBACK",
+      "CUSTOMID",
+      "CUSTOMNAME",
+      "MEMO",
+      "STRENGTH",
+      "LIVERY",
+      "GOODSNAME_EN"
+    ],
+    "keywordColumns": [
+      "GOODSID",
+      "GOODSNAME",
+      "MA_NO",
+      "APEX_PL",
+      "MAH",
+      "P_PERPACK",
+      "S_PERBACK",
+      "CUSTOMID",
+      "CUSTOMNAME",
+      "MEMO",
+      "STRENGTH",
+      "LIVERY",
+      "GOODSNAME_EN"
+    ]
+  }
+}

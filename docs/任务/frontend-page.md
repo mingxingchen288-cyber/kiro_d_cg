@@ -87,3 +87,12 @@
   - 模拟验证：`frontend/tests/page/display.test.ts` 3 个：主表一块数据取到后 2919（MEMO 为 ERP未搭建BOM）就是红底、显示的仍是加载来的值、没有规则提示、请求不带明细和修改；选中 2550 后硬脂酸镁的单价不可编辑、字体变灰、备注必填，其他行不受影响；备注改成 ERP未搭建BOM 后按预览变红，保存后按保存的值重新做显示求值仍是红底。`buttons-config.test.ts` 的预览用例改为只取 `purpose` 为 `operation` 的请求，"Worker 不可用"用例改为每次求值都失败（单据加载时的显示求值也经 Worker）。`pnpm typecheck` 通过，`pnpm test` 32 个文件 507 passed，`pnpm lint:deps` 没有违规（`frontend-*.log`）。
   - 真实浏览器（后端 8084 + d_cg、前端 9532、本机 Chrome，`e2e/rules-ui.spec.cjs`，`e2e/results.json`）：打开成本核算页不编辑，第一块 100 行中 MEMO 为 ERP未搭建BOM 的 2553、2555、2561、2563、2565、2569 都是红底（`rgb(255, 204, 204)`），其他行都不是，页面没有未保存修改、没有规则提示（截图 `e2e/01-加载即红底.png`）；显示求值向 Worker 发了 100 个求值请求，从第一个发出到最后一个回复 20–29 毫秒；在已取到的块里来回滚动，求值请求数不变（100 → 100）。
   - 没有验证：明细行的界面规则在浏览器中的效果（d_cg 目前没有发布明细的界面规则）；配置变更后重新做显示求值（只有模拟验证）。
+
+### T-FP-9 新增、复制的成本单带上产品
+
+- 归属与目标：实现 FP-15 中"`fillWritable` 字段写进命令"一项。由旧系统推出：成本核算主表产品ID（EDITABLE=0）配产品 Lookup（`cellEditorParams.lookupCode = costGoods`），点单元格即打开（`useLookupDialog.ts:79-98`，只看行能否编辑），回填产品名称、规格等不可编辑的列；新增、复制的行保存时提交全部字段（`useWorkingSetStore.ts:834-876`），`DynamicDataService.insert/update` 只跳过虚拟列，照样写库。
+- 前置输入：C05 v5 的 `fillWritable`（config 的 `views.py` 计算，与 authz AZ-04 相同）；seed 的 `lookup.costGoods`、`lookup.costCustomer`、`lookup.costUser`，页面主表 GOODSID、CUSTOMID、BUSINESS_USER 的 Lookup，实体去掉 GOODSID、CUSTOMID 的 `editable: false`，保存操作的 `writableFields` 加上产品ID、客户ID 和它们的回填目标。
+- 负责范围：page 的 `fields.ts`（`fieldEditable` 管能否填写，`fieldWritable` 管能否写进命令）、view-model。
+- 交付物：新增行用产品 Lookup 选产品后保存，产品ID、产品名称等写库；复制出的成本单保存后产品ID 不变；已保存的成本单换产品时回填的字段一起保存。
+- 接入责任：d_cg 要先建三个 Lookup 数据源视图（`.reports/batch3-20261030/h3-new-doc/建Lookup视图-待人工审核.sql`），再按合并后的代码把配置项写进 d_cg（同目录 `save_config.py`）。
+- 验收标准：模拟验证：新增一行、产品 Lookup 选产品 392，命令的 `values` 带产品ID 和不可编辑的回填目标；复制 200721 只复制主表，命令带产品ID 392、产品名称；明细的物料名称照旧不进命令。真实验证（浏览器、d_cg）：新增成本单选产品 392 保存后库里产品ID 为 392，"由BOM生成明细"生成 BOM 的 11 行；复制 200721 保存后产品ID 仍是 392。

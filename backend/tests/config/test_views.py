@@ -136,7 +136,7 @@ def test_seed_page_view() -> None:
     view = _view([*items, draft("role", "COST_ACCOUNTANT", role)], "COST_PINGGU", "COST_ACCOUNTANT")
     fields = {f.name: f for f in view.master.fields}
     assert (fields["MEMO"].editable, fields["MEMO"].required) == (True, True)
-    assert fields["PACKTYPE"].editable is False and fields["GOODSID"].editable is False  # 角色收紧、实体 fieldDefaults
+    assert fields["PACKTYPE"].editable is False and fields["GOODSNAME"].editable is False  # 角色收紧、实体 fieldDefaults
     assert fields["TOTAL_COST"].calculated is True and fields["TOTAL_COST"].editable is False
     assert fields["DOCID"].pinned == "left" and fields["DOCID"].editable is False
     material = {f.name: f for f in view.details[0].fields}
@@ -145,6 +145,48 @@ def test_seed_page_view() -> None:
     assert (view.details[0].parent_key, view.details[0].primary_key) == ("DOCID", "DTLID")
     assert (view.rules_pack.pack_id, view.rules_pack.version, view.version) == ("COST_PINGGU", 5, 7)
     assert dump_wire(PageView, parse_wire(PageView, dump_wire(PageView, view))) == dump_wire(PageView, view)
+
+
+PRODUCT_FILL = ["GOODSNAME", "STRENGTH", "MA_NO", "MAH", "CUSTOMNAME", "LIVERY", "GOODSNAME_EN"]
+"""成本核算主表产品 Lookup（costGoods）回填目标中不可编辑的字段：旧系统 EDITABLE=0，随产品回填写库。"""
+
+
+def test_seed_master_lookups_fill_writable() -> None:
+    """按旧系统 cost-pinggu 的列配置：产品ID、客户ID 配 Lookup 后可编辑（迁移 MG-10，旧系统点单元格即打开 Lookup）；
+    产品名称、规格等回填目标仍不可编辑，但 `fillWritable` 为 true（AZ-04 接受）；不是回填目标的项目号、币种两者都不是；
+    明细的物料名称（column 为 null，只在视图中）不是。页面视图序列化时只在为 true 时带 `fillWritable`。"""
+    role = draft("role", "COST_ACCOUNTANT", {"name": "成本会计", "admin": False, "pages": {"COST_PINGGU": {"buttons": ["*"]}}})
+    view = _view([*seed_drafts(), role], "COST_PINGGU", "COST_ACCOUNTANT")
+    fields = {f.name: f for f in view.master.fields}
+    assert fields["GOODSID"].editable and fields["GOODSID"].lookup is not None and fields["GOODSID"].lookup.code == "costGoods"
+    assert fields["CUSTOMID"].editable and fields["CUSTOMID"].lookup is not None and fields["CUSTOMID"].lookup.code == "costCustomer"
+    business = fields["BUSINESS_USER"].lookup
+    assert business is not None and (business.code, business.multiple, business.fill) == ("costUser", True, {"BUSINESS_USER": "REAL_NAME"})
+    assert sorted(n for n, f in fields.items() if f.fill_writable) == sorted([*PRODUCT_FILL, "COUNTRY", "TRANPOSID"])
+    assert all(not fields[n].editable for n in [*PRODUCT_FILL, "COUNTRY", "TRANPOSID"])
+    assert not fields["PROJECTNO"].fill_writable and not fields["FMNAME"].fill_writable
+    assert not fields["APEX_PL"].fill_writable and fields["APEX_PL"].editable  # 本来就可编辑的回填目标
+    material = {f.name: f for f in view.details[0].fields}
+    assert not material["GOODSNAME"].editable and not material["GOODSNAME"].fill_writable
+    wire = {f["name"]: f for f in dump_wire(PageView, view)["master"]["fields"]}
+    assert wire["GOODSNAME"]["fillWritable"] is True and "fillWritable" not in wire["MEMO"]
+
+
+def test_fill_writable_follows_lookup_field_and_writable_fields() -> None:
+    """产品ID 被角色设为不可编辑时，它的回填目标都不是 `fillWritable`（AZ-04 只接受可编辑字段的回填目标）；
+    回填目标不在保存操作的 writableFields 中时也不是。"""
+    items = seed_drafts()
+    locked = draft("role", "COST_ACCOUNTANT", {"name": "成本会计", "admin": False, "pages": {"COST_PINGGU": {
+        "buttons": ["*"], "columns": {"master": {"GOODSID": {"editable": False}, "CUSTOMID": {"editable": False}}}}}})
+    view = _view([*items, locked], "COST_PINGGU", "COST_ACCOUNTANT")
+    assert [f.name for f in view.master.fields if f.fill_writable] == []
+    operation = next(d for d in items if (d.type, d.key) == ("operation", "COST_PINGGU.save")).content
+    narrowed = {**operation["writableFields"], "COST_PINGGU": [n for n in operation["writableFields"]["COST_PINGGU"] if n != "MAH"]}
+    role = draft("role", "COST_ACCOUNTANT", {"name": "成本会计", "admin": False, "pages": {"COST_PINGGU": {"buttons": ["*"]}}})
+    view = _view([*_with(items, "operation", "COST_PINGGU.save", {**operation, "writableFields": narrowed}), role],
+                 "COST_PINGGU", "COST_ACCOUNTANT")
+    fields = {f.name: f for f in view.master.fields}
+    assert not fields["MAH"].fill_writable and fields["GOODSNAME"].fill_writable
 
 
 def test_seed_page_view_summary_fields() -> None:

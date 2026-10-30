@@ -79,14 +79,21 @@ def test_row_condition_on_page_not_in_role_is_denied() -> None:
 # ---------------------------------------------------------------- AZ-04 可写字段
 
 def test_writable_fields_follow_page_view_and_role_columns() -> None:
-    """成本核算主表：保存操作允许写旧系统 EDITABLE=1 的 16 个字段；技术中心的列权限把其中 11 个设为不可编辑。
+    """成本核算主表：保存操作允许写旧系统 EDITABLE=1 的 16 个字段，加上配了 Lookup 的产品ID、客户ID（MG-10）和它们
+    不可编辑的回填目标（产品名称、规格等 9 个）；技术中心的列权限把其中一些设为不可编辑。
     原辅料的单价技术中心不可编辑，但它是物料 Lookup 的回填目标，换物料时照样写（E31，见下一个用例）。"""
     admin = context(snapshot("ADMIN"))
     assert checker.writable_fields(admin, COST_PINGGU, COST_PINGGU) == frozenset(
         {"ANNUAL_QTY", "APEX_PL", "P_PERPACK", "S_PERBACK", "PACKTYPE", "X_PERBACK", "M_PERPACK", "USESTATUS", "DOSAGE",
-         "YIELD", "OUT_PRICE_F", "COST_PERQP", "MEMO", "FMRATE", "PINGGU_CLASS", "BUSINESS_USER"})
+         "YIELD", "OUT_PRICE_F", "COST_PERQP", "MEMO", "FMRATE", "PINGGU_CLASS", "BUSINESS_USER",
+         "GOODSID", "CUSTOMID", "GOODSNAME", "GOODSNAME_EN", "STRENGTH", "MA_NO", "MAH", "CUSTOMNAME", "COUNTRY",
+         "TRANPOSID", "LIVERY"})
     tech = context(snapshot("技术中心"))
-    assert checker.writable_fields(tech, COST_PINGGU, COST_PINGGU) == frozenset({"APEX_PL", "PACKTYPE", "DOSAGE", "YIELD", "MEMO"})
+    # 技术中心的列权限没有限制产品ID、客户ID，旧系统点开产品 Lookup 回填时不看列权限（useLookupDialog.ts:79-98），
+    # 所以列权限设为不可编辑的包装规格、每箱盒数随产品回填照样写；商务人员不可编辑，它的 Lookup 回填目标不算
+    assert checker.writable_fields(tech, COST_PINGGU, COST_PINGGU) == frozenset(
+        {"APEX_PL", "PACKTYPE", "DOSAGE", "YIELD", "MEMO", "GOODSID", "CUSTOMID", "GOODSNAME", "GOODSNAME_EN", "STRENGTH",
+         "MA_NO", "MAH", "P_PERPACK", "S_PERBACK", "CUSTOMNAME", "COUNTRY", "TRANPOSID", "LIVERY"})
     assert checker.writable_fields(tech, COST_PINGGU, COST_MATERIAL) == frozenset(
         {"GOODSID", "CUSTOMER_SPECIFIED", "PER_HL", "EXADD_MATER", "PRICE", "MEMO"})
 

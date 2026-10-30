@@ -8,7 +8,7 @@ import type { CompareResult, DataRow, RecordResponse } from '../../contracts/htt
 import type { PageView, ViewRegion } from '../../contracts/page-view';
 import type { EvalRowResult, RuleEffect } from '../../contracts/rules';
 import { EditBuffer, type RowId } from './edit-buffer';
-import { fieldOf, fieldWritable, regionOf } from './fields';
+import { fieldEditable, fieldOf, fieldWritable, regionOf } from './fields';
 
 interface RowExtras {
   frozen: FrozenMark | null;
@@ -289,7 +289,8 @@ export class PageModel {
       const id = row.rowKey ?? row.clientRowId!;
       const key = keyOf(row.entity, id);
       const next = { fields: row.fields, style: row.style };
-      if (JSON.stringify(this.displays.get(key) ?? null) !== JSON.stringify(next)) changed.push({ entity: row.entity, id });
+      if (JSON.stringify(this.displays.get(key) ?? null) !== JSON.stringify(next))
+        changed.push({ entity: row.entity, id });
       this.displays.set(key, next);
     }
     return changed;
@@ -360,8 +361,9 @@ export class PageModel {
   // ---- 编辑
 
   /**
-   * 单元格能否编辑：页面有保存按钮、字段可写（fieldWritable）、行没有标为删除、单据没有被冻结，且界面规则（预览或
-   * 显示求值，见 ruleView）没有把它设为不可编辑。每次调用都取最新的视图和规则（配置原地替换后立即生效）。
+   * 单元格能否编辑：页面有保存按钮、字段由用户填写（fieldEditable；只随 Lookup 回填写库的 fillWritable 字段不算）、
+   * 行没有标为删除、单据没有被冻结，且界面规则（预览或显示求值，见 ruleView）没有把它设为不可编辑。
+   * 每次调用都取最新的视图和规则（配置原地替换后立即生效）。
    */
   cellEditable(entity: string, id: string, field: string): boolean {
     if (!this.view.systemButtons.includes('save')) return false;
@@ -370,7 +372,7 @@ export class PageModel {
     if (!region || !meta || !this.buffer.current(entity, id)) return false;
     if (this.buffer.isDeleted(entity, id) || this.frozenBy(entity, id)) return false;
     if (this.ruleView(entity, id)?.fields[field]?.editable === false) return false;
-    return fieldWritable(region, meta, this.values(entity, id), this.buffer.isNew(entity, id));
+    return fieldEditable(region, meta, this.values(entity, id), this.buffer.isNew(entity, id));
   }
 
   /** 字段是否必填：页面视图的 required，或界面规则（预览或显示求值）设为必填 */

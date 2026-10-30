@@ -14,6 +14,47 @@
         "DOCID": {
           "pinned": "left"
         },
+        "GOODSID": {
+          "lookup": {
+            "code": "costGoods",
+            "fill": {
+              "GOODSID": "GOODSID",
+              "GOODSNAME": "GOODSNAME",
+              "STRENGTH": "STRENGTH",
+              "MA_NO": "MA_NO",
+              "APEX_PL": "APEX_PL",
+              "MAH": "MAH",
+              "P_PERPACK": "P_PERPACK",
+              "S_PERBACK": "S_PERBACK",
+              "CUSTOMID": "CUSTOMID",
+              "CUSTOMNAME": "CUSTOMNAME",
+              "MEMO": "MEMO",
+              "LIVERY": "LIVERY",
+              "GOODSNAME_EN": "GOODSNAME_EN"
+            }
+          }
+        },
+        "CUSTOMID": {
+          "lookup": {
+            "code": "costCustomer",
+            "fill": {
+              "CUSTOMID": "CUSTOMID",
+              "CUSTOMNAME": "CUSTOMNAME",
+              "COUNTRY": "COUNTRY",
+              "TRANPOSID": "TRANPOSID",
+              "LIVERY": "LIVERY"
+            }
+          }
+        },
+        "BUSINESS_USER": {
+          "lookup": {
+            "code": "costUser",
+            "fill": {
+              "BUSINESS_USER": "REAL_NAME"
+            },
+            "multiple": true
+          }
+        },
         "TOTAL_FL": {
           "aggregate": "sum"
         },
