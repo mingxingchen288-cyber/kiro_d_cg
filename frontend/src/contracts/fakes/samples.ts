@@ -63,12 +63,8 @@ export const commandApprovalSample: Command = {
     "checkedRows": [
       {
         "flow": "GOODS_TO_COST",
-        "block": "costs",
-        "entity": "COST_MATERIAL",
-        "recordKey": "2550",
-        "rowKeys": [
-          "6101"
-        ]
+        "block": "costMaterial",
+        "key": "206323"
       }
     ],
     "comment": "价格已核对",
