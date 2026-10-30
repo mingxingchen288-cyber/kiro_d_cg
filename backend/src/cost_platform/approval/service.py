@@ -2,7 +2,8 @@
 orchestration 的 `CommandExecutor`（C02 第 1 节、架构 10.4）。
 
 - 详情（AP-08、AP-15）：任何已登录的用户都能查看；进度只列已进入的节点和按当前数据推算后面会进入的节点；`view` 按当前
-  勾选计算，`params` 为当前用户这次通过要填写的人工参数，`actions` 为当前用户能做的操作。
+  勾选计算，`params` 为当前用户这次通过要填写的人工参数，`actions` 为当前用户能做的操作。已结束的审批，`view` 为结束那一刻
+  存下的修改内容，没有存下的给出 `viewUnsaved`（C06 7.6）。
 - 预览：按提交的勾选重算 `view` 和指纹，不保存勾选。
 - 处理命令的执行上下文来源为本审批（C04），由各阶段判断能否处理（AP-05、AP-12）。
 """
@@ -21,6 +22,7 @@ from cost_platform.contracts.types import (
     ApprovalList,
     ApprovalStep,
     ApprovalSummary,
+    ApprovalView,
     CheckedRow,
     Command,
     CommandResult,
@@ -36,6 +38,7 @@ from cost_platform.contracts.types import (
     SourceRef,
     StepMember,
     UserBrief,
+    ViewMasterTable,
     WithdrawRequest,
     dump_wire,
 )
@@ -45,7 +48,7 @@ from .deps import ApprovalDeps
 from .model import ApprovalRecord
 from .process import NextLevels, apply_checked, editable_blocks, load, manual_for
 from .routing import Action, Node, can_withdraw, decide, pending_nodes
-from .view import Evaluator
+from .view import Evaluator, view_fingerprint
 
 Box = Literal["todo", "mine"]
 
@@ -95,24 +98,36 @@ class ApprovalService:
     # ---------------------------------------------------------------- 详情和预览
 
     def detail(self, ctx: ExecutionContext, approval_id: str) -> ApprovalDetail:
+        unsaved: Literal[True] | None = None
         with self._uow.begin() as uow:
             record = load(self.deps, uow, approval_id)
-            affected = self.deps.store.affected(uow, approval_id)
-            directory = Directory(self.deps.directory)
-            is_member = directory.membership()
-            mine = pending_nodes(record.progress, ctx.identity.user_id, is_member)
-            computation = self.evaluator.compute(uow, ctx, record, affected, editable=editable_blocks(record, mine))
-            upcoming = NextLevels(self.deps, uow, record, computation.scopes, strict=False)
-            steps = self._steps(ctx, record, upcoming)
-            params = self._params(record, mine, upcoming, ctx, is_member)
+            if record.progress.status == "pending":
+                affected = self.deps.store.affected(uow, approval_id)
+                directory = Directory(self.deps.directory)
+                is_member = directory.membership()
+                mine = pending_nodes(record.progress, ctx.identity.user_id, is_member)
+                computation = self.evaluator.compute(uow, ctx, record, affected, editable=editable_blocks(record, mine))
+                upcoming = NextLevels(self.deps, uow, record, computation.scopes, strict=False)
+                steps = self._steps(ctx, record, upcoming)
+                params = self._params(record, mine, upcoming, ctx, is_member)
+                view, fingerprint = computation.view, computation.fingerprint
+            else:
+                # 已结束的审批显示结束那一刻存下的修改内容，不再按当前数据计算（C06 7.6）；没有存下的写明没有保存
+                mine = []
+                view = record.final_view or ApprovalView(master=ViewMasterTable(key="master", title=record.page_title, columns=[],
+                                                                                rows=[]), details=[], affected=[])
+                unsaved = True if record.final_view is None else None
+                fingerprint = view_fingerprint(view)
+                steps = self._steps(ctx, record, None)
+                params = []
         actions = ApprovalActions(can_pass=bool(mine), can_reject=bool(mine),
                                   can_withdraw=can_withdraw(record.progress, record.applicant_id, ctx.identity.user_id))
         base = summary(record)
         return ApprovalDetail(approval_id=base.approval_id, status=base.status, page=base.page, page_title=base.page_title,
                               operation=base.operation, operation_label=base.operation_label, source=base.source,
                               applicant=base.applicant, submitted_at=base.submitted_at, current_level=record.progress.level,
-                              steps=steps, view=computation.view, fingerprint=computation.fingerprint, params=params,
-                              actions=actions)
+                              steps=steps, view=view, fingerprint=fingerprint, params=params, actions=actions,
+                              view_unsaved=unsaved)
 
     def preview(self, ctx: ExecutionContext, approval_id: str, request: PreviewRequest) -> PreviewResponse:
         """审批人改了勾选：按提交的勾选重新计算 `view` 和指纹，不保存勾选（AP-08）。"""
@@ -125,11 +140,12 @@ class ApprovalService:
             computation = self.evaluator.compute(uow, ctx, record, affected, editable=editable)
         return PreviewResponse(view=computation.view, fingerprint=computation.fingerprint)
 
-    def _steps(self, ctx: ExecutionContext, record: ApprovalRecord, upcoming: NextLevels) -> list[ApprovalStep]:
+    def _steps(self, ctx: ExecutionContext, record: ApprovalRecord, upcoming: NextLevels | None) -> list[ApprovalStep]:
+        """`upcoming` 为推算后面会进入的节点，只用于待审的审批；已结束的审批为 None。"""
         order = {f.code: i for i, f in enumerate(record.flows)}
         role_name = functools.cache(self.deps.catalog(ctx).role_name)
         items = [(n.level, order[n.flow], n.index, step(record, n, role_name)) for n in record.progress.nodes]
-        if record.progress.status == "pending":
+        if record.progress.status == "pending" and upcoming is not None:
             active = record.progress.active_flows()
             level = record.progress.level
             while active:

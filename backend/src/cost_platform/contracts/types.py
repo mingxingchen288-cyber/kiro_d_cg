@@ -1806,6 +1806,8 @@ class ApprovalDetail(Wire):
     params: list[FlowParam]
     """当前用户这次通过要填写的人工参数（C06 7.1）；不需要填写时为空数组。"""
     actions: ApprovalActions
+    view_unsaved: TrueValue | None = None
+    """已结束的审批没有保存结束那一刻的修改内容时为 true，`view` 的各表为空（C06 7.6、C09 第 6 节）。"""
 
 
 class CheckedRow(Wire):

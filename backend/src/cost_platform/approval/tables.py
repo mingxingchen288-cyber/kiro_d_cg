@@ -1,9 +1,10 @@
 """approval 拥有的表（模块说明第 2 节），供审批存储用 SQLAlchemy Core 生成 SQL。
 
-表结构以迁移为准（`migrations/ap_0001_pf_approval.py`），这里描述同样的列。用表对象而不是手写 SQL 文本，是为了同一份
+表结构以迁移为准（`migrations/ap_0001_pf_approval.py`、`ap_0002_final_view.py`），这里描述同样的列。用表对象而不是手写 SQL 文本，是为了同一份
 查询既能在 d_cg（Oracle）上执行，也能在 contracts 的 `FakeUnitOfWorkFactory`（内存 SQLite）上做模拟验证。
 
-- `pf_approval`：审批实例；提交时命中的审批流定义、触发行、待审修改、进度、参数、执行结果放在 CLOB 列中（JSON）。
+- `pf_approval`：审批实例；提交时命中的审批流定义、触发行、待审修改、进度、参数、执行结果、结束时的修改内容放在 CLOB
+  列中（JSON）。
 - `pf_approval_affected`：受影响单据的行和勾选。
 - `pf_approval_record`：处理记录。
 - `pf_approval_freeze`：冻结记录，（根表、主键）为主键：同一份数据同一时间只属于一个未结束的审批，两个命令同时冻结
@@ -41,6 +42,7 @@ pf_approval = sa.Table(
     sa.Column("params", sa.Text, nullable=False),
     sa.Column("result", sa.Text, nullable=False),
     sa.Column("finished_at", sa.DateTime),
+    sa.Column("final_view", sa.Text),  # 迁移 ap_0002：结束那一刻的修改内容（ApprovalView 的 JSON），待审时为空
 )
 
 pf_approval_affected = sa.Table(

@@ -382,7 +382,9 @@ export const ApprovalDetail = object('ApprovalDetail', {
   view: ApprovalView,
   fingerprint: str,
   params: array(FlowParam),
-  actions: ApprovalActions
+  actions: ApprovalActions,
+  /** 已结束的审批没有保存结束那一刻的修改内容时为 true，`view` 的各表为空（C06 7.6） */
+  viewUnsaved: optional(nullable(literal(true)))
 });
 export type ApprovalDetail = Infer<typeof ApprovalDetail>;
 export const CheckedRow = object('CheckedRow', { flow: code, block: code, key });

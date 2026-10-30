@@ -182,6 +182,12 @@ def test_e37_trigger_stage_on_d_cg(engine: Engine, uow: object) -> None:
                                                                                              ("T_COST_GOODS", "25")}
     assert [(a.block, a.key) for a in store.affected(uow, submitted.approval_id)] == [("goods", "25")]  # type: ignore[arg-type]
     assert state.notifications[0].recipients == (ADMIN.user_id,)
+    # 结束时存下的修改内容（迁移 ap_0002 的 FINAL_VIEW，CLOB）：待审时为空，写入后读出不变
+    assert record.final_view is None
+    record.final_view = t.ApprovalView(master=t.ViewMasterTable(key="cost", title="成本单及成本变化", columns=["单价"], rows=[
+        t.ViewRow(op="modify", cells=[t.ViewCell(before="75.00", after="90.00")], flows=["COST_TO_GOODS"])]), details=[], affected=[])
+    store.update(uow, record)  # type: ignore[arg-type]
+    assert store.load(uow, submitted.approval_id).final_view == record.final_view  # type: ignore[arg-type, union-attr]
 
 
 # ---------------------------------------------------------------- 审批存储（PF_APPROVAL*）
