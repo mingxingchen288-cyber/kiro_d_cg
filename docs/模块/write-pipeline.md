@@ -17,11 +17,17 @@
 
 ## 3. 对外契约
 
-提供 `CommandRecorder`、`DocumentStore`、`ChangeMerger`、`TableWriter`（C08 第 5a 节），由 orchestration 的 `CommandExecutor` 和 approval 调用；命令的输入输出和错误见 [C02](../契约/C02-命令与结果.md)、[C03](../契约/C03-错误.md)。
+提供 `CommandRecorder`、`DocumentStore`、`ChangeMerger`、`TableWriter`（C08 第 5a 节），由 orchestration 的 `CommandExecutor` 和 approval 调用；提供业务加锁的统一入口 `BusinessLocker`（C08 第 5b 节，WP-03），由 approval、operations 调用；命令的输入输出和错误见 [C02](../契约/C02-命令与结果.md)、[C03](../契约/C03-错误.md)。
 
 - WP-01：事务的第一条语句插入命令记录，唯一键为（用户、请求键）。已完成且内容摘要相同时返回原结果，不执行业务流程；摘要不同时返回 422 IDEMPOTENCY_KEY_REUSED；同一请求键仍在处理时最多等待 5 秒（`.env` 的 `PLATFORM_REQUEST_WAIT_SECONDS`），超时返回 409 REQUEST_IN_PROGRESS。
 - WP-02：任一步失败，整个事务回滚，命令记录一起撤销，同一请求键可以重新提交。
-- WP-03：按（实体、主键）排序，用 `SELECT … FOR UPDATE WAIT 5` 锁定涉及的主表行（秒数取 `.env` 的 `PLATFORM_LOCK_WAIT_SECONDS`），同一条 SQL 中带出行权限的判断列；等锁超时返回 409 DOCUMENT_BUSY；有一行超出行权限时返回 403 PERMISSION_DENIED。
+- WP-03：加锁按固定层级（用户 2026-10-30 同意，目标是从设计上杜绝死锁：等锁可以，不能死锁）。
+  - 统一顺序：审批记录（PF_APPROVAL，按审批编号）→ 单据层 → 基础数据层；同一层按（表名、主键），主键按字段类型比较。层级由配置自动判断，不新增配置：有 `details` 的主表实体为单据层（成本核算、液体成本核算），其余注册实体和没注册的表为基础数据层（物料清单 T_COST_GOODS 等）。
+  - 所有业务加锁都经本模块的同一个入口（`pipeline/locks.py`；approval、operations 经 C08 第 5b 节的 `BusinessLocker`），加锁读取、`TableWriter.lock_row` 和它共用同一份"本事务已持有的锁"。业务模块里不能另写 `FOR UPDATE`、`with_for_update`（`backend/tests/architecture/test_lock_entry.py` 检查）；config 的代号行、identity 的账号行、delivery 的 SKIP LOCKED 不和业务锁同时持有，是例外。
+  - 往后找：要锁的对象排在已持有的锁之后时，可以执行到一半再锁，例如 COST_TO_GOODS 先锁成本单，算完再锁 T_COST_GOODS 中要冻结的行。往前找或同层找：要锁的对象排在已持有的锁之前或同层时（物料清单改价冻结含这个物料的成本单，按钮的 `updateRecords`、`updateRows` 找到别的单据），把本来就要执行的范围查询挪到加锁之前，用普通查询执行，查到的单据和自己的单据合在一起按顺序一次锁完；锁住后以锁住的这一批为准，范围查询和加锁之间新冒出来的单据不算进去，相当于那次修改发生在本命令之后（approval AP-02，operations OP-07）。新加的锁排在已持有的锁之前属于实现错误，返回 500 INTERNAL_ERROR。
+  - 一次锁多行时按顺序每行一条 `SELECT … FOR UPDATE WAIT n`（秒数取 `.env` 的 `PLATFORM_LOCK_WAIT_SECONDS`，默认 5），不依赖一条 SQL 内部的加锁顺序（没有核实过）；只锁一张单据时（普通保存）加锁、读数据和行权限的判断列仍是一条 SQL，条数不变（WP-10）。冻结检查在拿到锁之后单独一条语句执行（approval AP-03）。
+  - 等锁超时返回 409 DOCUMENT_BUSY；有一行超出行权限时返回 403 PERMISSION_DENIED。
+  - 用户之间的修改允许互相覆盖：两人先后改同一单据的同一字段，后拿到锁的覆盖先提交的，靠审计追踪（WP-11；用户 2026-10-30）。
 - WP-04：合并时只改 `changes` 中出现的字段；新值与当前值相同不算变化，数值按数值相等比较。Patch 中出现计算字段、只读的 ERP 列（C06 第 2 节）、`erpRow.column`、主键、主从关联字段或不可写字段时，返回 422 FIELD_NOT_WRITABLE。
 - WP-05：要修改或删除的行（按钮操作为选中的行，C02 第 1 节）已不存在时，按操作的 `rowNotFound` 处理：默认跳过并写入结果的 `skipped`；配置为 `reject` 时返回 409 ROW_NOT_FOUND。
 - WP-06：删除主表行时，在同一事务中先物理删除它的全部明细，再删除主表行。
@@ -35,9 +41,9 @@
 - WP-10：SQL 条数目标：改主表一个字段 4 条；提交的值与当前值相同 2 条（插入命令记录、加锁读取，然后回滚）；改一条明细并重算汇总 6 条；可冻结业务另加 1 条冻结查询；配了审批流时，审批流 `operations` 选中的每个改动的行另加 1 条入口条件（approval AP-01，用户 2026-10-30 接受：例如成本核算改一行原辅料、审批流 COST_TO_GOODS 已启用时为 8 条）。达不到时停下来问用户。
 - WP-11：页面视图的 `audit` 为 true 时，命令记录中写入审计差异：修改的行逐字段记旧值和新值，新增行记写入的值，删除的行（包括级联删除的明细）记删除前的值。审计差异随完成命令记录的同一条语句写入。
 - WP-12：命令结果中的受影响行取自候选数据，不再查询数据库，每行包含实体的全部字段。
-- WP-13：命令只执行一次，写入管道不自动重试。
-- WP-18：动作执行中，operations 把每个动作展开为 `CommandState.intents`（C08 第 6 节）。write-pipeline 取出 `intents`，其中所属单据不在"确定涉及的单据"阶段给出的 `involved` 中的（例如按钮的 `updateRecords` 按关联查询找到的单据、`updateRows` 按 SQL 找到的单据，或审批流受影响单据中不在冻结范围内的行所属的单据），先把这些单据加入 `involved`，按（实体、主键）排序用 WP-03 的方式加数据库行锁并读入 `current`，再对它们执行一次冻结检查阶段（approval AP-03，来源为本审批时放行本审批的冻结），都通过后才把 `intents` 合并进 `candidate` 并清空；被别的审批冻结时整个命令返回 409 FROZEN_BY_APPROVAL，超出行权限返回 403 PERMISSION_DENIED（来源为审批时不查行权限，C08 第 7 节）。行锁在命令结束时释放，不登记冻结记录。这次加锁在已有的锁之后，可能与其他命令交叉等待：等锁超时，或 Oracle 检出死锁，都返回 409 DOCUMENT_BUSY，整个命令回滚。
-- WP-19：`TableWriter` 写没在平台注册的表（审批流通过后的操作，C06 7.5）：按主键用 WP-03 的方式加行锁读出整行，approval 做冻结检查后，按主键只写指定的列，不校验、不计算；数值按 WP-15 处理小数位；改前、改后的列值记入命令记录的审计差异（WP-11，不看页面的 `audit`）。新增行的主键取序列 `<表名>_SEQ`。等锁超时返回 409 DOCUMENT_BUSY；表、列不存在等数据库错误按 C08 第 2 节映射，整个命令回滚。
+- WP-13：命令只执行一次，写入管道不自动重试。唯一的例外（用户 2026-10-30 规则 4）：范围取决于本命令自己单据的数据，而这张单据在加锁前普通读取和加锁之间被别人改了（锁住后核对发现不一致，`LockScopeChanged`），在提交前把整个事务回滚，用新的范围把整条命令重来一次。不能只回滚到保存点：Oracle 文档《事务》写明，等锁的事务要等持锁事务整个结束。命令记录随事务撤销后重新插入，同一请求键仍只执行成功一次；这是提交前整个回滚重来，没有任何写入提交过，不算自动重试。
+- WP-18：动作执行中，operations 把每个动作展开为 `CommandState.intents`（C08 第 6 节）。write-pipeline 取出 `intents`，其中所属单据不在"确定涉及的单据"阶段给出的 `involved` 中的（例如按钮的 `updateRecords` 按关联查询找到的单据、`updateRows` 按 SQL 找到的单据），先把这些单据加入 `involved`，按 WP-03 的统一顺序加锁并读入 `current`，再只对这一轮新读入的单据执行一次冻结检查阶段（approval AP-03，来源为本审批时放行本审批的冻结），都通过后才把 `intents` 合并进 `candidate` 并清空；被别的审批冻结时整个命令返回 409 FROZEN_BY_APPROVAL，超出行权限返回 403 PERMISSION_DENIED（来源为审批时不查行权限，C08 第 7 节）。这一轮追加的只能是排在已持有的锁之后的单据（往后找）；往前、同层找到的单据已在"确定涉及的单据"之前查出、一起锁住（operations OP-07），审批最终通过要写的单据和行已在"确定涉及的单据"全部锁住（approval AP-10），这里只是再锁一次并读出，不再中途追加。行锁在命令结束时释放，不登记冻结记录。所有命令按同一顺序加锁，交叉等待不会成环；等锁超时返回 409 DOCUMENT_BUSY，整个命令回滚。
+- WP-19：`TableWriter` 写没在平台注册的表（审批流通过后的操作，C06 7.5）：按主键用 WP-03 的方式加行锁读出整行（基础数据层；最终批准时这一行已在"确定涉及的单据"锁住，这里再锁一次并读出），approval 做冻结检查后，按主键只写指定的列，不校验、不计算；数值按 WP-15 处理小数位；改前、改后的列值记入命令记录的审计差异（WP-11，不看页面的 `audit`）。新增行的主键取序列 `<表名>_SEQ`。等锁超时返回 409 DOCUMENT_BUSY；表、列不存在等数据库错误按 C08 第 2 节映射，整个命令回滚。
 
 ## 4. 依赖
 

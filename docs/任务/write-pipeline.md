@@ -79,3 +79,16 @@
 - 交付物：插件 start 时预读已发布实体写入的表，读完才返回；后台每 5 秒检查一次，新的表读进来；stop 停掉后台检查。WP-10 中"审批入口条件每行一条"不在本卡（等用户决定）。
 - 验收标准：后端启动后第一次保存不再有 `user_tab_columns` 查询；配置变更新增实体后，后台读进新的表。
 - 状态与证据：进行中（2026-10-30，H2 组，`batch3/approval-snapshot`）。模拟验证：`tests/pipeline/test_warmup.py` 2 个（start 读完已发布实体的表才返回，之后新增实体的表由后台读进来，保存时取小数位不再读；插件 start、stop），`test_values.py` 的预读不重复读，`EntityDirectoryContract.test_tables`（替代实现、`PublishedEntities`），`tests/pipeline tests/config tests/contracts tests/assembly` 705 passed。真实验证：`tests/config/test_oracle.py` 的 `TestOraclePublishedEntities` 4 passed（d_cg 已有这四个实体，没有保存配置）；后端 8088 启动日志"已预读列定义：T_COST_GOODS、T_COST_PINGGU、T_COST_PINGGU_DTL"在"开始接受请求"之前；打开命令审查后，后端启动后的第一次保存（成本单 2550 改单价、提交审批）21 条 SQL，没有 `user_tab_columns`（`.reports/batch3-20261030/h2-approval/h2.out.json`）。同一次核对中第一次审批通过有 2 条 `user_tab_columns`（T_COST_GOODS），来自 approval 计算受影响单据时每次读修改表的列（`approval/view.py` 的 `_affected_table`），不是本卡的 ColumnScales，没有改。`tests/e2e/test_batch_b.py` 中允许多 1 条列定义查询的断言（`sum(map(is_schema_query, sql)) <= 1`）没有改、没有运行（别组在用 8086、8087）。
+
+### T-WP-7 固定加锁层级
+
+- 归属与目标：按用户 2026-10-30 同意的"固定加锁层级"改 WP-03、WP-13、WP-18、WP-19：等锁可以，不能死锁；每条命令只执行一遍。依据和穷举检查见 `.reports/concurrency-c04-20261030/`（`model_check_v3.py`）。取代 T-WP-2 验收标准中"两个命令交叉加锁形成死锁时其中一个返回 DOCUMENT_BUSY"一项：按新规则不再出现死锁。
+- 前置输入：T-WP-2；contracts 加端口 `BusinessLocker`（C08 v18 第 5b 节）。
+- 负责范围：`pipeline/locks.py`（统一入口：`LockBook` 顺序检查、`PipelineLocks`、全部 `FOR UPDATE` 文本）、`document_store.py` 的 `lock_load`、`read_masters`、`lock_key`、`read_documents`，`loader.py` 的 `DocumentLoader`（统一顺序、`defer_lock`），`table_writer.py` 的 `lock_row`，`merge.py` 的 `IntentMerger`（去掉中途加锁），`plugin.py`；orchestration `runner.py`（`LockScopeChanged` 时整个回滚、重来）；`backend/tests/architecture/test_lock_entry.py`。
+- 交付物：上述功能；端口 `BusinessLocker` 交给 approval、operations。
+- 接入责任：approval（T-AP-6）、operations（T-OP-4）经端口加锁；assembly 不用改插件清单（pipeline 插件多提供一个端口）。
+- 验收标准：一张单据的保存 SQL 条数不变（WP-10）；一次锁多行时按顺序每行一条；后加的锁排在已持有的锁之前时 500；业务模块里除入口外没有 `FOR UPDATE`、`with_for_update`（三处例外）；d_cg 上并发重放冻结别的单据时有人同时保存、成本单改价和物料清单改价同时进审批、三方交叉，不出现 ORA-00060，冻结生效后别人的修改提交不了，每条命令只执行一遍（规则 4 的例外除外）。
+- 状态与证据：进行中（2026-10-30，L 组，`batch4/lock-order`），模拟验证和真实验证通过，合并后没有联调。
+  - 模拟验证：`tests/contracts/test_business_locker.py`（契约，替代实现和 `PipelineLocks` 都跑）、`tests/pipeline/test_locks.py`（统一顺序、往后追加、已持有再锁、`defer_lock` 只读、`TableWriter` 共用顺序）、`test_document_store_sql.py`（一张单据一条、多张每行一条）、`tests/orchestration/test_runner.py` 的规则 4 重来；`backend` 下 `pytest -m "not oracle and not redis"` 全部通过（条数见 `.reports/batch4-20261030/l-lock-order/progress.md`）。
+  - 真实验证（d_cg）：`tests/pipeline/test_oracle_lock_order.py` 8 个场景（建删 PF_TEST_LK_* 表，审批流只在内存配置中）全部通过，没有 ORA-00060、没有等锁超时，只有规则 4 的场景执行两次；输出和残留核对见 `.reports/batch4-20261030/l-lock-order/`。WP-10 条数测试 `test_oracle_sql_count.py` 照常通过。
+  - 穷举：`model_check_v3.py` 重跑结果与原结果相同（`.reports/batch4-20261030/l-lock-order/model-check/`）。

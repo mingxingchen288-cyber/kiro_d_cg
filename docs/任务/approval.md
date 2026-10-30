@@ -54,3 +54,13 @@
 - 交付物：结束时存下修改内容；已结束的审批详情读存下的；d_cg 上已结束的审批能还原的还原，还原不了的写明没有保存。
 - 验收标准：成本单 2550 的聚维酮K30 单价 75 改成 90 通过、再改回 75 通过以后，两个审批分别显示 75.00 → 90.00、90.00 → 75.00；驳回、撤回的审批结束后数据再变，仍显示结束时的值；d_cg 的审批 14 显示 90.00 → 75.00。
 - 状态与证据：进行中（2026-10-30，H2 组，`batch3/approval-snapshot`）。模拟验证：`tests/approval/test_final_view.py` 3 个（两次通过后两个审批分别为 75.00 → 80.00、80.00 → 75.00；驳回、撤回后改了数据仍是结束时的值；清掉存下的值后，已通过的按提交、通过两条命令的记录还原出的修改内容与结束时存下的相同，撤回的给出 `viewUnsaved`），`tests/approval` 共 93 个通过。真实验证：`test_oracle.py` 的 E37 提交测试加了 FINAL_VIEW 写入读出，`-m "oracle or redis" tests/approval` 12 个通过；d_cg 执行 `platform db upgrade`（ap_0002、ap_0003），审批 13、14 还原为 75.00 → 90.00、90.00 → 75.00（每盒成本 13.0065 → 13.0214、13.0214 → 13.0065），23、29（撤回）还原不了，见 `.reports/batch3-20261030/h2-approval/`。浏览器核对（后端 8088、前端 9535 → d_cg）：打开 13、14 分别显示 75.00 → 90.00、90.00 → 75.00，23、29 显示"这个审批结束时的修改前、修改后的值没有保存"；新做两次审批（chengben01 在成本核算把 2550 的 206323 单价 75 改成 90 保存，admin 在待办中通过，审批 72；再改回 75 通过，审批 73），结束后 72 显示 75.00 → 90.00、73 显示 90.00 → 75.00，物料清单 25 同样；2550 和物料清单 25 已恢复原值（只读查询核对）。
+
+### T-AP-6 冻结和最终通过的加锁顺序
+
+- 归属与目标：按用户 2026-10-30 同意的"固定加锁层级"改 AP-02、AP-03、AP-10（write-pipeline WP-03）：冻结前按统一顺序锁住要冻结的数据；往前、同层冻结时本单据推迟加锁、一次锁完；冻结只登记在已锁住的数据上，锁后单独查冻结；审批最终通过在"确定涉及的单据"锁全；审批记录的加锁经统一入口（`FOR UPDATE WAIT n`）。
+- 前置输入：T-AP-2、T-AP-3；write-pipeline 的 `BusinessLocker`（T-WP-7）。
+- 负责范围：`approval/trigger.py`（`TriggerScopeStage`、`TriggerStage` 的 `_freezes`、`_lock`、`_affected`、`_exclusive` 的先后）、`process.py`（`ResolveStage` 锁审批记录和 `write_targets`，`ProcessStage` 读审批记录不加锁）、`store.py`（`load` 不再自己加锁、`freeze`）、`freeze.py`（`check_documents`、`defer_lock` 时冻结检查由触发审批做）、`deps.py`、`module.py`、`plugin.py`。
+- 交付物：上述功能。
+- 接入责任：assembly 不用改插件清单（approval 插件多要一个端口，由 pipeline 插件提供）。
+- 验收标准：成本单改价（COST_TO_GOODS）先锁成本单、冻结前再锁物料清单；物料清单改价（GOODS_TO_COST）把含这个物料的成本单和物料清单一次锁完；物料清单在加锁前读取和加锁之间被改时整个回滚、重来一次；最终通过时审批记录、来源单据、受影响行所属的单据和没注册表的行都在开头锁住，之后不再追加；d_cg 上并发时冻结生效后别人的修改提交不了。
+- 状态与证据：进行中（2026-10-30，L 组，`batch4/lock-order`），模拟验证和真实验证通过，合并后没有联调。模拟验证：`tests/approval/test_lock_order.py` 7 个（审批流只在内存配置中），`tests/approval` 其余用例照常通过。真实验证：write-pipeline 的 `tests/pipeline/test_oracle_lock_order.py`（经 approval 的真实阶段和 PF_APPROVAL*，见 T-WP-7）；`tests/approval` 的 oracle 用例照常通过。中途某一级通过也先锁住最终可能要写的单据（不确定是不是最终通过），命令结束即释放。
