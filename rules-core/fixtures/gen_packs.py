@@ -247,6 +247,33 @@ def numeric_pack() -> dict[str, Any]:
     return pack("NUM_DEMO", 1, NUM_FIELDS, NUM_RULES)
 
 
+# ---------------------------------------------------------------- 显示求值（C07 v6 第 3.1 节）：只执行界面规则，不计算、不校验
+
+DISP_FIELDS = {
+    "DISP_DEMO": {"ID": num("system", 0), "STATUS": text(), "TOTAL": num("calculated")},
+    "DISP_DTL": {"DTLID": num("system", 0), "QTY": num()},
+}
+# 假设的规则：主表合计汇总明细数量（计算），合计超过 100、明细数量 ≤ 0 时拒绝（校验）；停用的单据整行不可编辑、字体变灰，
+# 没有明细时整行黄底（条件引用明细），明细数量 ≤ 0 时数量必填、标红（界面）
+DISP_RULES: list[dict[str, Any]] = [
+    {"id": "R_DISP_TOTAL", "entity": "DISP_DEMO", "field": "TOTAL", "order": 10, "expression": "sum(map(DISP_DTL, #.QTY))"},
+    {"id": "R_DISP_TOTAL_MAX", "entity": "DISP_DEMO", "category": "validate", "field": "TOTAL", "order": 20,
+     "when": "TOTAL > 100", "level": "reject", "message": "合计不能超过100"},
+    {"id": "R_DISP_QTY_GT0", "entity": "DISP_DTL", "category": "validate", "field": "QTY", "order": 21,
+     "when": "QTY <= 0", "level": "reject", "message": "数量必须大于0"},
+    {"id": "R_DISP_STOPPED", "layer": "page", "page": "DISP_DEMO", "entity": "DISP_DEMO", "category": "ui", "order": 30,
+     "when": "STATUS == '停用'", "effect": {"editable": False, "rowStyle": {"color": "#999999"}}},
+    {"id": "R_DISP_NO_DTL", "layer": "page", "page": "DISP_DEMO", "entity": "DISP_DEMO", "category": "ui", "order": 31,
+     "when": "count(DISP_DTL, true) == 0", "effect": {"rowStyle": {"backgroundColor": "#fff3cd"}}},
+    {"id": "R_DISP_QTY_RED", "layer": "page", "page": "DISP_DEMO", "entity": "DISP_DTL", "category": "ui", "field": "QTY", "order": 32,
+     "when": "QTY <= 0", "effect": {"required": True, "cellStyle": {"color": "#d03050"}}},
+]
+
+
+def display_pack() -> dict[str, Any]:
+    return pack("DISP_DEMO", 1, DISP_FIELDS, DISP_RULES)
+
+
 # ---------------------------------------------------------------- 跨实体依赖成环：主表汇总明细 X，明细 X 又引用主表汇总
 
 def cycle_pack() -> dict[str, Any]:

@@ -14,8 +14,7 @@ use zen_expression::Isolate;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Request {
-    /// C07 第 2 节：固定为 `operation`，只用来校验请求。
-    #[allow(dead_code)]
+    /// C07 第 2 节：`operation` 为计算和规则；`display` 只执行界面规则（C07 v6 第 3.1 节）。
     purpose: Purpose,
     #[serde(default)]
     operation: Option<String>,
@@ -28,10 +27,12 @@ struct Request {
     data: Map<String, Value>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 enum Purpose {
     Operation,
+    /// 页面一显示就按行的值执行界面规则：不计算、不校验，值按请求原样（旧系统 GRID_STYLE 的 getRowStyle 按行数据算样式）。
+    Display,
 }
 
 #[derive(Deserialize, PartialEq, Eq, Clone, Copy)]
@@ -184,6 +185,16 @@ pub fn evaluate(pack: &Pack, request_text: &str) -> Result<Value, Failure> {
         !matches!(rule.kind, CheckKind::Validate { .. }) || touched.contains(&(row.entity.clone(), row.id.clone()))
     };
 
+    // 显示求值（C07 v6 第 3.1 节）：只用于前端显示，phase 必须是 preview；不计算、不校验，只执行界面规则
+    let display = request.purpose == Purpose::Display;
+    if display && request.phase != Phase::Preview {
+        return Err(input_invalid("purpose 为 display 时 phase 必须是 preview（C07 第 3.1 节）"));
+    }
+    // 请求中给出的明细：显示求值时主表列表没有加载明细，引用没给出的明细的主表界面规则这次不出结论
+    let given: HashSet<String> = request.document.details.keys().cloned().collect();
+    let concluded = |rule: &CheckRule| {
+        !display || (matches!(rule.kind, CheckKind::Ui(_)) && rule.detail_refs.iter().all(|d| given.contains(d)))
+    };
 
     let master_entity = request.document.entity.clone();
     let mut master = parse_row(&master_entity, request.document.master, types_of(&master_entity))?;
@@ -213,7 +224,8 @@ pub fn evaluate(pack: &Pack, request_text: &str) -> Result<Value, Failure> {
         selected(layer, rule_operation, rule_page, server_only, phase, &operation, &page)
     };
 
-    for rule in pack.calc.iter().filter(|r| picked(r.layer, &r.operation, &r.page, r.server_only)) {
+    // 显示求值不计算：行的值按请求原样参与界面规则的条件，结果的 computed 为空
+    for rule in pack.calc.iter().filter(|r| !display && picked(r.layer, &r.operation, &r.page, r.server_only)) {
         if rule.is_master {
             let scope = env.master_scope(&master, &details, &rule.plain_refs);
             let ty = env.types(&master_entity).get(&rule.field).copied();
@@ -230,8 +242,9 @@ pub fn evaluate(pack: &Pack, request_text: &str) -> Result<Value, Failure> {
         }
     }
 
-    // 校验和界面规则用计算后的最终值（C06 第 5 节执行顺序 3）；校验只检查本次新增、修改的行（checked）
-    for rule in pack.checks.iter().filter(|r| picked(r.layer, &r.operation, &r.page, r.server_only)) {
+    // 校验和界面规则用计算后的最终值（C06 第 5 节执行顺序 3）；校验只检查本次新增、修改的行（checked）；
+    // 显示求值只执行能出结论的界面规则（concluded）
+    for rule in pack.checks.iter().filter(|r| concluded(r) && picked(r.layer, &r.operation, &r.page, r.server_only)) {
         if rule.is_master {
             if checked(rule, &master) {
                 let scope = env.master_scope(&master, &details, &rule.plain_refs);

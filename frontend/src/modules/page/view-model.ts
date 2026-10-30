@@ -15,10 +15,14 @@ interface RowExtras {
   compare?: Record<string, CompareResult> | null;
 }
 
-interface Preview {
-  computed: FieldValues;
+/** 界面规则的效果（C07 第 3 节 `fields`、`style`） */
+interface RuleView {
   fields: EvalRowResult['fields'];
   style: EvalRowResult['style'];
+}
+
+interface Preview extends RuleView {
+  computed: FieldValues;
 }
 
 export interface CellError {
@@ -54,6 +58,8 @@ export class PageModel {
   readonly buffer: EditBuffer;
   private readonly extras = new Map<string, RowExtras>();
   private readonly previews = new Map<string, Preview>();
+  /** 显示求值（C07 `purpose: display`）的结果：只有界面规则的效果，没有计算值，不改显示的值 */
+  private readonly displays = new Map<string, RuleView>();
   /** 已加载明细的单据：每个明细实体按后端返回顺序的行主键 */
   private readonly details = new Map<string, Record<string, string[]>>();
   private readonly effects = new Map<string, RuleEffect[]>();
@@ -273,6 +279,34 @@ export class PageModel {
     return this.previews.get(keyOf(entity, id));
   }
 
+  /**
+   * 显示求值的结果（旧系统 GRID_STYLE 的 getRowStyle 按行数据算样式，加载即显示）：只记界面规则给出的字段状态和样式，
+   * 结果中的 computed 不用（显示求值不计算，显示的仍是加载来的值）。返回效果有变化的行。
+   */
+  setDisplay(rows: EvalRowResult[]): RowId[] {
+    const changed: RowId[] = [];
+    for (const row of rows) {
+      const id = row.rowKey ?? row.clientRowId!;
+      const key = keyOf(row.entity, id);
+      const next = { fields: row.fields, style: row.style };
+      if (JSON.stringify(this.displays.get(key) ?? null) !== JSON.stringify(next)) changed.push({ entity: row.entity, id });
+      this.displays.set(key, next);
+    }
+    return changed;
+  }
+
+  /** 做过显示求值的主表行（配置变更后按新的规则包重新求值） */
+  displayedRecords(): string[] {
+    const prefix = keyOf(this.master, '');
+    return [...this.displays.keys()].filter(key => key.startsWith(prefix)).map(key => key.slice(prefix.length));
+  }
+
+  /** 行上界面规则的效果：单据有修改时取预览（按修改后的值），否则取显示求值（按加载来的值） */
+  ruleView(entity: string, id: string): RuleView | undefined {
+    const key = keyOf(entity, id);
+    return this.previews.get(key) ?? this.displays.get(key);
+  }
+
   /** 预览算出的计算字段与正式数据不同：沿用旧系统的"计算带出变化"标记 */
   isCalcChanged(entity: string, id: string, field: string) {
     const preview = this.previews.get(keyOf(entity, id));
@@ -326,8 +360,8 @@ export class PageModel {
   // ---- 编辑
 
   /**
-   * 单元格能否编辑：页面有保存按钮、字段可写（fieldWritable）、行没有标为删除、单据没有被冻结，且预览的界面规则
-   * 没有把它设为不可编辑。每次调用都取最新的视图和规则（配置原地替换后立即生效）。
+   * 单元格能否编辑：页面有保存按钮、字段可写（fieldWritable）、行没有标为删除、单据没有被冻结，且界面规则（预览或
+   * 显示求值，见 ruleView）没有把它设为不可编辑。每次调用都取最新的视图和规则（配置原地替换后立即生效）。
    */
   cellEditable(entity: string, id: string, field: string): boolean {
     if (!this.view.systemButtons.includes('save')) return false;
@@ -335,14 +369,14 @@ export class PageModel {
     const meta = fieldOf(this.view, entity, field);
     if (!region || !meta || !this.buffer.current(entity, id)) return false;
     if (this.buffer.isDeleted(entity, id) || this.frozenBy(entity, id)) return false;
-    if (this.previews.get(keyOf(entity, id))?.fields[field]?.editable === false) return false;
+    if (this.ruleView(entity, id)?.fields[field]?.editable === false) return false;
     return fieldWritable(region, meta, this.values(entity, id), this.buffer.isNew(entity, id));
   }
 
-  /** 字段是否必填：页面视图的 required，或预览的界面规则设为必填 */
+  /** 字段是否必填：页面视图的 required，或界面规则（预览或显示求值）设为必填 */
   cellRequired(entity: string, id: string, field: string): boolean {
-    const preview = this.previews.get(keyOf(entity, id))?.fields[field]?.required;
-    return preview ?? Boolean(fieldOf(this.view, entity, field)?.required);
+    const rule = this.ruleView(entity, id)?.fields[field]?.required;
+    return rule ?? Boolean(fieldOf(this.view, entity, field)?.required);
   }
 
   region(entity: string): ViewRegion | undefined {

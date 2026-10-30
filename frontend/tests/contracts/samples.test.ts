@@ -103,6 +103,8 @@ const ROUNDTRIP: Array<[string, Schema<unknown>, unknown]> = [
   ['C07 规则包', c07.RulesPack, block('C07', 0)],
   ['C07 求值请求', c07.EvaluationRequest, block('C07', 1)],
   ['C07 求值结果', c07.EvaluationResult, block('C07', 2)],
+  ['C07 显示求值请求', c07.EvaluationRequest, block('C07', 3)],
+  ['C07 显示求值结果', c07.EvaluationResult, block('C07', 4)],
   ['C07 失败结果', c07.EvaluationResult, { ok: false, error: { code: 'PACK_INVALID', message: '规则包不能编译' } }],
   ['C09 列表请求', c09.ListRequest, block('C09', 0)],
   ['C09 个人配置', c09.PersonalConfig, block('C09', 1)],

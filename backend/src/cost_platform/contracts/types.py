@@ -1274,7 +1274,8 @@ class ChangedRow(Wire):
 
 
 class EvaluationRequest(Wire):
-    purpose: Literal["operation"]
+    # display：只执行界面规则，页面一显示就用（C07 v6 第 3.1 节）；后端只发 operation
+    purpose: Literal["operation", "display"]
     operation: Code | None = None
     page: Code | None = None
     phase: Literal["preview", "commit"]

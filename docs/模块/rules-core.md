@@ -29,6 +29,7 @@
 - RC-08：按 C06 第 5 节的取值约定组装表达式的输入：主表规则每张单据求值一次，明细规则每行求值一次，并提供 `master`、`old`、`context`、`data`。`old` 取自请求中各行的 `old`，没有时等于当前值；rules-core 不查数据库。
 - RC-09：`load_pack` 按 C06 第 5 节的规定，从表达式和条件引用的字段算出规则之间的依赖并排序；依赖成环时返回 `PACK_INVALID`（Python 包中抛 C08 第 8 节的 `PackInvalidError`），列出环上的规则。config 保存配置时调用它，把这个错误转成 422 VALIDATION_FAILED。
 - RC-10：校验规则只对请求 `changed` 中 `op` 为 `add`、`modify` 的行执行，主表行也一样；计算规则、界面规则照常对全部行执行（C07 v5，由旧系统 `useWorkingSetStore.ts` 保存时只校验有修改、没有删除的行推出）。rules-core 只看 `changed`，不自己判断哪些行改了。
+- RC-11：`purpose` 为 `display` 的显示求值（C07 v6 第 3.1 节，由旧系统 `usePageRules.ts` 的 `buildRowStyleCallback` 推出）只执行界面规则：不执行计算规则和校验规则，行的值按请求原样参与条件，结果的 `computed` 为空、`effects` 为空；`phase` 不是 `preview` 时返回 `INPUT_INVALID`。主表界面规则的条件引用了请求中没有给出的明细时不出结论（`load_pack` 时记下每条主表界面规则引用的明细）。三个函数、Python 包和 WASM 的导出、Worker 消息都不变。
 
 ## 4. 依赖
 
@@ -36,7 +37,7 @@
 
 ## 5. 内部流程
 
-1. 求值：解析请求 → 按 `phase` 和 `purpose` 选出规则 → 按 `load_pack` 算出的顺序调用 zen-engine（每条明细规则对每一行执行完，再执行依赖它的主表规则） → 校验规则只检查 `changed` 中新增、修改的行（RC-10），界面规则检查全部行 → 汇总 `computed`、`fields`、`effects` → 输出 JSON（不舍入）。
+1. 求值：解析请求 → 按 `phase` 和 `purpose` 选出规则 → 按 `load_pack` 算出的顺序调用 zen-engine（每条明细规则对每一行执行完，再执行依赖它的主表规则） → 校验规则只检查 `changed` 中新增、修改的行（RC-10），界面规则检查全部行 → 汇总 `computed`、`fields`、`effects` → 输出 JSON（不舍入）。显示求值（RC-11）跳过计算和校验，只执行界面规则。
 2. 构建：Python 包用 maturin；WASM 用 wasm32-wasip1 目标和 wasi-sdk。两者使用同一个 `Cargo.lock`。浏览器加载这个 WASM 需要 COOP 和 COEP 响应头，由 assembly 配置。
 3. 可行性验证：期限 3 个工作日。通过条件是两个产物都能构建，并且样例集在两端的结果一致；编译时间、包大小和求值耗时只记录，不作为通过条件。不通过时停下来问用户。
 

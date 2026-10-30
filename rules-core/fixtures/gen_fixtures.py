@@ -22,8 +22,9 @@ def write(path: Path, data: Any) -> None:
 
 
 def request(entity: str, master: dict[str, Any], details: dict[str, list[dict[str, Any]]], *, phase: str = "preview",
-            operation: str | None = None, changed: list[dict[str, Any]] | None = None, data: dict[str, Any] | None = None) -> dict[str, Any]:
-    return {"purpose": "operation", "operation": operation or f"{entity}.save", "page": entity, "phase": phase, "context": CTX,
+            operation: str | None = None, changed: list[dict[str, Any]] | None = None, data: dict[str, Any] | None = None,
+            purpose: str = "operation") -> dict[str, Any]:
+    return {"purpose": purpose, "operation": operation or f"{entity}.save", "page": entity, "phase": phase, "context": CTX,
             "document": {"entity": entity, "master": master, "details": details}, "changed": changed or [], "data": data or {}}
 
 
@@ -250,6 +251,61 @@ def cost_2757(edited: str, price: str, phase: str) -> dict[str, Any]:
                         {"COST_MATERIAL": mat, "COST_PACKAGE": pkg}, phase=phase, changed=changed, effects=effects)
 
 
+# ---------------------------------------------------------------- 显示求值（C07 v6 第 3.1 节，purpose 为 display）
+
+# 旧系统 GRID_STYLE 在表格渲染行时按行数据算样式（usePageRules.ts 的 buildRowStyleCallback），加载即显示、不需要编辑。
+# 显示求值只执行界面规则：不计算（computed 为空，显示的仍是加载来的值），不校验（没有 reject、prompt）。
+
+RED = {"backgroundColor": "#ffcccc"}
+
+
+def display_2919(with_details: bool) -> dict[str, Any]:
+    """d_cg 单据 2919（MEMO 为 ERP未搭建BOM，两行原辅料的每片含量为空）：主表列表中只有主表行；选中后带明细。"""
+    master = row(cost_master("2919", **M2919), key="2919")
+    mat = [row(dtl("100713", "2919", "4726", "比沙可啶", "原料", None, None, "2489.725"), key="100713"),
+           row(dtl("100714", "2919", "311", "一水乳糖（200目）", "辅料", None, None, "26"), key="100714")]
+    details = {"COST_MATERIAL": mat, "COST_PACKAGE": []} if with_details else {}
+    rows = [result_row("COST_PINGGU", master, {}, style_row=RED)]
+    rows += [result_row("COST_MATERIAL", r, {}) for r in (mat if with_details else [])]
+    req = request("COST_PINGGU", master, details, purpose="display")
+    name = "显示求值-成本核算单据2919-" + ("带明细" if with_details else "主表列表")
+    source = ("旧系统 GRID_STYLE 加载即显示：d_cg 单据 2919 的 MEMO 为 ERP未搭建BOM，不编辑就整行红底；不计算（主表计算字段照请求原样，"
+              "computed 为空）" + ("；两行原辅料每片含量为空，显示求值不校验，没有拒绝" if with_details else "；主表列表没有加载明细"))
+    return fixture(name, source, "packs/cost-pinggu.json", req, ok(rows))
+
+
+def display_demo(name: str, source: str, master_values: dict[str, Any], dtl_rows: list[dict[str, Any]] | None,
+                 master_fields: dict[str, Any], master_style: dict[str, Any] | None,
+                 dtl_results: dict[str, tuple[dict[str, Any], dict[str, Any]]]) -> dict[str, Any]:
+    """`dtl_rows` 为 None 时请求不给明细（主表列表）；`dtl_results`：明细行 → （fields、cells）。"""
+    master = row(master_values, key=master_values["ID"])
+    details = {} if dtl_rows is None else {"DISP_DTL": dtl_rows}
+    rows = [result_row("DISP_DEMO", master, {}, fields=master_fields, style_row=master_style)]
+    for r in dtl_rows or []:
+        fields, cells = dtl_results.get(r["rowKey"], ({}, {}))
+        rows.append(result_row("DISP_DTL", r, {}, fields=fields, cells=cells))
+    req = request("DISP_DEMO", master, details, purpose="display")
+    return fixture(name, source, "packs/display-demo.json", req, ok(rows))
+
+
+def display_demos() -> list[dict[str, Any]]:
+    locked = {f: {"editable": False} for f in sorted(gen_packs.DISP_FIELDS["DISP_DEMO"])}
+    grey = {"color": "#999999"}
+    return [
+        display_demo("显示求值-主表列表不给明细", "C07 第 3.1 节：停用的单据整行不可编辑、字体变灰；请求没有给出明细，"
+                     "引用明细的'没有明细时黄底'不出结论；合计 150 超过 100 也不校验，TOTAL 不重算（假设的规则和数据）",
+                     {"ID": "1", "STATUS": "停用", "TOTAL": "150"}, None, locked, grey, {}),
+        display_demo("显示求值-单据带明细", "C07 第 3.1 节：明细数量 -1 的一行数量必填、标红，不给'数量必须大于0'的拒绝；"
+                     "主表 TOTAL 照请求原样（不汇总成 4）（假设的规则和数据）",
+                     {"ID": "2", "STATUS": "启用", "TOTAL": "0"},
+                     [row({"DTLID": "21", "QTY": "-1"}, key="21"), row({"DTLID": "22", "QTY": "5"}, key="22")],
+                     {}, None, {"21": ({"QTY": {"required": True}}, {"QTY": {"color": "#d03050"}})}),
+        display_demo("显示求值-明细为空", "C07 第 3.1 节：请求给出了明细、但没有行，'没有明细时黄底'出结论，与'停用变灰'按顺序合并"
+                     "（假设的规则和数据）", {"ID": "3", "STATUS": "停用", "TOTAL": "0"}, [], locked,
+                     {"color": "#999999", "backgroundColor": "#fff3cd"}, {}),
+    ]
+
+
 # ---------------------------------------------------------------- 单表演示
 
 def demo_fixture(name: str, source: str, values: dict[str, Any], old: dict[str, Any], phase: str, data: dict[str, Any] | None,
@@ -320,6 +376,7 @@ def main() -> None:
     write(HERE / "packs" / "demo-order.json", gen_packs.demo_pack())
     write(HERE / "packs" / "cycle.json", gen_packs.cycle_pack())
     write(HERE / "packs" / "numeric.json", gen_packs.numeric_pack())
+    write(HERE / "packs" / "display-demo.json", gen_packs.display_pack())
     t1 = "T-RC-1 样例"
     items = [
         expr_fixture("T-RC-1-0.1加0.2", t1 + "：十进制得 0.3（旧系统浮点为 0.30000000000000004）", "0.1", "0.2", "0.3", "0.5"),
@@ -344,6 +401,8 @@ def main() -> None:
     items += [cost_2919("preview"), cost_2919("commit"), demo_ui(), numeric()]
     # C07 v5：校验只检查本次新增、修改的行（d_cg 单据 2757）
     items += [cost_2757(edited, price, phase) for edited, price in (("207584", "55"), ("207577", "12")) for phase in ("preview", "commit")]
+    # C07 v6：显示求值只执行界面规则
+    items += [display_2919(False), display_2919(True), *display_demos()]
     for i, item in enumerate(items, 1):
         write(HERE / "cases" / f"{i:02d}-{item['name']}.json", item)
     write(HERE / "cases" / "90-依赖成环.json", {"kind": "packInvalid", "name": "依赖成环", "source": "RC-09：跨实体成环，load_pack 返回 PACK_INVALID",

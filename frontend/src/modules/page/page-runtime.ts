@@ -33,7 +33,7 @@ import type { RowId } from './edit-buffer';
 import { MASTER_GRID, fieldOf, newRowValues, regionKey } from './fields';
 import { canOpenLookup, fillsBack, lookupFill, lookupRequest } from './lookup';
 import { columnsToApply, mergePersonal, personalChanges } from './personal';
-import { PreviewEngine, buildPreviewRequest } from './preview';
+import { PreviewEngine, buildDisplayRequest, buildPreviewRequest } from './preview';
 import { SUMMARY_ROW_ID, detailSummary, masterSummary, sumFields } from './summary';
 import { PageModel } from './view-model';
 
@@ -111,6 +111,24 @@ export interface FrozenState {
 
 export const BUILTIN_ACTIONS = ['addRow', 'deleteRow', 'copyRow', 'saveGridConfig'] as const;
 
+/**
+ * 主表一块数据、一张单据的明细交给表格前，最多等显示求值这么久（毫秒）：通常几十毫秒内就有结果，行一出来就带样式；
+ * 规则包或 Worker 还没就绪时不让表格一直空着，先显示，结果到了再刷新这些行。
+ */
+const DISPLAY_WAIT = 1000;
+
+/** `task` 完成或过了 `ms` 毫秒，先到者为准；`task` 出错也算完成 */
+function within(task: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise(resolve => {
+    const timer = setTimeout(resolve, ms);
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    task.then(done, done);
+  });
+}
+
 export class PageRuntime {
   readonly view = shallowRef<PageView | null>(null);
   readonly state = reactive({
@@ -158,6 +176,8 @@ export class PageRuntime {
   private readonly preview: PreviewEngine;
   private readonly previewTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly pendingPreviews = new Set<Promise<void>>();
+  /** 每张单据最近一次显示求值的序号：先发的结果晚到时不用（以后一次为准） */
+  private readonly displaySeq = new Map<string, number>();
   private readonly unsubscribers: Array<() => void> = [];
   private loadToken = 0;
   /** 保存、业务按钮的结果写进模型的次数：单据加载期间这个数变了，读到的可能是写入前的数据（见 ensureRecord） */
@@ -251,8 +271,9 @@ export class PageRuntime {
       this.state.viewVersion += 1;
       this.loadDicts(view);
       for (const port of this.ports.values()) port.refreshAll();
-      // 规则包可能换了版本：重新预览有修改的单据
+      // 规则包可能换了版本：重新预览有修改的单据，已显示的单据重新做显示求值
       for (const recordId of this.model.buffer.dirtyRecords()) this.schedulePreview(recordId);
+      void this.display(this.model.displayedRecords());
     } catch (error) {
       this.deps.message.error(`页面配置已变更，重新读取失败：${messageOf(error)}`);
     }
@@ -313,6 +334,8 @@ export class PageRuntime {
     this.model.registerMasterRows(response.rows);
     this.state.total = response.total;
     this.ui.aggregates.value = response.aggregates;
+    // 这一块的行一显示就带界面规则的效果（FP-18）：每块只在取到数据时求值一次，滚动时表格用缓存的块，不再求值
+    await within(this.display(response.rows.map(r => r.rowKey)), DISPLAY_WAIT);
     const added = request.startRow === 0 ? this.model.newMasterRows().map(r => this.model.gridId(r.id)) : [];
     const master = this.model.master;
     const rows = [...added, ...response.rows.map(r => this.model.gridId(r.rowKey))].map(id => this.gridRow(master, id));
@@ -378,6 +401,8 @@ export class PageRuntime {
       this.model.registerRecord(recordId, record);
       // 正式数据变了：明细区的汇总行等据此重算
       this.state.revision += 1;
+      // 明细一显示就带界面规则的效果（FP-18）：这张单据带明细重新做显示求值
+      await within(this.display([recordId]), DISPLAY_WAIT);
     } catch (error) {
       this.deps.message.error(`单据 ${recordId} 的明细读取失败：${messageOf(error)}`);
     }
@@ -650,13 +675,56 @@ export class PageRuntime {
     }
   }
 
+  // ================================================================ 显示求值（FP-18）
+
+  /**
+   * 这些单据一显示就执行界面规则（C07 v6 第 3.1 节 `purpose: display`，对应旧系统 GRID_STYLE 渲染行时按行数据算样式）：
+   * 明细已加载的单据带上明细，没加载的只求主表行。结果只记界面规则的行样式、单元格样式、可编辑和必填，不改显示的值，
+   * 不给校验提示；效果有变化的行重新显示。Worker 或规则包不可用时提示，页面照常显示和编辑。
+   * 加入 pendingPreviews，`settled()` 一起等待。
+   */
+  private display(recordIds: string[]): Promise<void> {
+    const task: Promise<void> = this.runDisplay([...new Set(recordIds)]).finally(() => this.pendingPreviews.delete(task));
+    this.pendingPreviews.add(task);
+    return task;
+  }
+
+  private async runDisplay(recordIds: string[]) {
+    const view = this.view.value;
+    if (!view || !recordIds.length) return;
+    const master = view.master.entity;
+    const ctx = { user: this.deps.session.user.value, role: this.deps.session.role.value, now: this.now() };
+    const jobs = recordIds
+      .filter(id => this.model.buffer.current(master, id))
+      .map(id => {
+        const seq = (this.displaySeq.get(id) ?? 0) + 1;
+        this.displaySeq.set(id, seq);
+        return { id, seq, result: this.preview.evaluate(view, buildDisplayRequest(this.model, id, ctx)) };
+      });
+    const outcomes = await Promise.allSettled(jobs.map(job => job.result));
+    const changed: RowId[] = [];
+    outcomes.forEach((outcome, index) => {
+      const { id, seq } = jobs[index];
+      if (this.displaySeq.get(id) !== seq) return;
+      if (outcome.status === 'rejected') {
+        this.state.previewError = `本地预览不可用：${messageOf(outcome.reason)}`;
+      } else if (!outcome.value.ok) {
+        this.state.previewError = `界面规则求值失败：${outcome.value.error.message}`;
+      } else {
+        changed.push(...this.model.setDisplay(outcome.value.rows));
+      }
+    });
+    if (changed.length) this.refreshRows(changed);
+  }
+
   private refreshRows(rows: RowId[]) {
     this.state.revision += 1;
     const byEntity = new Map<string, string[]>();
     for (const row of rows) byEntity.set(row.entity, [...(byEntity.get(row.entity) ?? []), this.model.gridId(row.id)]);
     for (const [entity, ids] of byEntity) {
       const port = this.port(entity);
-      if (port) port.updateRows(ids.filter(id => port.hasRow(id)));
+      const shown = port ? ids.filter(id => port.hasRow(id)) : [];
+      if (port && shown.length) port.updateRows(shown);
     }
   }
 
@@ -836,6 +904,9 @@ export class PageRuntime {
     this.ui.effects.value = [];
     this.syncState();
     this.announce(result, '已保存');
+    // 预览已清掉：保存过的单据按保存后的值重新做显示求值（FP-18）
+    const saved = result.rows.filter(r => !('deleted' in r) && r.entity === master).map(r => r.rowKey);
+    void this.display([...recordIds.map(id => result.idMap[id] ?? id), ...saved]);
     await this.refreshAggregates();
   }
 
@@ -927,6 +998,12 @@ export class PageRuntime {
     }
     if (detailsChanged) this.showDetails(this.state.activeRecord);
     this.syncState();
+    // 按钮写入的单据按后端返回的值重新做显示求值（FP-18）
+    void this.display(
+      result.rows
+        .filter((r): r is ResultRow => !('deleted' in r))
+        .map(r => (r.entity === view.master.entity ? r.rowKey : this.recordKeyOf(r, result)))
+    );
     this.announce(result, `${button.label}已完成`);
     await this.refreshAggregates();
     return result;

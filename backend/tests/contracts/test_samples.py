@@ -104,6 +104,8 @@ SAMPLES: list[tuple[str, Any, Any]] = [
     ("C07 规则包", _json("C07", 0), t.RulesPack),
     ("C07 求值请求", _json("C07", 1), t.EvaluationRequest),
     ("C07 求值结果", _json("C07", 2), t.EvaluationResult),
+    ("C07 显示求值请求", _json("C07", 3), t.EvaluationRequest),
+    ("C07 显示求值结果", _json("C07", 4), t.EvaluationResult),
     ("C07 新增行的结果", {"ok": True, "rows": [{"entity": "COST_MATERIAL", "clientRowId": _TMP, "computed": {"AMOUNT": "1.20"},
                                                 "fields": {}, "style": {"row": None, "cells": {}}}],
                        "effects": [{"kind": "prompt", "rule": "R_PRICE_LOW", "message": "单价偏低", "entity": "COST_MATERIAL",

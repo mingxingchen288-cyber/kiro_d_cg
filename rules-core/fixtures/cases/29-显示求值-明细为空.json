@@ -1,0 +1,65 @@
+{
+  "kind": "evaluate",
+  "name": "显示求值-明细为空",
+  "source": "C07 第 3.1 节：请求给出了明细、但没有行，'没有明细时黄底'出结论，与'停用变灰'按顺序合并（假设的规则和数据）",
+  "pack": "packs/display-demo.json",
+  "match": "full",
+  "request": {
+    "purpose": "display",
+    "operation": "DISP_DEMO.save",
+    "page": "DISP_DEMO",
+    "phase": "preview",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "DISP_DEMO",
+      "master": {
+        "rowKey": "3",
+        "values": {
+          "ID": "3",
+          "STATUS": "停用",
+          "TOTAL": "0"
+        }
+      },
+      "details": {
+        "DISP_DTL": []
+      }
+    },
+    "changed": [],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "DISP_DEMO",
+        "rowKey": "3",
+        "computed": {},
+        "fields": {
+          "ID": {
+            "editable": false
+          },
+          "STATUS": {
+            "editable": false
+          },
+          "TOTAL": {
+            "editable": false
+          }
+        },
+        "style": {
+          "row": {
+            "color": "#999999",
+            "backgroundColor": "#fff3cd"
+          },
+          "cells": {}
+        }
+      }
+    ],
+    "effects": []
+  }
+}

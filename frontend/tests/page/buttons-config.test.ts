@@ -213,7 +213,8 @@ describe('预览（FP-05）', () => {
     material.updated.length = 0;
     runtime.edit(MATERIAL, '206323', 'PRICE', '80');
     await runtime.settled();
-    const [request] = fake.calc.requests;
+    // 页面加载、选中单据时的显示求值（purpose display，FP-18）在前面，这里只看编辑后的预览
+    const [request] = fake.calc.requests.filter(r => r.purpose === 'operation');
     expect(request).toMatchObject({
       purpose: 'operation',
       phase: 'preview',
@@ -247,7 +248,10 @@ describe('预览（FP-05）', () => {
 
   it('计算 Worker 不可用时照常编辑和保存，提示预览不可用', async () => {
     const { runtime, fake } = await openCostPage();
-    fake.calc.fail('EVAL_FAILED', 'WASM 加载失败');
+    // Worker 不可用：之后的每次求值都失败（编辑时先加载单据，单据的显示求值和预览都要经 Worker，FP-18）
+    fake.calc.respond(() => {
+      throw Object.assign(new Error('WASM 加载失败'), { code: 'EVAL_FAILED' });
+    });
     runtime.edit(MASTER, '2550', 'QTY', '12');
     await runtime.settled();
     expect(runtime.state.previewError).toBe('本地预览不可用：WASM 加载失败');

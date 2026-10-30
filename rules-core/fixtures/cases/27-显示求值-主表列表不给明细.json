@@ -1,0 +1,62 @@
+{
+  "kind": "evaluate",
+  "name": "显示求值-主表列表不给明细",
+  "source": "C07 第 3.1 节：停用的单据整行不可编辑、字体变灰；请求没有给出明细，引用明细的'没有明细时黄底'不出结论；合计 150 超过 100 也不校验，TOTAL 不重算（假设的规则和数据）",
+  "pack": "packs/display-demo.json",
+  "match": "full",
+  "request": {
+    "purpose": "display",
+    "operation": "DISP_DEMO.save",
+    "page": "DISP_DEMO",
+    "phase": "preview",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "DISP_DEMO",
+      "master": {
+        "rowKey": "1",
+        "values": {
+          "ID": "1",
+          "STATUS": "停用",
+          "TOTAL": "150"
+        }
+      },
+      "details": {}
+    },
+    "changed": [],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "DISP_DEMO",
+        "rowKey": "1",
+        "computed": {},
+        "fields": {
+          "ID": {
+            "editable": false
+          },
+          "STATUS": {
+            "editable": false
+          },
+          "TOTAL": {
+            "editable": false
+          }
+        },
+        "style": {
+          "row": {
+            "color": "#999999"
+          },
+          "cells": {}
+        }
+      }
+    ],
+    "effects": []
+  }
+}
