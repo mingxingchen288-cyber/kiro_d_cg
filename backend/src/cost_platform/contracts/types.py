@@ -175,6 +175,8 @@ FieldType: TypeAlias = Literal["text", "number", "date", "datetime", "boolean"]
 ColumnSource: TypeAlias = Literal["erp", "own"]
 FieldRole: TypeAlias = Literal["input", "calculated", "system"]
 Pinned: TypeAlias = Literal["left", "right"]
+Aggregate: TypeAlias = Literal["sum"]
+"""页面字段的汇总方式（C06 第 3 节 `aggregate`）：只有求和，对应旧系统列配置的 `aggFunc: "sum"`。"""
 PageLayout: TypeAlias = Literal["single", "masterDetail"]
 DetailMode: TypeAlias = Literal["tabs", "stack"]
 
@@ -527,6 +529,8 @@ class ViewField(Wire):
     pinned: Pinned | None
     dict_type: Code | None
     lookup: ViewLookup | None
+    aggregate: Aggregate | None = None
+    """汇总行：`sum` 为在表格底部的汇总行中求和（C06 第 3 节）；没有时省略。"""
 
 
 class ViewButton(Wire):
@@ -746,6 +750,7 @@ class FieldSetting(Wire):
     pinned: Pinned | None = None
     dict_type: Code | None = None
     lookup: LookupSetting | None = None
+    aggregate: Aggregate | None = None
 
 
 class ButtonConfig(Wire):

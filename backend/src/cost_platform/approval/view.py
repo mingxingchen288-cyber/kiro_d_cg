@@ -66,13 +66,16 @@ def _round(value: Decimal, precision: int | None) -> Decimal:
 
 
 def cell(value: object, precision: int | None = None) -> BusinessValue:
-    """显示用的值：数值按 `precision` 四舍五入、去掉末尾的零（例如 13.006532 → "13.0065"，75.00 → "75"）。"""
+    """显示用的值。数值有小数位 `precision` 时按它四舍五入并补足位数（75 → "75.00"，13.006532 → "13.0065"，C06 7.6；
+    同旧系统 ApprovalPresentationGrid.vue 的 `toFixed(precision)`）；没有小数位时按原值，去掉末尾的零（75.00 → "75"）。"""
     if value is None:
         return None
     if isinstance(value, bool):
         return value
     if isinstance(value, (Decimal, int, float)):
-        number = _round(Decimal(str(value)) if isinstance(value, float) else Decimal(value), precision)
+        number = Decimal(str(value)) if isinstance(value, float) else Decimal(value)
+        if precision is not None:
+            return format_decimal(_round(number, precision))
         return format_decimal(number.normalize()) if number == number.to_integral_value() else format_decimal(number).rstrip("0").rstrip(".")
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%dT%H:%M:%S")
@@ -325,8 +328,9 @@ class Evaluator:
         for flow, block, rows, current_rows in blocks:
             if block.selection == "hidden":
                 continue
-            affected_tables.append(self._affected_table(ctx, flow, block, rows, current_rows, plan_of, owner_of, before_docs,
-                                                        after_docs, (flow.code, block.key) in editable, len(record.flows) > 1))
+            affected_tables.append(self._affected_table(ctx, catalog, flow, block, rows, current_rows, plan_of, owner_of,
+                                                        before_docs, after_docs, (flow.code, block.key) in editable,
+                                                        len(record.flows) > 1))
         view = ApprovalView(master=master, details=details, affected=affected_tables)
         return Computation(view=view, fingerprint=view_fingerprint(view), source=source, scopes=scopes, plans=plans)
 
@@ -520,21 +524,42 @@ class Evaluator:
 
     # ---------------------------------------------------------------- 受影响单据的表格
 
-    def _affected_table(self, ctx: ExecutionContext, flow: FlowSnapshot, block: DisplayBlock, rows: Sequence[AffectedRow],
-                        current_rows: Mapping[str, list[dict[str, Any]]], plan_of: Mapping[tuple[str, str, int], RowPlan],
-                        owner_of: Mapping[tuple[str, str], Owner], before_docs: Mapping[DocumentRef, DocumentData],
-                        after_docs: Mapping[DocumentRef, DocumentData], user_can_edit: bool,
-                        with_flow_name: bool) -> ViewAffectedTable:
+    def _affected_scales(self, block: DisplayBlock, catalog: ApprovalCatalog) -> list[int | None]:
+        """受影响单据各列的小数位（C06 7.6）：写了 `precision` 取它；没写时取页面视图，即读取这一块 `source` 的实体
+        （修改表上注册的实体中，读取视图或表就是 `source` 的那个）字段的 `scale`，`master.` 列取所属主表实体的字段。
+        找不到这样的实体时（修改表没注册），没写 `precision` 的列按原值显示。"""
+        source = block.source.upper()
+        entity = next((e for e in catalog.entities_on_table(self.target_table(block))
+                       if (e.config.read_view or e.config.table).upper() == source), None)
+        scales: list[int | None] = []
+        for column in block.columns:
+            scale = column.precision
+            if scale is None and entity is not None:
+                if column.field.startswith("master."):
+                    name = column.field.removeprefix("master.")
+                    scale = next((f.scale for f in entity.root_config.fields if f.name == name), None)
+                else:
+                    target = (column.target_column or column.field).upper()
+                    scale = next((f.scale for f in entity.config.fields if (f.column or f.name).upper() == target), None)
+            scales.append(scale)
+        return scales
+
+    def _affected_table(self, ctx: ExecutionContext, catalog: ApprovalCatalog, flow: FlowSnapshot, block: DisplayBlock,
+                        rows: Sequence[AffectedRow], current_rows: Mapping[str, list[dict[str, Any]]],
+                        plan_of: Mapping[tuple[str, str, int], RowPlan], owner_of: Mapping[tuple[str, str], Owner],
+                        before_docs: Mapping[DocumentRef, DocumentData], after_docs: Mapping[DocumentRef, DocumentData],
+                        user_can_edit: bool, with_flow_name: bool) -> ViewAffectedTable:
         """一块受影响单据：勾选框按修改表的主键分，主键相同的几行只有第一行带 `ref` 和 `checked`；记录已不存在的行排在最后
         （AP-21）。几个审批流合成的审批，标题后注明审批流名称（C06 7.6）。"""
         table = self.target_table(block)
         target_columns = {c.upper() for c in (self.deps.schema.columns(table) or {})}
+        scales = self._affected_scales(block, catalog)
         selection = block.selection or "checked"
         view_rows: list[ViewRow] = []
         for row in [a for a in rows if not a.missing] + [a for a in rows if a.missing]:
             if row.missing:
-                cells = [ViewCell(before=cell(row.data.get(c.field.upper()), c.precision), after=cell(row.data.get(c.field.upper()), c.precision))
-                         for c in block.columns]
+                cells = [ViewCell(before=cell(row.data.get(c.field.upper()), s), after=cell(row.data.get(c.field.upper()), s))
+                         for c, s in zip(block.columns, scales, strict=True)]
                 view_rows.append(ViewRow(op="none", cells=cells, missing=True))
                 continue
             plan = plan_of.get((flow.code, block.key, row.seq))
@@ -552,11 +577,10 @@ class Evaluator:
                         deleting = True
             for position, data in enumerate(sources):
                 cells = []
-                for column in block.columns:
+                for column, scale in zip(block.columns, scales, strict=True):
                     before_value, after_value = self._affected_cell(column, data, owner, before_doc, after_doc, plan is not None,
                                                                     updates, target_columns, row.key or "")
-                    cells.append(ViewCell(before=cell(before_value, column.precision),
-                                          after=None if deleting else cell(after_value, column.precision)))
+                    cells.append(ViewCell(before=cell(before_value, scale), after=None if deleting else cell(after_value, scale)))
                 if plan is None:
                     op = "none"
                 elif deleting:

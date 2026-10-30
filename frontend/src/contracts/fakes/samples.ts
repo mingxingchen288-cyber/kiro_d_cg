@@ -249,7 +249,8 @@ export const pageViewSample: PageView = {
         "width": 120,
         "pinned": null,
         "dictType": null,
-        "lookup": null
+        "lookup": null,
+        "aggregate": "sum"
       }
     ],
     "buttons": [
@@ -702,12 +703,12 @@ export const approvalDetailSample: ApprovalDetail = {
               "after": "聚维酮K30"
             },
             {
-              "before": "75",
-              "after": "75"
+              "before": "75.00",
+              "after": "75.00"
             },
             {
-              "before": "75",
-              "after": "80"
+              "before": "75.00",
+              "after": "80.00"
             }
           ]
         }
@@ -751,12 +752,12 @@ export const approvalDetailSample: ApprovalDetail = {
                 "after": "聚维酮K30"
               },
               {
-                "before": "75",
-                "after": "80"
+                "before": "75.00",
+                "after": "80.00"
               },
               {
-                "before": "750",
-                "after": "800"
+                "before": "750.00",
+                "after": "800.00"
               },
               {
                 "before": "13.0065",
@@ -788,8 +789,8 @@ export const approvalDetailSample: ApprovalDetail = {
                 "after": "聚维酮K30"
               },
               {
-                "before": "75",
-                "after": "75"
+                "before": "75.00",
+                "after": "75.00"
               },
               {
                 "before": "23.25",
@@ -822,12 +823,12 @@ export const approvalDetailSample: ApprovalDetail = {
                 "after": "聚维酮K30"
               },
               {
-                "before": "75",
-                "after": "75"
+                "before": "75.00",
+                "after": "75.00"
               },
               {
-                "before": "150",
-                "after": "150"
+                "before": "150.00",
+                "after": "150.00"
               },
               {
                 "before": null,
@@ -1262,12 +1263,12 @@ export const previewResponseSample: PreviewResponse = {
               "after": "聚维酮K30"
             },
             {
-              "before": "75",
-              "after": "75"
+              "before": "75.00",
+              "after": "75.00"
             },
             {
-              "before": "75",
-              "after": "80"
+              "before": "75.00",
+              "after": "80.00"
             }
           ]
         }
@@ -1311,12 +1312,12 @@ export const previewResponseSample: PreviewResponse = {
                 "after": "聚维酮K30"
               },
               {
-                "before": "75",
-                "after": "80"
+                "before": "75.00",
+                "after": "80.00"
               },
               {
-                "before": "750",
-                "after": "800"
+                "before": "750.00",
+                "after": "800.00"
               },
               {
                 "before": "13.0065",
@@ -1348,8 +1349,8 @@ export const previewResponseSample: PreviewResponse = {
                 "after": "聚维酮K30"
               },
               {
-                "before": "75",
-                "after": "75"
+                "before": "75.00",
+                "after": "75.00"
               },
               {
                 "before": "23.25",
@@ -1382,12 +1383,12 @@ export const previewResponseSample: PreviewResponse = {
                 "after": "聚维酮K30"
               },
               {
-                "before": "75",
-                "after": "75"
+                "before": "75.00",
+                "after": "75.00"
               },
               {
-                "before": "150",
-                "after": "150"
+                "before": "150.00",
+                "after": "150.00"
               },
               {
                 "before": null,

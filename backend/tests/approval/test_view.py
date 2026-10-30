@@ -22,12 +22,12 @@ def test_e37_detail_trigger_column_and_goods_block() -> None:
     [material] = [d for d in detail.view.details if d.key == "material"]
     assert material.columns == ["物料", "物料名称", "单价", "金额"]
     assert [(r.op, r.flows) for r in material.rows] == [("modify", ["COST_TO_GOODS"]), ("modify", []), ("modify", [])]
-    assert cells(material.rows[0]) == [("25", "25"), ("聚维酮K30", "聚维酮K30"), ("75", "90"), ("750", "900")]
-    assert cells(material.rows[1])[:3] == [("310", "13165"), ("玉米淀粉", "微晶纤维素"), ("22", "40")]
+    assert cells(material.rows[0]) == [("25", "25"), ("聚维酮K30", "聚维酮K30"), ("75.00", "90.00"), ("750.00", "900.00")]
+    assert cells(material.rows[1])[:3] == [("310", "13165"), ("玉米淀粉", "微晶纤维素"), ("22.00", "40.00")]
     [goods_block] = detail.view.affected
     assert (goods_block.key, goods_block.title, goods_block.selection, goods_block.editable) == ("goods", "物料清单", "all", False)
     [row] = goods_block.rows
-    assert cells(row) == [("25", "25"), ("聚维酮K30", "聚维酮K30"), ("75", "90")]
+    assert cells(row) == [("25", "25"), ("聚维酮K30", "聚维酮K30"), ("75.00", "90.00")]
     assert (row.op, row.ref, row.checked) == ("modify", t.RowRef(key="25"), True)
     assert detail.view.master.key == "cost" and detail.view.master.columns == ["单据号", "产品", "每盒成本", "千片加工费"]
 
@@ -39,7 +39,7 @@ def test_e37_changed_material_shows_new_name_from_lookup() -> None:
     approval = e37_save(h, "90")
     [material] = [d for d in h.detail(ADMIN, approval.approval_id).view.details if d.key == "material"]
     assert cells(material.rows[0])[1] == ("聚维酮K30", "聚维酮K30")
-    assert cells(material.rows[1])[:3] == [("310", "13165"), ("玉米淀粉", "微晶纤维素"), ("22", "40")]
+    assert cells(material.rows[1])[:3] == [("310", "13165"), ("玉米淀粉", "微晶纤维素"), ("22.00", "40.00")]
 
 
 def test_e37_steps_show_upcoming_countersign_and_actions() -> None:
@@ -49,6 +49,8 @@ def test_e37_steps_show_upcoming_countersign_and_actions() -> None:
     detail = h.detail(ADMIN, approval.approval_id)
     assert [(s.level, s.node, s.status, [m.id for m in s.members]) for s in detail.steps] == [
         (1, "管理员审批", "pending", ["ADMIN"]), (2, "采购、生产会签", "upcoming", ["008", "007"])]
+    # 按角色配置的审批人显示角色名称，不显示编码（C09 第 6 节）
+    assert [[m.name for m in s.members] for s in detail.steps] == [["系统管理员"], ["采购", "生产"]]
     assert detail.actions == t.ApprovalActions(can_pass=True, can_reject=True, can_withdraw=False)
     mine = h.detail(YANGNA, approval.approval_id)  # 任何已登录的用户都能查看（AP-15）
     assert mine.actions == t.ApprovalActions(can_pass=False, can_reject=False, can_withdraw=True)
@@ -81,21 +83,21 @@ def test_e39_preview_unchecked_row_restores_values() -> None:
     [approval] = h.save(YANGNA, "GOODS_PRICE_MANAGE", [goods(25, ZX_PRICE="80")]).state.approvals
     detail = h.detail(ADMIN, approval.approval_id)
     assert detail.view.master.key == "goods"
-    assert cells(detail.view.master.rows[0]) == [("25", "25"), ("聚维酮K30", "聚维酮K30"), ("75", "75"), ("75", "80")]
+    assert cells(detail.view.master.rows[0]) == [("25", "25"), ("聚维酮K30", "聚维酮K30"), ("75.00", "75.00"), ("75.00", "80.00")]
     [block] = [b for b in detail.view.affected if b.key == "costMaterial"]
     assert block.editable and block.selection == "checked"
     assert block.columns == ["单据号", "产品", "物料", "单价", "金额", "每盒成本", "千片加工费"]
     by_key = {r.ref.key: r for r in block.rows if r.ref}
     assert cells(by_key["206323"])[:6] == [("2550", "2550"), ("250mg乙酰唑胺片", "250mg乙酰唑胺片"), ("聚维酮K30", "聚维酮K30"),
-                                          ("75", "80"), ("750", "800"), ("18.425", "18.925")]
-    assert cells(by_key["103681"])[3:5] == [("75", "80"), ("23.25", "24.8")]
+                                          ("75.00", "80.00"), ("750.00", "800.00"), ("18.4250", "18.9250")]
+    assert cells(by_key["103681"])[3:5] == [("75.00", "80.00"), ("23.25", "24.80")]
 
     preview = h.preview(ADMIN, approval.approval_id, [("GOODS_TO_COST", "costMaterial", "206323")])
     [block] = [b for b in preview.view.affected if b.key == "costMaterial"]
     by_key = {r.ref.key: r for r in block.rows if r.ref}
     assert (by_key["103681"].op, by_key["103681"].checked) == ("none", False)
-    assert cells(by_key["103681"])[3:6] == [("75", "75"), ("23.25", "23.25"), ("0.2325", "0.2325")]
-    assert cells(by_key["206323"])[3] == ("75", "80")
+    assert cells(by_key["103681"])[3:6] == [("75.00", "75.00"), ("23.25", "23.25"), ("0.2325", "0.2325")]
+    assert cells(by_key["206323"])[3] == ("75.00", "80.00")
     assert preview.fingerprint != detail.fingerprint
     # 预览不保存勾选：再打开详情仍是全选
     again = h.detail(ADMIN, approval.approval_id)
@@ -111,7 +113,7 @@ def test_e39_next_level_cannot_check_back() -> None:
                                                     mode="or")])
     h.config.flows["GOODS_TO_COST"] = (name, flow.model_copy(update={"levels": [*flow.levels, second]}))
     from cost_platform.approval import ItemsApprovalCatalog
-    h.config.catalog = ItemsApprovalCatalog(h.config.flows, h.config.entities)
+    h.config.catalog = ItemsApprovalCatalog(h.config.flows, h.config.entities, h.config.role_names())
     [approval] = h.save(YANGNA, "GOODS_PRICE_MANAGE", [goods(25, ZX_PRICE="80")]).state.approvals
     h.pass_(ADMIN, approval.approval_id, checked=[("GOODS_TO_COST", "costMaterial", "206323")])
     detail = h.detail(BUYER, approval.approval_id)
@@ -142,7 +144,7 @@ def test_missing_record_listed_last_and_skipped() -> None:
     [block] = [b for b in detail.view.affected if b.key == "costMaterial"]
     last = block.rows[-1]
     assert (last.missing, last.op, last.ref, last.checked) == (True, "none", None, None)
-    assert cells(last)[2:5] == [("聚维酮K30", "聚维酮K30"), ("75", "75"), ("150", "150")]
+    assert cells(last)[2:5] == [("聚维酮K30", "聚维酮K30"), ("75.00", "75.00"), ("150.00", "150.00")]
     h.pass_(ADMIN, approval.approval_id)
     result = h.record(approval.approval_id).result
     assert {"flow": "GOODS_TO_COST", "block": "costMaterial", "key": None, "status": "skipped", "reason": "记录已不存在"} in result

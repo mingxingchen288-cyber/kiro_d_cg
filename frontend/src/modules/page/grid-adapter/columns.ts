@@ -67,7 +67,9 @@ export function buildColumns(runtime: PageRuntime, region: ViewRegion, withFormC
       suppressColumnsToolPanel: true,
       suppressNavigable: true,
       cellClass: 'page-form-toggle',
-      cellRenderer: (params: { data?: GridRow }) => {
+      cellRenderer: (params: { data?: GridRow; node?: { rowPinned?: unknown } }) => {
+        // 汇总行没有表单
+        if (params.node?.rowPinned) return '';
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'page-form-toggle__button';

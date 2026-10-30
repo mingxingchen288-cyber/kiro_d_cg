@@ -32,7 +32,7 @@ describe('E37 成本明细改价审批', () => {
       '随审批等待'
     ]);
     expect(rows.map(r => r.change)).toEqual(['修改', '修改', '修改']);
-    expect(rows[0].texts).toEqual(['25', '聚维酮K30', '75 → 90', '750 → 900']);
+    expect(rows[0].texts).toEqual(['25', '聚维酮K30', '75.00 → 90.00', '750.00 → 900.00']);
     expect(rows[0].changed).toEqual([false, false, true, true]);
     expect(rows[1].texts).toEqual(['310 → 13165', '玉米淀粉 → 微晶纤维素', '22 → 40', '935 → 1700']);
     expect(rows[2].texts).toEqual(['115', '硬脂酸镁', '63', '157.5']);
@@ -41,7 +41,7 @@ describe('E37 成本明细改价审批', () => {
     const [goods] = rt.view.value!.affected;
     expect(goods.title).toBe('物料清单');
     const goodsRows = gridRows(goods.rows);
-    expect(goodsRows.map(r => [r.key, r.lead, r.texts])).toEqual([['25', true, ['25', '聚维酮K30', '75 → 90']]]);
+    expect(goodsRows.map(r => [r.key, r.lead, r.texts])).toEqual([['25', true, ['25', '聚维酮K30', '75.00 → 90.00']]]);
     expect(rt.isChecked(goods, '25')).toBe(true);
     expect(rt.canToggle(goods, '25')).toBe(false);
     expect(rt.groupCount(goods)).toBe(1);

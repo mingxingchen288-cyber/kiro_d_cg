@@ -63,3 +63,13 @@
 - 接入责任：真实联调在 T-AS-7。
 - 验收标准：业务例子 E28、E29；模拟验证：多选 Lookup 回填为逗号连接的值；`fillBack` 为 false 时只读单元格也能打开且不改数据；按单元格值过滤时请求带 `filter`；查询响应的 `keywordSearch` 为 false 时对话框不显示搜索框；对比上升和下降的箭头、颜色与旧系统相同。
 - 状态与证据：待联调（模拟验证通过，待独立复核；Lookup 对话框的界面没有在浏览器中验证）。2026-10-29：默认值（`fields.ts` 的 `newRowValues`，对照旧系统 `useWorkingSetStore.ts` 的 resolveColumnDefaultValue）：`static`、`builtin`（当前用户、部门、角色、时间）、`options`（下拉选第一个值，单元格用下拉选择），没有配置时数值为 0、其他为空；Lookup（`lookup.ts`、`renderers/LookupDialog.vue`，布局沿用旧系统 `LookupDialog.vue`）：打开时先用空关键字查询，`keywordSearch` 为 false 时不显示搜索框，`filter` 取当前行字段或单元格的值，多选用英文逗号连接，`fillBack` 为 false 时只读单元格也能打开、只有"关闭"；对比（`fields.ts` 的 `compareDisplay`，与旧系统 `useMetaColumns.ts` 的 renderCompareValue 相同）：上升红色 `#e53935` ↑、下降绿色 `#43a047` ↓，11px。模拟验证（`frontend/tests/page/copy-lookup.test.ts`）：E28 张三新增一行，CREATE_BY 显示张三且不可编辑，STATUS 默认"草稿"，命令中不带 CREATE_BY；E29 当前 3.80、历史 3.50 显示"↑0.30 (8.57%)"，历史为 0 时只显示差值；Lookup 回填和撤销、多选、单元格值过滤、`keywordSearch` 为 false、只查看。页面视图中还没有字段的 `default` 和对比的显示方式（契约缺口第 1、2 项，`.reports/modules/frontend-page/contract-gaps.md`），前端先按建议的写法实现，后端给出前 E28 的默认值只能按"数值为 0、其他为空"。结果见 T-FP-2。
+
+### T-FP-7 汇总行
+
+- 归属与目标：实现 FP-17。
+- 前置输入：开始前 T-FP-2；C06 v18 的 `aggregate`、C05 v4。
+- 负责范围：page 的 `summary.ts`、page-runtime 的汇总、grid-adapter 的底部固定行。
+- 交付物：主表区、明细区底部的汇总行。
+- 接入责任：页面上的汇总行要已发布的配置（seed 的 COST_PINGGU 已配），浏览器验证由合并后完成（T-AS-7）。
+- 验收标准：模拟验证：成本核算主表的汇总等于列表的 `aggregates` 加上还没保存的修改（改数量、预览改总成本、新增一张单据、撤销），保存后按同样的筛选重新取汇总；成本单 2550 的原辅料金额为三行之和，改价后按预览的金额，标为删除的行不计入，新增行计入；汇总行按列的小数位显示、不能编辑、没有表单按钮。真实验证（浏览器）：打开成本核算，主表底部显示 14 个求和列的汇总，与 d_cg 上同样筛选的 SUM 相同；选中一张单据，原辅料、包材底部显示金额合计。
+- 状态与证据：进行中（模拟验证通过；浏览器中没有验证）。2026-10-30（丙组，`batch1/summary`）：`frontend/src/modules/page/summary.ts`（对照旧系统 `useMasterGridBindings.ts` 的 `updatePinnedSumRow`、`usePageRules.ts` 的 `computeSumRow`、`DetailGridV3.vue` 的 `grandTotalRow`），`PageRuntime.summaryRow`、`refreshAggregates`，`PageGrid.vue` 主表和明细都用 `pinnedBottomRowData`。模拟验证 `frontend/tests/page/summary.test.ts` 2 个通过（`pnpm test` 30 个文件 498 个通过，`pnpm typecheck` 通过）。

@@ -104,7 +104,7 @@ def _modify_only_flow(h: Harness) -> None:
     h.config.flows["COST_TO_GOODS"] = (name, flow.model_copy(update={"operations": {"COST_MATERIAL": ["modify"]}}))
     from cost_platform.approval import ItemsApprovalCatalog
     entities = {k: v for k, v in h.config.entities.items() if k != "COST_GOODS_PRICE"}
-    h.config.catalog = ItemsApprovalCatalog(h.config.flows, entities)
+    h.config.catalog = ItemsApprovalCatalog(h.config.flows, entities, h.config.role_names())
 
 
 def test_e22_add_or_delete_only_does_not_trigger() -> None:

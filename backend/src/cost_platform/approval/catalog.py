@@ -3,8 +3,9 @@
 
 - 审批流的编码和名称：审批实例、进度、勾选（C09 的 `flow`、`flowName`）都要用它们。
 - 按表找实体：冻结表、修改表注册与否，以及"表 + 主键"所属的实体和单据（C06 7.4、7.5）。
+- 角色名称：审批进度中按角色配置的审批人显示角色名称（C09 第 6 节样例的"系统管理员"），不显示编码。
 
-接线时用 `SnapshotApprovalCatalog`（由 `catalog_of(entity_directory)` 经 `CatalogOf` 注入，plugin.py）；
+接线时用 `SnapshotApprovalCatalog`（由 `catalog_of(entity_directory, config_reader)` 经 `CatalogOf` 注入，plugin.py）；
 `ItemsApprovalCatalog` 是按给定配置内容的实现，测试直接用。
 """
 
@@ -14,7 +15,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
-from cost_platform.contracts.ports import ConfigSnapshot, EntityDirectory
+from cost_platform.contracts.ports import ConfigSnapshot, ConfigSnapshotReader, EntityDirectory
 from cost_platform.contracts.types import (
     ApprovalFlowConfig,
     ConfigDraft,
@@ -57,6 +58,10 @@ class ApprovalCatalog(Protocol):
         """`table` 为这张表的实体；没有时这张表没在平台注册。按实体编码排列。"""
         ...
 
+    def role_name(self, code: str) -> str:
+        """角色名称（C06 第 8 节角色配置项的名称）：审批进度中按角色配置的审批人显示它（C09 第 6 节 `members[].name`）。"""
+        ...
+
 
 CatalogOf = Callable[[ExecutionContext], ApprovalCatalog]
 """取本次请求所用的配置（与执行上下文中的配置快照同一版本）。"""
@@ -65,11 +70,13 @@ CatalogOf = Callable[[ExecutionContext], ApprovalCatalog]
 class SnapshotApprovalCatalog:
     """接线用的 `ApprovalCatalog`（2026-10-29 契约补上后）：审批流取本次请求的配置快照
     `ConfigSnapshot.approval_flow_entries`；按表找实体取 `EntityDirectory.entities_on_table`（最新已发布的实体配置，
-    端口不带 ctx），实体的配置仍取本次请求的快照。"""
+    端口不带 ctx），实体的配置仍取本次请求的快照；角色名称取该角色的配置快照（`ConfigSnapshotReader.read(角色).role()`，
+    同 identity 的 `describe_role_from`）。"""
 
-    def __init__(self, snapshot: ConfigSnapshot, entities: EntityDirectory) -> None:
+    def __init__(self, snapshot: ConfigSnapshot, entities: EntityDirectory, roles: ConfigSnapshotReader) -> None:
         self._snapshot = snapshot
         self._entities = entities
+        self._roles = roles
 
     def flows(self, page: str) -> list[NamedFlow]:
         return [NamedFlow(e.code, e.name, e.flow) for e in self._snapshot.approval_flow_entries(page)]
@@ -79,30 +86,41 @@ class SnapshotApprovalCatalog:
         return [TableEntity(found.entity, entity(found.entity), found.master, entity(found.master), found.parent_key)
                 for found in sorted(self._entities.entities_on_table(table), key=lambda f: f.entity)]
 
+    def role_name(self, code: str) -> str:
+        return self._roles.read(code).role().name
 
-def catalog_of(entities: EntityDirectory) -> CatalogOf:
+
+def catalog_of(entities: EntityDirectory, roles: ConfigSnapshotReader) -> CatalogOf:
     """`ApprovalDeps.catalog`：每个请求按它的执行上下文建 `SnapshotApprovalCatalog`。"""
-    return lambda ctx: SnapshotApprovalCatalog(ctx.config, entities)
+    return lambda ctx: SnapshotApprovalCatalog(ctx.config, entities, roles)
 
 
 class ItemsApprovalCatalog:
-    """按给定配置内容实现 `ApprovalCatalog`：`flows` 为编码 ->（名称、内容），`entities` 为全部实体。"""
+    """按给定配置内容实现 `ApprovalCatalog`：`flows` 为编码 ->（名称、内容），`entities` 为全部实体，`roles` 为角色编码 -> 名称。"""
 
-    def __init__(self, flows: Mapping[str, tuple[str, ApprovalFlowConfig]], entities: Mapping[str, EntityConfig]) -> None:
+    def __init__(self, flows: Mapping[str, tuple[str, ApprovalFlowConfig]], entities: Mapping[str, EntityConfig],
+                 roles: Mapping[str, str] | None = None) -> None:
         self._flows = dict(flows)
         self._entities = dict(entities)
+        self._role_names = dict(roles or {})
         self._roots = {link.entity: (code, link.parent_key) for code, e in self._entities.items() for link in e.details}
 
     @classmethod
     def from_items(cls, items: Iterable[ConfigDraft]) -> ItemsApprovalCatalog:
         flows: dict[str, tuple[str, ApprovalFlowConfig]] = {}
         entities: dict[str, EntityConfig] = {}
+        roles: dict[str, str] = {}
         for item in items:
             if item.type == "approvalFlow":
                 flows[item.key] = (item.name, parse_config_content(item.type, item.content))  # type: ignore[assignment]
             elif item.type == "entity":
                 entities[item.key] = parse_config_content(item.type, item.content)  # type: ignore[assignment]
-        return cls(flows, entities)
+            elif item.type == "role":
+                roles[item.key] = parse_config_content(item.type, item.content).name  # type: ignore[union-attr]
+        return cls(flows, entities, roles)
+
+    def role_name(self, code: str) -> str:
+        return self._role_names[code]
 
     def flows(self, page: str) -> list[NamedFlow]:
         found = [NamedFlow(code, name, f) for code, (name, f) in self._flows.items() if f.page == page and f.enabled]

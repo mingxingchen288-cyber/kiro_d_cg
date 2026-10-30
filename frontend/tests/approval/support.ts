@@ -97,7 +97,7 @@ export function e37View(): View {
         title: '原辅料',
         columns: ['物料', '物料名称', '单价', '金额'],
         rows: [
-          { op: 'modify', flows: ['COST_TO_GOODS'], cells: [c('25'), c('聚维酮K30'), c('75', '90'), c('750', '900')] },
+          { op: 'modify', flows: ['COST_TO_GOODS'], cells: [c('25'), c('聚维酮K30'), c('75.00', '90.00'), c('750.00', '900.00')] },
           { op: 'modify', flows: [], cells: [c('310', '13165'), c('玉米淀粉', '微晶纤维素'), c('22', '40'), c('935', '1700')] },
           { op: 'modify', flows: [], cells: [c('115'), c('硬脂酸镁'), c('63'), c('157.5')] }
         ]
@@ -112,7 +112,7 @@ export function e37View(): View {
         selection: 'all',
         editable: false,
         columns: ['物料ID', '物料名称', '单价'],
-        rows: [{ op: 'modify', ref: { key: '25' }, checked: true, cells: [c('25'), c('聚维酮K30'), c('75', '90')] }]
+        rows: [{ op: 'modify', ref: { key: '25' }, checked: true, cells: [c('25'), c('聚维酮K30'), c('75.00', '90.00')] }]
       }
     ]
   };
@@ -223,15 +223,15 @@ export function e39PreviewView(): View {
 export const E39_INITIAL_FINGERPRINT = `sha256:${'1'.repeat(64)}`;
 export const E39_PREVIEW_FINGERPRINT = approvalDetailSample.fingerprint;
 
-/** 打开详情时的 view：默认全选，2556 也显示 75 → 80、23.25 → 24.8（0.31 × 80） */
+/** 打开详情时的 view：默认全选，2556 也显示 75.00 → 80.00、23.25 → 24.80（0.31 × 80，单价、金额的 precision 为 2） */
 export function e39InitialView(): View {
   const view = e39PreviewView();
   const rows = view.affected[0].rows;
   const k2556 = rows.find(r => r.ref?.key === '103681') as Row;
   k2556.op = 'modify';
   k2556.checked = true;
-  k2556.cells[3] = c('75', '80');
-  k2556.cells[4] = c('23.25', '24.8');
+  k2556.cells[3] = c('75.00', '80.00');
+  k2556.cells[4] = c('23.25', '24.80');
   k2556.cells[5] = c('1.1566', '1.1721');
   k2556.cells[6] = c('689.03', '688.50');
   return view;

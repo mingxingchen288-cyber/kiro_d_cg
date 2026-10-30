@@ -104,6 +104,8 @@ export interface FieldSetting extends FieldFlags {
   pinned?: 'left' | 'right' | null;
   dictType?: string | null;
   lookup?: LookupSetting | null;
+  /** 汇总行求和（C06 第 3 节），只能用于数值字段 */
+  aggregate?: 'sum' | null;
 }
 
 export interface ButtonConfig {

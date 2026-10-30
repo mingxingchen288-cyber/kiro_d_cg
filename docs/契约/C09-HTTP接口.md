@@ -1,6 +1,6 @@
 # C09 HTTP 接口
 
-版本：v9。维护：contracts。状态：已确认。v9 随 C06 v17（用户 2026-10-28 确认《审批流配置定稿》）：审批人改了勾选后详情重新计算，增加 `preview`；受影响单据按修改表的主键勾选（`checkedRows[].key`、`ref.key`）；`steps` 按审批流的 `order` 排列，`entry` 改名为 `node`；`view.master` 带块的 `key`、`title`；记录已不存在的行改为 `missing: true` 并给出查到的值。`preview` 的请求响应格式、字段改名属于实现细节，由实施者决定（架构第 5 节）。v8 按用户 2026-10-28 的纠正，通过请求提交勾选的行（`checkedRows`）。v7 随 C06 v15 把审批详情的候选单据改为影响对象、按行勾选（用户 2026-10-28 确认审批流合并展示与动作）。
+版本：v10。维护：contracts。状态：已确认。v10 随 C06 v18（由旧系统 SUMMARY_CONFIG 功能推出）：写明列表 `aggregates` 的内容（第 4 节）。第 6 节写明 `members[].name` 按角色配置时为角色名称、`cells` 的数值按小数位补零，样例随之改为"75.00"等，由 C06 7.6 和本节原样例的"系统管理员"推出。v9 随 C06 v17（用户 2026-10-28 确认《审批流配置定稿》）：审批人改了勾选后详情重新计算，增加 `preview`；受影响单据按修改表的主键勾选（`checkedRows[].key`、`ref.key`）；`steps` 按审批流的 `order` 排列，`entry` 改名为 `node`；`view.master` 带块的 `key`、`title`；记录已不存在的行改为 `missing: true` 并给出查到的值。`preview` 的请求响应格式、字段改名属于实现细节，由实施者决定（架构第 5 节）。v8 按用户 2026-10-28 的纠正，通过请求提交勾选的行（`checkedRows`）。v7 随 C06 v15 把审批详情的候选单据改为影响对象、按行勾选（用户 2026-10-28 确认审批流合并展示与动作）。
 
 ## 1. 通用规则
 
@@ -80,6 +80,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 ```
 
 `ListRequest` 的 `sortModel`、`filterModel` 沿用 AG Grid 服务端行模型的格式；没有排序时按主键排序。
+列表响应的 `aggregates` 是主表区汇总行的值：页面视图主表区中 `aggregate` 为 `sum` 的可见字段（C05），对全部满足行权限和查询条件的行求和（不只是本页），键为字段名，值的格式同 C01 的数值，没有满足条件的行时为 null；没有这样的字段时为空对象。`endRow` 等于 `startRow` 时不返回行，只返回总数和汇总。
 高级查询的条件不写 `entity` 时属于主表。写了明细实体的条件，同一明细实体的条件合成一个 `EXISTS`，必须由同一条明细行同时满足，`group` 和 `logic` 用于组内的且、或；不同明细实体的条件之间是且。上例查的是"含有物料 115 且该行价格大于 3 的明细"的成本单。
 
 ```json
@@ -134,14 +135,14 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
   ],
   "view": {
     "master": {"key": "goods", "title": "物料清单", "columns": ["物料ID", "物料名称", "参考价格", "单价"],
-      "rows": [{"op": "modify", "flows": ["GOODS_TO_COST", "GOODS_PRICE_AUDIT"], "cells": [{"before": "25", "after": "25"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75", "after": "75"}, {"before": "75", "after": "80"}]}]},
+      "rows": [{"op": "modify", "flows": ["GOODS_TO_COST", "GOODS_PRICE_AUDIT"], "cells": [{"before": "25", "after": "25"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75.00", "after": "75.00"}, {"before": "75.00", "after": "80.00"}]}]},
     "details": [],
     "affected": [{"flow": "GOODS_TO_COST", "key": "costMaterial", "title": "成本核算（原辅料）", "selection": "checked", "editable": true,
       "columns": ["单据号", "产品", "物料", "单价", "金额", "每盒成本", "千片加工费"],
       "rows": [
-        {"op": "modify", "ref": {"key": "206323"}, "checked": true, "cells": [{"before": "2550", "after": "2550"}, {"before": "250mg乙酰唑胺片", "after": "250mg乙酰唑胺片"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75", "after": "80"}, {"before": "750", "after": "800"}, {"before": "13.0065", "after": "13.0507"}, {"before": "94.73", "after": "94.29"}]},
-        {"op": "none", "ref": {"key": "103681"}, "checked": false, "cells": [{"before": "2556", "after": "2556"}, {"before": "10mg氯丙嗪片", "after": "10mg氯丙嗪片"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75", "after": "75"}, {"before": "23.25", "after": "23.25"}, {"before": "1.1566", "after": "1.1566"}, {"before": "689.03", "after": "689.03"}]},
-        {"op": "none", "missing": true, "cells": [{"before": "2601", "after": "2601"}, {"before": null, "after": null}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75", "after": "75"}, {"before": "150", "after": "150"}, {"before": null, "after": null}, {"before": null, "after": null}]}
+        {"op": "modify", "ref": {"key": "206323"}, "checked": true, "cells": [{"before": "2550", "after": "2550"}, {"before": "250mg乙酰唑胺片", "after": "250mg乙酰唑胺片"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75.00", "after": "80.00"}, {"before": "750.00", "after": "800.00"}, {"before": "13.0065", "after": "13.0507"}, {"before": "94.73", "after": "94.29"}]},
+        {"op": "none", "ref": {"key": "103681"}, "checked": false, "cells": [{"before": "2556", "after": "2556"}, {"before": "10mg氯丙嗪片", "after": "10mg氯丙嗪片"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75.00", "after": "75.00"}, {"before": "23.25", "after": "23.25"}, {"before": "1.1566", "after": "1.1566"}, {"before": "689.03", "after": "689.03"}]},
+        {"op": "none", "missing": true, "cells": [{"before": "2601", "after": "2601"}, {"before": null, "after": null}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75.00", "after": "75.00"}, {"before": "150.00", "after": "150.00"}, {"before": null, "after": null}, {"before": null, "after": null}]}
       ]}]
   },
   "fingerprint": "sha256:5b1e0c6d9a3f47e28b1c6d0e9f3a2b4c5d6e7f8091a2b3c4d5e6f708192a3b4c",
@@ -153,8 +154,8 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 - 每个审批对应一张单据：主从页为一行主表及其明细，单表页为一行；一张单据命中多个审批流时合成一个审批（[approval](../模块/approval.md) AP-01、AP-09）。样例中的页面、物料、成本单和角色取自 d_cg 的真实数据：聚维酮K30（物料 25）参考价格 75，成本单 2550、2556 中它的明细为 206323、103681。执行价改成 80、每盒成本和千片加工费的修改后、第三行"记录已不存在"，以及第二个审批流 `GOODS_PRICE_AUDIT`，都是为说明假设的；`GOODS_PRICE_AUDIT` 在 C06 中没有定义。
 - 待办列表每个审批一行（`ApprovalSummary`）。详情分主表和从表：
   - 主表：来自页面（`pageTitle`、`operationLabel`）、提交时间（`submittedAt`）、提交人（`applicant`）、来源单据号（`source.recordKey`）。新增的单据在提交审批时已取得主键（approval AP-02），来源单据号总是有值。
-  - 从表：`steps`，每个节点一项，按级别、再按审批流的 `order` 排列；`flow`、`flowName` 标出节点来自哪个审批流，`node` 为节点名称。只列已进入的节点，以及按当前数据推算后面会进入的节点（approval AP-08）。`status` 取 `passed`、`pending`（本级待处理）、`rejected`、`upcoming`（还没到，按当前数据推算会进入）。`members[].status` 取 `pending`、`passed`、`rejected`；`processedBy` 为实际处理的账号（`{"userId", "displayName"}`），按角色配置的成员由该角色的某个账号处理。
-- `view` 是按 C06 7.5 的 `display` 生成的"修改内容"：`master` 为来源单据主表的块（`key`、`title`），`details` 为来源单据的明细，每块一项，`affected` 为受影响单据，每块一项，`selection` 为 `hidden` 的块不返回。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"，相同时只显示当前值（C06 7.6）。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（没有改动的行、取消勾选的行，以及记录已不存在的行）。来源单据的行总带 `flows`：这一行触发的审批流编码列表，为空数组表示没有触发、随审批等待；受影响单据的行没有这个值，按 C01 第 1 节省略。一张单据命中多个审批流时，来源单据只返回一份，受影响单据每个审批流各自的块，带 `flow`。
+  - 从表：`steps`，每个节点一项，按级别、再按审批流的 `order` 排列；`flow`、`flowName` 标出节点来自哪个审批流，`node` 为节点名称。只列已进入的节点，以及按当前数据推算后面会进入的节点（approval AP-08）。`status` 取 `passed`、`pending`（本级待处理）、`rejected`、`upcoming`（还没到，按当前数据推算会进入）。`members[].name` 按账号配置时为账号的显示名，按角色配置时为角色名称（例如 ADMIN 为"系统管理员"），`id` 为用户编号或角色编码。`members[].status` 取 `pending`、`passed`、`rejected`；`processedBy` 为实际处理的账号（`{"userId", "displayName"}`），按角色配置的成员由该角色的某个账号处理。
+- `view` 是按 C06 7.5 的 `display` 生成的"修改内容"：`master` 为来源单据主表的块（`key`、`title`），`details` 为来源单据的明细，每块一项，`affected` 为受影响单据，每块一项，`selection` 为 `hidden` 的块不返回。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"，相同时只显示当前值（C06 7.6）。数值按这一列的小数位四舍五入并补足位数（C06 7.6：取 `precision`，没写时取页面视图的 `scale`），例如单价 `precision` 为 2 时 75 给出"75.00"；都没有时按原值，去掉末尾的零。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（没有改动的行、取消勾选的行，以及记录已不存在的行）。来源单据的行总带 `flows`：这一行触发的审批流编码列表，为空数组表示没有触发、随审批等待；受影响单据的行没有这个值，按 C01 第 1 节省略。一张单据命中多个审批流时，来源单据只返回一份，受影响单据每个审批流各自的块，带 `flow`。
 - 受影响单据按修改表的主键分勾选框：`ref.key` 为这一行修改表的主键值，主键相同的几行只有第一行带 `ref` 和 `checked`，其余行省略（C06 7.5）。`checked` 为当前是否勾选：打开详情时默认为 true，上一级取消的为 false。`editable` 为 true 时当前用户这次通过可以改勾选：块的 `selection` 为 `checked`，且当前用户是该审批流本级节点的待处理审批人；上一级取消的行不能再勾回。样例为取消勾选 2556 之后 `preview` 返回的结果：这一行 `op` 为 `none`，修改后等于修改前。
 - 审批人改了勾选，前端用 `preview` 提交当前的勾选，后台按"当前数据 + 已勾选行要写的值"和各页面的计算规则重新计算，返回新的 `view` 和指纹（approval AP-08）；`preview` 不保存勾选，通过时以 `pass` 提交的勾选为准。
 - 受影响单据中记录已不存在的行（`keyColumn` 为空，approval AP-21）排在这一块最后：`missing` 为 true，`op` 为 `none`，`cells` 为查到的值；没有 `ref` 和 `checked`，不能勾选。前端整行红底，显示"记录已不存在"（frontend-approval FA-09）。

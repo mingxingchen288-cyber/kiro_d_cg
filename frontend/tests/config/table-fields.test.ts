@@ -107,3 +107,22 @@ describe('表与列显示实际能否编辑（FC-09）', () => {
     expect(opened.n.messages.filter(m => m.kind === 'error')).toEqual([]);
   });
 });
+
+describe('求和（C06 第 3 节 aggregate，同旧系统列表格的"求和"）', () => {
+  it('成本核算主表的总成本、原辅料的金额已勾选求和；勾选主表批量 APEX_PL 并保存：页面只多写 APEX_PL 的 aggregate: sum', async () => {
+    const opened = await openPage();
+    const { backend } = opened;
+    const seedPage = seedItems().find(i => i.type === 'page' && i.key === 'COST_PINGGU')!.content as unknown as PageContent;
+    const master = await openTable(opened, 'COST_PINGGU', 'page');
+    expect([master.row('TOTAL_COST').aggregate, master.row('DOCID').aggregate, master.row('APEX_PL').aggregate]).toEqual([true, false, false]);
+    const material = await openTable(opened, 'COST_MATERIAL', 'page');
+    expect(material.row('COST_BATCH').aggregate).toBe(true);
+
+    master.row('APEX_PL').aggregate = true;
+    expect(await master.save()).toBe(true);
+    const content = backend.get('page', 'COST_PINGGU')!.content as unknown as PageContent;
+    expect(content.master.fields).toEqual({ ...seedPage.master.fields, APEX_PL: { aggregate: 'sum' } });
+    expect(content.master.fields?.TOTAL_COST).toEqual({ aggregate: 'sum' });
+    expect(opened.n.messages.filter(m => m.kind === 'error')).toEqual([]);
+  });
+});

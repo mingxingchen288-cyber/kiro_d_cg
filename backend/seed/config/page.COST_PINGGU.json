@@ -13,6 +13,48 @@
       "fields": {
         "DOCID": {
           "pinned": "left"
+        },
+        "TOTAL_FL": {
+          "aggregate": "sum"
+        },
+        "TOTAL_BC": {
+          "aggregate": "sum"
+        },
+        "TOTAL_YL": {
+          "aggregate": "sum"
+        },
+        "TOTAL_COST": {
+          "aggregate": "sum"
+        },
+        "COST_PERBOX": {
+          "aggregate": "sum"
+        },
+        "OUT_PRICE_RMB": {
+          "aggregate": "sum"
+        },
+        "SALEMONEY": {
+          "aggregate": "sum"
+        },
+        "JGF_BATCH": {
+          "aggregate": "sum"
+        },
+        "COST_PERQP": {
+          "aggregate": "sum"
+        },
+        "JGF_PERQP": {
+          "aggregate": "sum"
+        },
+        "ML_PERQP": {
+          "aggregate": "sum"
+        },
+        "Y_JG_RE": {
+          "aggregate": "sum"
+        },
+        "Y_ML": {
+          "aggregate": "sum"
+        },
+        "Y_SALE": {
+          "aggregate": "sum"
         }
       },
       "buttons": [
@@ -64,6 +106,9 @@
           },
           "PRICE": {
             "required": true
+          },
+          "COST_BATCH": {
+            "aggregate": "sum"
           }
         },
         "buttons": [
@@ -108,6 +153,9 @@
                 "DTL_USEFLAG": "USEFLAG"
               }
             }
+          },
+          "COST_BATCH": {
+            "aggregate": "sum"
           }
         },
         "buttons": [

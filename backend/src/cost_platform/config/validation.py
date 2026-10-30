@@ -305,6 +305,8 @@ def _page(run: Run, entry: Entry) -> None:
             run.layered(entry, here, entity, names[name], [entity.field_defaults.get(name)], setting)
             if setting.lookup is not None:
                 _lookup_setting(run, entry, f"{here}.lookup", setting.lookup, names)
+            if setting.aggregate is not None and names[name].type != "number":
+                run.err(entry, f"{here}.aggregate", f"{name} 不是数值字段，不能求和")
         for j, cell in enumerate(area.form_layout):
             here = f"{at}.formLayout[{j}]"
             if cell.field not in names:

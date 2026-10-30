@@ -157,9 +157,13 @@ class Config:
         registered = dict(self.entities)
         if not register_goods and not any(f.page == "GOODS_PRICE_MANAGE" for _, f in self.flows.values()):
             registered.pop("COST_GOODS_PRICE")
-        self.catalog = ItemsApprovalCatalog(self.flows, registered)
+        self.catalog = ItemsApprovalCatalog(self.flows, registered, self.role_names())
         self.rules = ToyRules()
         self._pack = self.rules.load_pack(b"{}")
+
+    def role_names(self) -> dict[str, str]:
+        """角色编码 -> 名称（审批进度中按角色配置的审批人显示名称）。"""
+        return {code: role.name for code, role in self.roles.items()}
 
     def snapshot(self, role_code: str) -> FakeConfigSnapshot:
         role = self.roles[role_code]
