@@ -172,6 +172,7 @@ _WRITERS = {
     "notifications": lambda s: s.notifications.append(_NOTICE),
     "delivery_ids": lambda s: s.delivery_ids.append("00000000-0000-4000-8000-0000000000d1"),
     "escape_hatch_calls": lambda s: s.escape_hatch_calls.append({"operation": "COST_PINGGU.syncAll", "target": "P_SYNC"}),
+    "defer_lock": lambda s: setattr(s, "defer_lock", True),
 }
 
 

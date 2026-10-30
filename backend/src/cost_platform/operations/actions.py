@@ -3,6 +3,10 @@
 展开只生成 `RowIntent`，不加锁、不写候选数据；write-pipeline 取出 intents，所属单据不在 `involved` 中的先加锁读入、
 做冻结检查，再合并、检查写权限并计算（WP-18）。下一个动作看到的是上一个动作合并、计算后的候选数据。
 
+加锁顺序（write-pipeline WP-03，用户 2026-10-30）：找到的单据排在选中单据之后的（例如成本单找物料清单），由加锁读取在这一轮
+往后追加；排在之前或同层的（成本单找别的成本单），`finds_other_documents` 为 True，查找已挪到"确定涉及的单据"之前用普通
+查询执行一次，选中的和找到的一起锁住（`ButtonInvolvedStage`），这里只认锁住的这一批（`Round.locked`）。
+
 "目标"：按钮操作中能找到目标的只有 `updateRecords` 的 `find`。`updateTargets` 和 `recalculate`（`target` 为
 `targets`）的目标，是本命令前面各 `updateRecords` 找到的对象（C06 v17 没有写明，见 contract-gaps.md 第 1 项）。
 """
@@ -11,8 +15,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from cost_platform.contracts.ports import RelatedQuery, UnitOfWork
+from cost_platform.contracts.ports import BusinessLocker, RelatedQuery, UnitOfWork
 from cost_platform.contracts.types import (
+    LOCK_LAYERS,
     CommandState,
     DocumentData,
     DocumentRef,
@@ -29,6 +34,7 @@ from cost_platform.contracts.types import (
     TargetFinderConfig,
     TargetObject,
     UpdateRecords,
+    UpdateRows,
     UpdateTargets,
     Value,
 )
@@ -40,7 +46,10 @@ from .memory import CommandMemory, Finding, Target
 
 @dataclass
 class Round:
-    """展开一个动作时用到的数据。`sources` 为选中的、加锁后仍存在的单据，按选中的先后。"""
+    """展开一个动作时用到的数据。`sources` 为选中的、加锁后仍存在的单据，按选中的先后。
+
+    `prescanned` 为 True 时（`finds_other_documents`：找到的单据排在选中单据之前或同层），找到的单据已在"确定涉及的单据"
+    按统一顺序和选中单据一起锁住（`ButtonInvolvedStage`），这里只认锁住的这一批（`locked`）。"""
 
     uow: UnitOfWork
     state: CommandState
@@ -51,9 +60,18 @@ class Round:
     page_master: str | None
     sources: list[DocumentRef]
     memory: CommandMemory
+    locks: BusinessLocker | None = None
+    prescanned: bool = False
 
     def find(self, finder: TargetFinderConfig, source: DocumentData) -> list[TargetObject]:
         return self.related.find(self.uow, finder, source)
+
+    def locked(self, ref: DocumentRef) -> bool:
+        """用户 2026-10-30 规则 3：锁住后以锁住的这一批为准，范围查询和加锁之间新冒出来的单据不算进去（相当于那次修改
+        发生在本命令之后）。没有预查的命令找到的单据都排在已持有的锁之后，由加锁读取往后追加（规则 2），都算。"""
+        if not self.prescanned or self.locks is None:
+            return True
+        return self.locks.document(self.ctx, ref) in self.locks.held(self.uow)
 
     def data(self, ref: DocumentRef) -> DocumentData | None:
         """来源计算后的数据：前面动作合并、计算后的候选数据；没有时为加锁读到的当前数据（OP-02、OP-08）。"""
@@ -70,6 +88,36 @@ class Round:
                 return code
         raise PlatformError(ErrorCode.INTERNAL_ERROR,
                             f"找不到明细实体 {detail} 所属的主表实体：操作 {self.operation_code} 的 impact 中应列出它的主表实体")
+
+
+def document_entity(ctx: ExecutionContext, operation: OperationConfig, page_master: str | None, entity: str) -> str:
+    """`entity` 的行所属单据的主表实体：在页面主表实体和操作的 `impact` 中找以它为明细的实体，找不到时它自己就是主表实体
+    （同 `Round.master_of`）。"""
+    for code in dict.fromkeys(c for c in (page_master, *operation.impact) if c):
+        if any(link.entity == entity for link in ctx.config.entity(code).details):
+            return code
+    return entity
+
+
+def finds_other_documents(ctx: ExecutionContext, operation: OperationConfig, page_master: str | None,
+                          locks: BusinessLocker) -> bool:
+    """按钮的 `updateRecords`、`updateRows` 会找到排在选中单据之前或同层的单据时为 True（用户 2026-10-30 规则 3：
+    往前找或同层找）：这时要把查找挪到加锁之前（`ButtonInvolvedStage`）。只看配置。`replaceDetails` 只写选中的单据，
+    `recalculate`、`updateTargets` 只用前面找到的，不算。"""
+    if page_master is None:
+        return False
+    own = LOCK_LAYERS.index(locks.layer(ctx, page_master))
+    for action in operation.actions:
+        if isinstance(action, UpdateRecords):
+            entity = action.find.entity
+        elif isinstance(action, UpdateRows):
+            entity = action.entity
+        else:
+            continue
+        target = document_entity(ctx, operation, page_master, entity)
+        if LOCK_LAYERS.index(locks.layer(ctx, target)) <= own:
+            return True
+    return False
 
 
 def _empty_intent(ref: DocumentRef) -> RowIntent:
@@ -107,7 +155,21 @@ def find_targets(rnd: Round, finder: TargetFinderConfig) -> list[Target]:
     """按来源行分别调用 `RelatedQuery.find`，记下每个目标由哪几行找到（OP-07）。
 
     来源是选中单据的全部行（按钮命令不带修改，C08 第 9 节）。各次的结果按来源行的先后合并，同一对象只算一个；
-    `missing` 的对象（记录已不存在）跳过，不更新也不报错。返回本次找到的目标，同时并入本命令的目标。"""
+    `missing` 的对象（记录已不存在）跳过，不更新也不报错。已预查的命令只留下所属单据已锁住的目标（`Round.locked`，
+    规则 3）。返回本次找到的目标，同时并入本命令的目标。"""
+    found = {key: target for key, target in search_targets(rnd, finder).items() if rnd.locked(target.document)}
+    for key, target in found.items():
+        known = rnd.memory.targets.get(key)
+        if known is None:
+            rnd.memory.targets[key] = Target(target.entity, target.document, target.row_key, target.is_detail,
+                                             list(target.found_by))
+        else:
+            known.found_by.extend(target.found_by)
+    return list(found.values())
+
+
+def search_targets(rnd: Round, finder: TargetFinderConfig) -> dict[tuple[str, str, str], Target]:
+    """`find_targets` 的查找部分（不并入本命令的目标）：加锁前的预查（`ButtonInvolvedStage`）也用它。"""
     found: dict[tuple[str, str, str], Target] = {}
     for ref in rnd.sources:
         source = rnd.data(ref)
@@ -134,14 +196,7 @@ def find_targets(rnd: Round, finder: TargetFinderConfig) -> list[Target]:
                 if target is None:
                     target = found[key] = Target(obj.entity, document, row_key, is_detail)
                 target.found_by.append(Finding(source, row))
-    for key, target in found.items():
-        known = rnd.memory.targets.get(key)
-        if known is None:
-            rnd.memory.targets[key] = Target(target.entity, target.document, target.row_key, target.is_detail,
-                                             list(target.found_by))
-        else:
-            known.found_by.extend(target.found_by)
-    return list(found.values())
+    return found
 
 
 def _current_row(state: CommandState, document: DocumentRef, entity: str, row_key: str) -> Row | None:

@@ -47,6 +47,7 @@ PORT_CONTRACTS = {
     "IdGenerator": "test_id_generator.IdGeneratorContract",
     "FreezeReader": "test_freeze_reader.FreezeReaderContract",
     "CommandMonitor": "test_command_monitor.CommandMonitorContract",
+    "BusinessLocker": "test_business_locker.BusinessLockerContract",
     "ContextProvider": "test_context_provider.ContextProviderContract",
 }
 
@@ -58,7 +59,7 @@ def _protocol_members(protocol: type) -> tuple[dict[str, inspect.Signature], set
 
 
 def test_every_port_has_fake_and_contract() -> None:
-    assert len(PORTS) == 25
+    assert len(PORTS) == 26
     assert set(PORT_FAKES) == set(PORTS)
     assert set(PORT_CONTRACTS) == set(PORTS)
     for name, target in PORT_CONTRACTS.items():

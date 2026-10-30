@@ -23,15 +23,31 @@ def change(entity: str, op: str, key: str | None, values: dict[str, object], cli
     return t.RowChange(document=ref, entity=entity, op=op, row_key=key, client_row_id=client, values=values, old={})  # type: ignore[arg-type]
 
 
-def test_lock_load_one_statement_sorted_keys_with_wait() -> None:
+def test_lock_load_one_document_one_statement_with_wait() -> None:
+    """只锁一张单据：加锁和读数据一条语句（普通保存的 SQL 条数不变，WP-10）。"""
     uow = RecordingUnitOfWork()
     uow.connection.results = [[(D(1001), "250mg乙酰唑胺片", None, D(100000), D("54.00"), "王五", "草稿", None)]]
-    rows = OracleDocumentStore(5).lock_load(uow, MASTER, MASTER_ENTITY, ["1002", "1001"])  # type: ignore[arg-type]
+    rows = OracleDocumentStore(5).lock_load(uow, MASTER, MASTER_ENTITY, ["1001"])  # type: ignore[arg-type]
     [statement] = uow.connection.statements
     assert statement.sql == ("SELECT DOCID, GOODSNAME, MEMO, APEX_PL, TOTAL_COST, CREATE_BY, USESTATUS, CREATE_TIME "
-                             "FROM T_COST_PINGGU WHERE DOCID IN (:k0, :k1) ORDER BY DOCID FOR UPDATE WAIT 5")
-    assert statement.params == {"k0": D(1001), "k1": D(1002)}
+                             "FROM T_COST_PINGGU WHERE DOCID IN (:k0) ORDER BY DOCID FOR UPDATE WAIT 5")
+    assert statement.params == {"k0": D(1001)}
     assert list(rows) == ["1001"] and rows["1001"].values["APEX_PL"] == D(100000)
+
+
+def test_lock_load_several_documents_one_lock_per_row_in_key_order() -> None:
+    """一次锁多行（用户 2026-10-30 规则 7）：按主键顺序每行一条 `SELECT … FOR UPDATE WAIT n`，不依赖一条 SQL 内部的加锁
+    顺序；锁完再一条普通查询读出数据。"""
+    uow = RecordingUnitOfWork()
+    uow.connection.results = [[], [], [(D(1001), "250mg乙酰唑胺片", None, D(100000), D("54.00"), "王五", "草稿", None)]]
+    rows = OracleDocumentStore(5).lock_load(uow, MASTER, MASTER_ENTITY, ["1002", "1001"])  # type: ignore[arg-type]
+    assert uow.connection.sql == [
+        "SELECT DOCID FROM T_COST_PINGGU WHERE DOCID = :k FOR UPDATE WAIT 5",
+        "SELECT DOCID FROM T_COST_PINGGU WHERE DOCID = :k FOR UPDATE WAIT 5",
+        "SELECT DOCID, GOODSNAME, MEMO, APEX_PL, TOTAL_COST, CREATE_BY, USESTATUS, CREATE_TIME "
+        "FROM T_COST_PINGGU WHERE DOCID IN (:k0, :k1) ORDER BY DOCID"]
+    assert [s.params for s in uow.connection.statements] == [{"k": D(1001)}, {"k": D(1002)}, {"k0": D(1001), "k1": D(1002)}]
+    assert list(rows) == ["1001"]
 
 
 def test_lock_load_reads_view_by_field_name() -> None:
@@ -42,18 +58,28 @@ def test_lock_load_reads_view_by_field_name() -> None:
 
 
 def test_lock_load_row_permission_in_same_statement() -> None:
-    """WP-03：行权限条件作为判断列在加锁读取的同一条 SQL 中查出；有一行超出就拒绝。"""
+    """WP-03：行权限条件作为判断列在读数据的同一条 SQL 中查出（锁多行时为锁完后的那条普通查询）；有一行超出就拒绝。"""
     uow = RecordingUnitOfWork()
-    uow.connection.results = [[(D(1001), "a", None, D(1), D(1), "王五", "草稿", None, 1),
-                               (D(1002), "b", None, D(1), D(1), "王五", "草稿", None, 0)]]
+    uow.connection.results = [[], [], [(D(1001), "a", None, D(1), D(1), "王五", "草稿", None, 1),
+                                       (D(1002), "b", None, D(1), D(1), "王五", "草稿", None, 0)]]
     condition = t.SqlCondition(sql="CREATE_BY = :rp_username", binds={"rp_username": "user112"})
     with pytest.raises(t.PlatformError) as caught:
         OracleDocumentStore(5).lock_load(uow, MASTER, MASTER_ENTITY, ["1001", "1002"], row_condition=condition)  # type: ignore[arg-type]
     assert caught.value.code is t.ErrorCode.PERMISSION_DENIED
     assert [(d.entity, d.row_key) for d in caught.value.details] == [(MASTER, "1002")]
-    [statement] = uow.connection.statements
+    statement = uow.connection.statements[-1]
     assert ", CASE WHEN (CREATE_BY = :rp_username) THEN 1 ELSE 0 END AS WP_ALLOWED FROM T_COST_PINGGU" in statement.sql
     assert statement.params == {"k0": D(1001), "k1": D(1002), "rp_username": "user112"}
+
+
+def test_lock_load_one_document_row_permission_in_lock_statement() -> None:
+    """只锁一张单据时，行权限判断列就在加锁的那条语句里（条数不变）。"""
+    uow = RecordingUnitOfWork()
+    uow.connection.results = [[(D(1001), "a", None, D(1), D(1), "王五", "草稿", None, 1)]]
+    condition = t.SqlCondition(sql="CREATE_BY = :rp_username", binds={"rp_username": "user112"})
+    OracleDocumentStore(5).lock_load(uow, MASTER, MASTER_ENTITY, ["1001"], row_condition=condition)  # type: ignore[arg-type]
+    [sql] = uow.connection.sql
+    assert "AS WP_ALLOWED FROM T_COST_PINGGU WHERE DOCID IN (:k0) ORDER BY DOCID FOR UPDATE WAIT 5" in sql
 
 
 def test_details_of_several_entities_in_one_statement() -> None:

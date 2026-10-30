@@ -41,14 +41,18 @@ class ApprovalStageHarness:
     def cases(self) -> list[StageCase]:
         h, approval, uow = self._setup()
         found = []
-        # 触发审批：成本单 2602（说明用的假设数据）把滑石粉（116，清单价 12）的单价改成 15，走到触发审批之前
+        # 触发审批：成本单 2602（说明用的假设数据）把滑石粉（116，清单价 12）的单价改成 15，走到触发审批之前。
+        # 每个场景是一个命令，各用自己的事务（加锁顺序按事务检查）
         h.world.add_cost(2602, "说明用成本单", [_dtl(260201, 2602, 116, "12", "1")])
         save = self._command(h, "COST_PINGGU", "COST_PINGGU.save", [cost(2602, modify("COST_MATERIAL", 260201, PRICE="15"))], {})
         ctx = h.ctx(YANGNA)
-        state = h.pipeline.prepare(uow, save, ctx)
-        found.append(StageCase("触发审批", h.approval.trigger, state, ctx, uow))  # type: ignore[arg-type]
+        own = self._stack.enter_context(h.uow.begin())
+        state = h.pipeline.prepare(own, save, ctx)
+        found.append(StageCase("触发审批", h.approval.trigger, state, ctx, own))  # type: ignore[arg-type]
         memo = self._command(h, "COST_PINGGU", "COST_PINGGU.save", [cost(2556, modify("COST_MATERIAL", 103681, MEMO="改"))], {})
-        found.append(StageCase("触发审批", h.approval.required, h.pipeline.prepare(uow, memo, ctx), ctx, uow))  # type: ignore[arg-type]
+        other = self._stack.enter_context(h.uow.begin())
+        found.append(StageCase("触发审批", h.approval.required, h.pipeline.prepare(other, memo, ctx), ctx, other))  # type: ignore[arg-type]
+        found.append(StageCase("确定涉及的单据", h.approval.trigger_scope, t.CommandState(command=memo), ctx, uow))  # type: ignore[arg-type]
         # 冻结检查：没有冻结的单据
         check = t.CommandState(command=save, involved=[t.DocumentRef("COST_PINGGU", "2556")])
         found.append(StageCase("冻结检查", h.approval.freeze_check, check, ctx, uow))  # type: ignore[arg-type]

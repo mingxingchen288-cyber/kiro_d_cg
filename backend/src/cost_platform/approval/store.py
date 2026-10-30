@@ -113,16 +113,14 @@ class ApprovalStore:
         uow.connection.execute(sa.update(pf_approval).where(pf_approval.c.approval_id == _id(record.approval_id))
                                .values(**_record_row(record)))
 
-    def load(self, uow: UnitOfWork, approval_id: str, *, lock: bool = False) -> ApprovalRecord | None:
-        """`lock` 为 True 时加行锁（`FOR UPDATE`），同一审批的处理命令依次执行；SQLite 不支持行锁，忽略。"""
+    def load(self, uow: UnitOfWork, approval_id: str) -> ApprovalRecord | None:
+        """读出审批记录，不加锁。处理审批时，审批记录先经 `BusinessLocker` 加锁（`FOR UPDATE WAIT n`，秒数同
+        `PLATFORM_LOCK_WAIT_SECONDS`，排在所有业务数据之前；`process.ResolveStage`），同一审批的处理命令依次执行。"""
         try:
             key = _id(approval_id)
         except ArithmeticError:
             return None
-        query = sa.select(pf_approval).where(pf_approval.c.approval_id == key)
-        if lock:
-            query = query.with_for_update()
-        row = uow.connection.execute(query).first()
+        row = uow.connection.execute(sa.select(pf_approval).where(pf_approval.c.approval_id == key)).first()
         return None if row is None else _to_record(row)
 
     def _list(self, uow: UnitOfWork, condition: Any) -> list[ApprovalRecord]:
@@ -173,7 +171,8 @@ class ApprovalStore:
     # ---------------------------------------------------------------- 冻结记录（AP-03、AP-06）
 
     def freeze(self, uow: UnitOfWork, entries: Sequence[FreezeEntry]) -> None:
-        """登记冻结记录；（根表、主键）已有记录时（另一个命令同时冻结了它）返回 409 FROZEN_BY_APPROVAL。"""
+        """登记冻结记录。只登记在本事务已锁住的单据和行上（触发审批先按统一顺序加锁、锁后单独查冻结，AP-02、AP-06），
+        所以两个命令不会同时登记同一条；（根表、主键）已有记录时返回 409 FROZEN_BY_APPROVAL。"""
         conn = uow.connection
         for entry in entries:
             try:

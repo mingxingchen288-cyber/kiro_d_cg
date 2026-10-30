@@ -18,6 +18,7 @@ from cost_platform.contracts.types import (
     DocumentRef,
     ErrorCode,
     ExecutionContext,
+    LockScopeChanged,
     PlatformError,
     Row,
     RowIntent,
@@ -184,6 +185,21 @@ def test_rejected_command_goes_through_monitor() -> None:
     assert caught.value.code is ErrorCode.FROZEN_BY_APPROVAL
     assert monitor.watched == [(command.request_key, ErrorCode.FROZEN_BY_APPROVAL)]
     assert dispatcher.dispatched == []
+
+
+def test_lock_scope_changed_rolls_back_and_runs_the_command_again() -> None:
+    """规则 4（WP-13 的例外）：加锁前读到的本命令单据在锁住时已被别人改了，"触发审批"抛 LockScopeChanged；整个事务回滚
+    （第一次的事务没有提交），整条命令重来一次，第二次提交。命令审查只记一条。"""
+    stages = Stages()
+    next(s for s in stages.stages if s.name == "触发审批").fail("run", LockScopeChanged("物料清单 25 在加锁前读取之后被修改"))
+    factory = FakeUnitOfWorkFactory()
+    monitor = FakeCommandMonitor()
+    command = sample_command()
+    result = CommandRunner(factory, MemoryRecorder(), monitor, FakeDeliveryDispatcher(), stages.stages).execute(command, context())
+    assert result.outcome == "saved"
+    assert [(u.committed, u.rolled_back) for u in factory.units] == [(False, True), (True, False)]
+    assert stages.log.count("确定涉及的单据") == 2 and stages.log.count("写入变更") == 1
+    assert monitor.watched == [(command.request_key, None)]
 
 
 def test_stage_names_checked_against_stage_order() -> None:

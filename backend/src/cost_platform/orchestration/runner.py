@@ -7,7 +7,10 @@
 1. `CommandRecorder.begin`：判重（WP-01）；同一请求键已完成且内容相同时直接返回原结果。
 2. 按 `STAGE_ORDER` 执行各位置上 `applies` 为真的阶段。架构第 7 节第 7 步"每个动作一轮"：到"展开动作"时，只要有展开动作的
    阶段 applies，就一轮轮执行 `ACTION_ROUND`——展开动作 → 加锁读取 → 冻结检查（只查这一轮新读入的单据，WP-18）→ 合并意图
-   → 计算与规则；没有动作的命令（页面保存、审批处理）这几步（不含展开动作）执行一次。
+   → 计算与规则；没有动作的命令（页面保存、审批处理）这几步（不含展开动作）执行一次。加锁按 write-pipeline 的统一顺序
+   （WP-03）：动作轮次中只能追加排在已持有的锁之后的单据（往后找）；往前、同层找到的单据和审批最终通过要写的单据，
+   都在"确定涉及的单据"一次锁完，轮次中的"加锁读取"只是再锁一次并读出。
+   加锁前普通读到的本命令单据在锁住后核对不一致时（`LockScopeChanged`，WP-13 的例外），整个事务回滚，整条命令重来一次。
 3. `CommandRecorder.complete`：命令结果、审计、逃生舱调用记录、命令记录（WP-11、WP-12、OP-04）；结果为 unchanged 时不提交
    （事务回滚，命令记录一起撤销）。
 4. 提交后投递：`DeliveryDispatcher.dispatch_now`（DL-02）。"投递"不是阶段位置。
@@ -29,7 +32,7 @@ from cost_platform.contracts.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
-from cost_platform.contracts.types import Command, CommandResult, CommandState, ExecutionContext
+from cost_platform.contracts.types import Command, CommandResult, CommandState, ExecutionContext, LockScopeChanged
 
 STAGE_ORDER: tuple[str, ...] = (
     "操作权限",          # 架构第 7 节第 2 步：authz
@@ -75,7 +78,14 @@ class CommandRunner:
 
     def execute(self, command: Command, ctx: ExecutionContext) -> CommandResult:
         with self._monitor.watch(command, ctx):
-            result, deliveries = self._transaction(command, ctx)
+            while True:
+                try:
+                    result, deliveries = self._transaction(command, ctx)
+                    break
+                except LockScopeChanged:
+                    # WP-13 的例外（用户 2026-10-30 规则 4）：加锁前读到的本命令单据在加锁时已被别人改了，事务已整个回滚
+                    # （命令记录一起撤销），用新的范围把整条命令重来一次；同一请求键仍只执行成功一次
+                    continue
         if deliveries:
             self._dispatcher.dispatch_now(deliveries)
         return result

@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from cost_platform.contracts.ports import UnitOfWork
 from cost_platform.contracts.types import (
     CommandState,
@@ -59,8 +61,9 @@ def check_rows(store: ApprovalStore, uow: UnitOfWork, ctx: ExecutionContext, tab
 
 
 class FreezeCheckStage:
-    """"冻结检查"阶段：在加锁之后，按命令涉及的单据查询冻结记录；动作执行中新找到的单据由 write-pipeline 加锁后再执行
-    一次（WP-18）。实体的 `freezable` 为 false 时不检查。只读，不写 `CommandState`。"""
+    """"冻结检查"阶段：在加锁之后，按命令涉及的单据查询冻结记录，与加锁分开、单独一条语句（等到锁以后才查，能看到刚提交
+    的冻结；合进加锁的 SELECT 看不到，用户 2026-10-30 规则 6）；动作执行中新找到的单据由 write-pipeline 加锁后再执行一次
+    （WP-18）。实体的 `freezable` 为 false 时不检查。只读，不写 `CommandState`。"""
 
     name = "冻结检查"
 
@@ -68,21 +71,27 @@ class FreezeCheckStage:
         self._store = store
 
     def applies(self, state: CommandState, ctx: ExecutionContext) -> bool:
-        return bool(state.involved)
+        """`defer_lock` 时单据还没锁，冻结检查由"触发审批"锁住后再做（`check_documents`）。"""
+        return bool(state.involved) and not state.defer_lock
 
     def run(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> None:
-        by_table: dict[str, list[DocumentRef]] = {}
-        for ref in dict.fromkeys(state.involved):
-            entity = ctx.config.entity(ref.entity)
-            if entity.freezable:
-                by_table.setdefault(entity.table, []).append(ref)
-        own = own_approval(ctx)
-        blocked: list[ErrorDetail] = []
-        for table, refs in by_table.items():
-            found = self._store.frozen(uow, table, [r.record_key for r in refs])
-            for ref in refs:
-                entry = found.get(ref.record_key)
-                if entry is not None and entry.approval_id != own:
-                    blocked.append(frozen_detail(ref.entity, ref.record_key, entry))
-        if blocked:
-            raise PlatformError(ErrorCode.FROZEN_BY_APPROVAL, FROZEN_MESSAGE, blocked)
+        check_documents(self._store, uow, ctx, state.involved)
+
+
+def check_documents(store: ApprovalStore, uow: UnitOfWork, ctx: ExecutionContext, refs: Sequence[DocumentRef]) -> None:
+    """已锁住的单据的冻结检查：按根表一张表一条查询（与加锁分开，用户 2026-10-30 规则 6）；被别的审批冻结时 409。"""
+    by_table: dict[str, list[DocumentRef]] = {}
+    for ref in dict.fromkeys(refs):
+        entity = ctx.config.entity(ref.entity)
+        if entity.freezable:
+            by_table.setdefault(entity.table, []).append(ref)
+    own = own_approval(ctx)
+    blocked: list[ErrorDetail] = []
+    for table, found_refs in by_table.items():
+        found = store.frozen(uow, table, [r.record_key for r in found_refs])
+        for ref in found_refs:
+            entry = found.get(ref.record_key)
+            if entry is not None and entry.approval_id != own:
+                blocked.append(frozen_detail(ref.entity, ref.record_key, entry))
+    if blocked:
+        raise PlatformError(ErrorCode.FROZEN_BY_APPROVAL, FROZEN_MESSAGE, blocked)

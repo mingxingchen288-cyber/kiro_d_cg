@@ -1,7 +1,8 @@
 """业务表的加锁读取、明细读取和写入（WP-03、WP-06、WP-09）。
 
 - 读取：有 readView 时经视图按字段名读取，否则按 `column` 读表（C06 第 2 节）。
-- 加锁：一个实体一条 `SELECT … FOR UPDATE WAIT n`，按主键排序；用户发起时把行权限条件作为判断列一起查出（C08 第 7 节）。
+- 加锁（加锁的顺序和 SQL 见 `locks.py`）：只锁一张单据时一条 `SELECT … FOR UPDATE WAIT n` 加锁并读出主表行；一个实体
+  锁多行时按主键顺序每行一条加锁语句，再一条普通查询读出数据。用户发起时把行权限条件作为判断列一起查出（C08 第 7 节）。
 - 明细：一次读出若干张单据在若干个明细实体中的全部行，一条语句（多个明细实体用 UNION ALL），不加锁：
   单据锁在主表行上；多表视图加 FOR UPDATE 会锁住关联表的行（C08 第 5a 节）。
 - 写入：只写有变化的列；同一实体的同一种操作按写入的列分组，每组一条批量语句；新增行的主键取序列 `<表名>_SEQ`，
@@ -16,6 +17,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Protocol
 
 from sqlalchemy import Date, DateTime, Integer, Numeric, String, bindparam, column, insert, literal_column, table, text
@@ -23,10 +25,13 @@ from sqlalchemy.types import TypeEngine
 
 from cost_platform.contracts.ports import UnitOfWork
 from cost_platform.contracts.types import (
+    DocumentData,
+    DocumentRef,
     EntityConfig,
     EntityField,
     ErrorCode,
     ErrorDetail,
+    ExecutionContext,
     FieldType,
     PlatformError,
     Row,
@@ -34,6 +39,8 @@ from cost_platform.contracts.types import (
     SqlCondition,
 )
 from cost_platform.contracts.values import from_db, from_wire, to_db, to_wire
+
+from .locks import lock_key_sql, lock_select_sql
 
 _ALLOWED = "WP_ALLOWED"
 
@@ -52,6 +59,9 @@ class RowStore(Protocol):
 
     def lock_load(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, row_keys: list[str],
                   row_condition: SqlCondition | None = None) -> dict[str, Row]: ...
+
+    def read_masters(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, row_keys: list[str],
+                     row_condition: SqlCondition | None = None) -> dict[str, Row]: ...
 
     def load_details_many(self, uow: UnitOfWork, sources: Sequence[DetailSource],
                           record_keys: Sequence[str]) -> dict[str, dict[str, list[Row]]]: ...
@@ -116,19 +126,59 @@ class OracleDocumentStore:
 
     def lock_load(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, row_keys: list[str],
                   row_condition: SqlCondition | None = None) -> dict[str, Row]:
-        """按主键排序，一条 `SELECT … FOR UPDATE WAIT n`（WP-03）。给出 `row_condition` 时，它作为判断列在同一条 SQL 中
-        查出；有一行不满足就拒绝整个命令（403 PERMISSION_DENIED）。不存在的主键不在结果中。"""
-        source, columns = _source(entity)
+        """加锁并读出主表行（WP-03），顺序已由 `locks.LockBook` 检查。只有一个主键时一条 `SELECT … FOR UPDATE WAIT n`，
+        加锁、读数据和行权限判断列同一条（普通保存的 SQL 条数不变）；多个主键时按主键顺序每行一条加锁语句
+        （`locks.lock_key_sql`，锁 `table` 的行），再一条普通查询读出数据和判断列。给出 `row_condition` 时有一行不满足就
+        拒绝整个命令（403 PERMISSION_DENIED）。不存在的主键不在结果中。"""
         pk = _field(entity, entity.primary_key)
-        pk_column = _read_column(entity, pk.name)
-        keys: dict[str, Any] = {f"k{i}": k for i, k in enumerate(_sorted_keys(pk, row_keys))}
-        binds = dict(keys)
+        keys = _sorted_keys(pk, row_keys)
+        if len(keys) == 1:
+            return self._masters(uow, entity_code, entity, keys, row_condition, lock=True)
+        for key in keys:
+            uow.connection.execute(text(lock_key_sql(entity.table, str(pk.column), self._wait)), {"k": key})
+        return self._masters(uow, entity_code, entity, keys, row_condition, lock=False)
+
+    def read_masters(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, row_keys: list[str],
+                     row_condition: SqlCondition | None = None) -> dict[str, Row]:
+        """不加锁读出主表行（加锁前的普通读取，`CommandState.defer_lock`、`BusinessLocker.read`），其余同 `lock_load`。"""
+        pk = _field(entity, entity.primary_key)
+        return self._masters(uow, entity_code, entity, _sorted_keys(pk, row_keys), row_condition, lock=False)
+
+    def lock_key(self, uow: UnitOfWork, table: str, key_column: str, key: str, numeric: bool) -> None:
+        """锁一行，不读数据（`BusinessLocker.lock`，一行一条）；行不存在时没有锁可加。"""
+        uow.connection.execute(text(lock_key_sql(table, key_column, self._wait)), {"k": Decimal(key) if numeric else key})
+
+    def read_documents(self, uow: UnitOfWork, ctx: ExecutionContext,
+                       refs: Sequence[DocumentRef]) -> dict[DocumentRef, DocumentData]:
+        """不加锁读出单据：每个实体一条主表查询，明细一条语句（全部明细实体）；不存在的单据不在结果中。"""
+        by_entity: dict[str, list[str]] = defaultdict(list)
+        for ref in refs:
+            by_entity[ref.entity].append(ref.record_key)
+        found: dict[DocumentRef, DocumentData] = {}
+        for code in sorted(by_entity):
+            entity = ctx.config.entity(code)
+            masters = self.read_masters(uow, code, entity, by_entity[code])
+            sources = [DetailSource(link.entity, ctx.config.entity(link.entity), link.parent_key) for link in entity.details]
+            details = self.load_details_many(uow, sources, list(masters)) if sources and masters else {}
+            for key, master in masters.items():
+                ref = DocumentRef(code, key)
+                found[ref] = DocumentData(ref=ref, master=master, details={s.entity_code: details[s.entity_code][key] for s in sources})
+        return found
+
+    def _masters(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, keys: list[Any],
+                 row_condition: SqlCondition | None, *, lock: bool) -> dict[str, Row]:
+        source, columns = _source(entity)
+        pk_column = _read_column(entity, entity.primary_key)
+        binds: dict[str, Any] = {f"k{i}": k for i, k in enumerate(keys)}
+        names = list(binds)
         select = ", ".join(c for _, c in columns)
         if row_condition is not None:
             select += f", CASE WHEN ({row_condition.sql}) THEN 1 ELSE 0 END AS {_ALLOWED}"
             binds.update(row_condition.binds)
-        sql = (f"SELECT {select} FROM {source} WHERE {pk_column} IN ({', '.join(':' + b for b in keys)}) "
-               f"ORDER BY {pk_column} FOR UPDATE WAIT {self._wait}")
+        if lock:
+            sql = lock_select_sql(select, source, pk_column, self._wait)
+        else:
+            sql = f"SELECT {select} FROM {source} WHERE {pk_column} IN ({', '.join(':' + b for b in names)}) ORDER BY {pk_column}"
         records = [tuple(r) for r in uow.connection.execute(text(sql), binds)]
         rows = _rows(entity_code, entity, columns, (r[:len(columns)] for r in records))
         if row_condition is not None:

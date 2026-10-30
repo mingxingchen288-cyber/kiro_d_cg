@@ -1,8 +1,8 @@
 """把修改合并到加锁读到的当前数据，生成只含有变化的列的变更计划（WP-04–WP-06、WP-14–WP-16、WP-18）。
 
 - `DocumentMerger`：页面保存的 Patch（主表和明细的新增、修改、删除），由管道阶段"合并修改"调用（`stages.py`）。
-- `IntentMerger`：动作展开出的 `intents`，由管道阶段"合并意图"调用；所属单据不在 `involved` 中的先加锁读取、做冻结检查，
-  再合并（WP-18）。经管道阶段执行时，加锁读取和冻结检查已由编排在这一轮做过（"加锁读取"阶段），这里不再重复。
+- `IntentMerger`：动作展开出的 `intents`，由管道阶段"合并意图"调用；所属单据已由编排在这一轮的"加锁读取"按统一顺序
+  锁住读入、做过冻结检查（WP-18），这里只合并。
 - `PatchMerger`：原端口 `ChangeMerger`（C08 第 5a 节，2026-10-29 起不是端口）的按实体合并修改，保留原有行为。
 
 候选数据（`CommandState.candidate`）由当前值复制而来，合并后的新值写在其中；当前值（`current`）保持命令开始时读到的值，
@@ -11,11 +11,10 @@
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Mapping
 from typing import Protocol
 
-from cost_platform.contracts.ports import PermissionChecker, PipelineStage, UnitOfWork
+from cost_platform.contracts.ports import PermissionChecker, UnitOfWork
 from cost_platform.contracts.types import (
     BusinessValue,
     CommandState,
@@ -41,15 +40,7 @@ from cost_platform.contracts.types import (
 from cost_platform.contracts.values import from_wire, same_value
 
 from .entity_rules import EntityRules
-from .loader import (
-    DocumentLoader,
-    candidate_of,
-    document_ref,
-    is_new_document,
-    is_new_key,
-    known_missing,
-    rejects_missing,
-)
+from .loader import candidate_of, document_ref, is_new_key, rejects_missing
 from .plan import find_change, note_modify, row_id
 from .values import NoScales, stored_value
 
@@ -212,29 +203,17 @@ class DocumentMerger:
 class IntentMerger:
     """动作执行中 write-pipeline 的部分（WP-18）：取出 `intents` 合并进候选数据并清空。
 
-    所属单据不在 `involved` 中的（例如按钮的 `updateRecords` 找到的单据），先加入 `involved`，按（实体、主键）排序加锁读入
-    `current`，再只对这些单据执行一次冻结检查阶段，都通过后才合并。intents 由配置展开（operations、approval），
+    所属单据已由这一轮的"加锁读取"按统一顺序锁住读入、由"冻结检查"检查过（编排的每个动作一轮）；这里不再加锁。
+    已不存在的单据（加锁读取时已按 rowNotFound 处理）跳过。intents 由配置展开（operations、approval），
     只按实体规则检查：不能写计算字段、ERP 行的 ERP 列、主键、关联字段和 erpRow 列（C06 7.5）。"""
 
-    def __init__(self, loader: DocumentLoader, scales: Scales | None = None) -> None:
-        self._loader = loader
+    def __init__(self, scales: Scales | None = None) -> None:
         self._scales = scales or NoScales()
 
-    def absorb(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext,
-               freeze: PipelineStage | None = None) -> None:
+    def absorb(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> None:
         intents = list(state.intents)
         if not intents:
             return
-        outside = sorted({i.document for i in intents if i.document not in state.involved and not is_new_document(state, i.document)
-                          and not known_missing(state, i.document)},
-                         key=lambda r: (r.entity, r.record_key))
-        if outside:
-            state.involved.extend(outside)
-            loaded = self._loader.lock(uow, state, ctx, outside)
-            if freeze is not None and loaded:
-                scoped = dataclasses.replace(state, involved=list(loaded))
-                if freeze.applies(scoped, ctx):
-                    freeze.run(uow, scoped, ctx)
         reject = rejects_missing(state, ctx)
         for intent in intents:
             self._apply(state, ctx, intent, reject)

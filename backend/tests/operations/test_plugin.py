@@ -1,10 +1,11 @@
-"""插件 `operations` 的 setup（plugin-spec 第 5 节）：用 contracts 的 `FakeRelatedQuery` 提供 `RelatedQuery`，
-`Registry().boot` 之后两个管道阶段已注册，名称是 `STAGE_ORDER` 中的位置"确定涉及的单据""展开动作"。"""
+"""插件 `operations` 的 setup（plugin-spec 第 5 节）：用 contracts 的 `FakeRelatedQuery`、`FakeBusinessLocker` 提供
+`RelatedQuery`、`BusinessLocker`，`Registry().boot` 之后两个管道阶段已注册，名称是 `STAGE_ORDER` 中的位置"确定涉及的单据"
+"展开动作"。"""
 
 from __future__ import annotations
 
-from cost_platform.contracts.fakes import FakeRelatedQuery
-from cost_platform.contracts.ports import PipelineStage, RelatedQuery
+from cost_platform.contracts.fakes import FakeBusinessLocker, FakeRelatedQuery
+from cost_platform.contracts.ports import BusinessLocker, PipelineStage, RelatedQuery
 from cost_platform.contracts.registry import PluginView, Registry
 from cost_platform.operations.plugin import OperationsPlugin
 from cost_platform.operations.stages import ActionStage, ButtonInvolvedStage
@@ -12,11 +13,12 @@ from cost_platform.operations.stages import ActionStage, ButtonInvolvedStage
 
 class Providers:
     name = "fakes"
-    provides = (RelatedQuery,)
+    provides = (RelatedQuery, BusinessLocker)
     requires = ()
 
     def setup(self, reg: PluginView) -> None:
         reg.provide(RelatedQuery, FakeRelatedQuery())
+        reg.provide(BusinessLocker, FakeBusinessLocker())
 
 
 class Consumer:

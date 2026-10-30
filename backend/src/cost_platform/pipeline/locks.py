@@ -1,0 +1,165 @@
+"""业务加锁的统一入口（WP-03；C08 第 5b 节 `BusinessLocker`；用户 2026-10-30 同意"固定加锁层级"）。
+
+目标是从设计上杜绝死锁：等锁可以，不能死锁；每条命令只执行一遍。
+
+1. 统一顺序：审批记录（PF_APPROVAL）→ 单据层 → 基础数据层；同一层按（表名、主键），主键按字段类型比较（`LockTarget.order`）。
+   层级由配置自动判断，不新增配置：有 details 的主表实体为单据层（成本核算），其余注册实体和没注册的表为基础数据层
+   （物料清单 T_COST_GOODS）。
+2. 一个事务中新加的锁必须排在已持有的全部锁之后（往后找，可以执行到一半再锁）；排在前面或同层时，调用方先用普通查询找出
+   范围，再和自己的单据合在一起一次锁完。违反时 `LockBook.claim` 返回 500：这是实现错误，用户操作触发不了。
+3. 一次锁多行时按顺序一行一条 `SELECT … FOR UPDATE WAIT n`，不依赖一条 SQL 内部的加锁顺序（没有核实过）；只锁一行时
+   （普通保存只锁一张单据）加锁和读数据仍是一条语句，SQL 条数不变。
+4. 加锁前普通读到的本命令单据，锁住后重读核对；不同时抛 `LockScopeChanged`，编排回滚整个事务、整条命令重来。
+
+本文件是平台业务代码中唯一写 `FOR UPDATE` 的地方（`backend/tests/architecture/test_lock_entry.py` 检查）；例外是 config 的
+代号行、identity 的账号行、delivery 的 SKIP LOCKED，它们不和业务锁同时持有。
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Sequence
+from typing import Protocol
+from weakref import WeakKeyDictionary
+
+from cost_platform.contracts.ports import SchemaInspector, UnitOfWork
+from cost_platform.contracts.types import (
+    DocumentData,
+    DocumentRef,
+    ErrorCode,
+    ExecutionContext,
+    LockLayer,
+    LockScopeChanged,
+    LockTarget,
+    PlatformError,
+)
+
+APPROVAL_TABLE, APPROVAL_KEY = "PF_APPROVAL", "APPROVAL_ID"
+_NUMERIC = frozenset({"NUMBER", "FLOAT", "INTEGER", "BINARY_FLOAT", "BINARY_DOUBLE"})
+
+
+# ---------------------------------------------------------------- SQL（本文件以外不写 FOR UPDATE）
+
+def lock_key_sql(table: str, key_column: str, wait: int) -> str:
+    """锁一行，不读数据：`SELECT 主键 FROM 表 WHERE 主键 = :k FOR UPDATE WAIT n`。"""
+    return f"SELECT {key_column} FROM {table} WHERE {key_column} = :k FOR UPDATE WAIT {wait}"
+
+
+def lock_select_sql(select: str, source: str, key_column: str, wait: int) -> str:
+    """锁一行并读出数据（只锁一张单据时，加锁读取一条语句）。绑定变量为 `:k0`，与多行时读数据的写法一致。"""
+    return f"SELECT {select} FROM {source} WHERE {key_column} IN (:k0) ORDER BY {key_column} FOR UPDATE WAIT {wait}"
+
+
+def lock_row_sql(table: str, key_column: str, wait: int) -> str:
+    """锁没注册的表中的一行并读出整行（WP-19）。"""
+    return f"SELECT * FROM {table} WHERE {key_column} = :k FOR UPDATE WAIT {wait}"
+
+
+# ---------------------------------------------------------------- 锁对象
+
+def entity_layer(ctx: ExecutionContext, entity: str) -> LockLayer:
+    """主表实体的层级：有 details 的为单据层，其余为基础数据层。"""
+    return "document" if ctx.config.entity(entity).details else "base"
+
+
+def document_target(ctx: ExecutionContext, ref: DocumentRef) -> LockTarget:
+    """单据的锁对象：主表实体的表和主键列。"""
+    entity = ctx.config.entity(ref.entity)
+    pk = next(f for f in entity.fields if f.name == entity.primary_key)
+    return LockTarget(entity_layer(ctx, ref.entity), entity.table.upper(), str(pk.column or pk.name).upper(), ref.record_key,
+                      pk.type == "number")
+
+
+def row_target(inspector: SchemaInspector, table: str, key_column: str, key: str) -> LockTarget:
+    """没注册的表中一行的锁对象（基础数据层）：主键列是数值类型时按数值比较。`TableWriter.lock_row` 和
+    `BusinessLocker.row` 都用它，同一行得到同一个锁对象。"""
+    columns = inspector.columns(table) or {}
+    info = next((c for name, c in columns.items() if name.upper() == key_column.upper()), None)
+    numeric = info is not None and info.data_type.upper() in _NUMERIC
+    return LockTarget("base", table.upper(), key_column.upper(), key, numeric)
+
+
+def approval_target(approval_id: str) -> LockTarget:
+    return LockTarget("approval", APPROVAL_TABLE, APPROVAL_KEY, approval_id, True)
+
+
+def same_document(now: DocumentData | None, expected: DocumentData) -> bool:
+    """锁住后重读的数据与加锁前读到的是否相同：比较主表和 `expected` 中读过的明细实体（规则 4）。"""
+    if now is None or now.master != expected.master:
+        return False
+    return all(now.details.get(entity, []) == rows for entity, rows in expected.details.items())
+
+
+# ---------------------------------------------------------------- 已持有的锁
+
+class LockBook:
+    """按事务（`UnitOfWork`）记下已持有的锁，检查新锁的顺序。加锁读取（`DocumentLoader`）、`TableWriter.lock_row` 和
+    `BusinessLocker` 共用一个，事务结束、`UnitOfWork` 被回收时一起丢弃。"""
+
+    def __init__(self) -> None:
+        self._held: WeakKeyDictionary[UnitOfWork, list[LockTarget]] = WeakKeyDictionary()
+
+    def held(self, uow: UnitOfWork) -> frozenset[LockTarget]:
+        return frozenset(self._held.get(uow, []))
+
+    def claim(self, uow: UnitOfWork, targets: Iterable[LockTarget]) -> list[LockTarget]:
+        """要新加的锁：去掉已持有的，按统一顺序排列，并记为已持有（随后由调用方逐个加锁；加锁失败时整个事务回滚）。
+        有一个排在已持有的锁之前时 500 INTERNAL_ERROR。"""
+        held = self._held.setdefault(uow, [])
+        new = sorted(set(targets) - set(held), key=LockTarget.order)
+        if new and held:
+            top = max(held, key=LockTarget.order)
+            early = [t for t in new if t.order() < top.order()]
+            if early:
+                first = early[0]
+                raise PlatformError(ErrorCode.INTERNAL_ERROR,
+                                    f"加锁顺序错误：{first.table} {first.key} 排在已锁住的 {top.table} {top.key} 之前")
+        held.extend(new)
+        return new
+
+
+# ---------------------------------------------------------------- 端口
+
+class KeyLocker(Protocol):
+    """`PipelineLocks` 用到的存储操作（`document_store.OracleDocumentStore` 实现）。"""
+
+    def lock_key(self, uow: UnitOfWork, table: str, key_column: str, key: str, numeric: bool) -> None: ...
+
+    def read_documents(self, uow: UnitOfWork, ctx: ExecutionContext,
+                       refs: Sequence[DocumentRef]) -> dict[DocumentRef, DocumentData]: ...
+
+
+class PipelineLocks:
+    """`BusinessLocker` 的实现：顺序检查在 `LockBook`，SQL 由 `store` 执行（一行一条）。"""
+
+    def __init__(self, book: LockBook, store: KeyLocker, inspector: SchemaInspector) -> None:
+        self._book = book
+        self._store = store
+        self._inspector = inspector
+
+    def document(self, ctx: ExecutionContext, ref: DocumentRef) -> LockTarget:
+        return document_target(ctx, ref)
+
+    def row(self, table: str, key_column: str, key: str) -> LockTarget:
+        return row_target(self._inspector, table, key_column, key)
+
+    def approval(self, approval_id: str) -> LockTarget:
+        return approval_target(approval_id)
+
+    def layer(self, ctx: ExecutionContext, entity: str) -> LockLayer:
+        return entity_layer(ctx, entity)
+
+    def read(self, uow: UnitOfWork, ctx: ExecutionContext, refs: list[DocumentRef]) -> dict[DocumentRef, DocumentData]:
+        return self._store.read_documents(uow, ctx, refs)
+
+    def lock(self, uow: UnitOfWork, ctx: ExecutionContext, targets: list[LockTarget],
+             expected: dict[DocumentRef, DocumentData] | None = None) -> None:
+        for target in self._book.claim(uow, targets):
+            self._store.lock_key(uow, target.table, target.key_column, target.key, target.numeric)
+        if expected:
+            now = self._store.read_documents(uow, ctx, list(expected))
+            changed = [ref for ref, data in expected.items() if not same_document(now.get(ref), data)]
+            if changed:
+                raise LockScopeChanged("、".join(f"{r.entity} {r.record_key}" for r in changed) + " 在加锁前读取之后被修改")
+
+    def held(self, uow: UnitOfWork) -> frozenset[LockTarget]:
+        return self._book.held(uow)

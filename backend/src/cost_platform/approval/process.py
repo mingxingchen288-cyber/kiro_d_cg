@@ -3,8 +3,10 @@
 通过（AP-04、AP-05、AP-07、AP-08、AP-16、AP-20）：核对结果指纹 → 记录处理和勾选，同一账号计入本级他所在的全部节点 →
 本级完成时各审批流分别判断下一级的节点或终点（第 2 级起只对触发行判断入口条件，参数取这一行合并待审修改、计算后的值）
 → 全部审批流到达终点时（AP-09、AP-10）：先把待审修改展开为写入意图，再按审批流的 `order`、块的顺序对勾选的行执行操作：
-修改表注册过的展开为写入意图交给 write-pipeline（照常校验、计算、写入、审计），没注册的经 `TableWriter` 加行锁、做冻结
+修改表注册过的展开为写入意图交给 write-pipeline（照常校验、计算、写入、审计），没注册的经 `TableWriter` 读出整行、做冻结
 检查后按主键写入、不重算；然后解除冻结。审批中途任何一级通过都只记录处理、勾选和参数，不写业务表（AP-20）。
+加锁（用户 2026-10-30 规则 5）：审批记录、来源单据、最终通过可能要写的单据和行都在"确定涉及的单据"按统一顺序一次锁完
+（`ResolveStage`），"审批处理"和动作轮次不再追加。
 
 驳回、撤回（AP-11、AP-12）：写处理记录和原因，审批状态改为已驳回或已撤回，待审修改标为作废，删除本审批的冻结记录，
 生成通知意图。驳回必须填写原因；只有发起人能撤回，只要有人做过通过就不能撤回。
@@ -27,15 +29,18 @@ from cost_platform.contracts.types import (
     ApprovalRef,
     CheckedRow,
     CommandState,
+    DeleteRows,
     DocumentRef,
     ErrorCode,
     ErrorDetail,
     ExecutionContext,
     FlowParam,
+    LockTarget,
     MasterAdd,
     PlatformError,
     RecordRef,
     RowIntent,
+    UpdateFields,
     parse_wire,
 )
 
@@ -63,11 +68,37 @@ def approval_id_of(params: Mapping[str, Any]) -> str:
     return str(value)
 
 
-def load(deps: ApprovalDeps, uow: UnitOfWork, approval_id: str, *, lock: bool = False) -> ApprovalRecord:
-    record = deps.store.load(uow, approval_id, lock=lock)
+def load(deps: ApprovalDeps, uow: UnitOfWork, approval_id: str) -> ApprovalRecord:
+    record = deps.store.load(uow, approval_id)
     if record is None:
         raise PlatformError(ErrorCode.NOT_FOUND, f"审批 {approval_id} 不存在")
     return record
+
+
+def write_targets(deps: ApprovalDeps, uow: UnitOfWork, ctx: ExecutionContext, record: ApprovalRecord,
+                  affected: Sequence[AffectedRow]) -> list[LockTarget]:
+    """最终通过时可能要写的行的锁对象（AP-10，用户 2026-10-30 规则 5）：提交时记下的受影响行中，块有 `updateFields` 或
+    `deleteRows`、行还在（不是"记录已不存在"）、已勾选的（`all`、`hidden` 为全部行）。修改表注册过的锁所属单据（按"表 +
+    主键"找出，同 `_apply`），没注册的锁这一行。审批人这次通过时再取消的行也锁住，命令结束即释放。"""
+    locks = deps.locker()
+    catalog = deps.catalog(ctx)
+    evaluator = Evaluator(deps)
+    found: list[LockTarget] = []
+    for flow in record.flows:
+        for block in flow.config.display:
+            if block.region != "affected" or not any(isinstance(a, UpdateFields | DeleteRows) for a in block.actions):
+                continue
+            keys = [a.key for a in affected if a.flow == flow.code and a.block == block.key and not a.missing
+                    and a.key is not None and (block.selection in ("all", "hidden") or a.checked)]
+            if not keys:
+                continue
+            table = evaluator.target_table(block)
+            if catalog.entities_on_table(table):
+                found += [locks.document(ctx, o.document) for o in owners(deps.sql, uow, catalog, table, keys).values()]
+            else:
+                key_column = evaluator.target_key_column(table, catalog)
+                found += [locks.row(table, key_column, key) for key in keys]
+    return found
 
 
 def editable_blocks(record: ApprovalRecord, mine: Sequence[Node]) -> set[tuple[str, str]]:
@@ -138,8 +169,10 @@ def approval_ref(record: ApprovalRecord) -> ApprovalRef:
 
 
 class ResolveStage:
-    """审批命令的"确定涉及的单据"：通过时为来源单据（由 write-pipeline 加锁读取并做冻结检查）；最终批准时要写的受影响单据
-    由写入意图带出，write-pipeline 按 WP-18 加锁。驳回、撤回不写业务表，没有涉及的单据。"""
+    """审批命令的"确定涉及的单据"（用户 2026-10-30 规则 1、5、8）：先经 `BusinessLocker` 锁住审批记录（排在所有业务数据
+    之前），同一审批的处理命令依次执行；通过时再把来源单据和最终通过可能要写的单据、没注册表的行（`write_targets`，
+    提交时已记下）按统一顺序一次锁完，之后"审批处理"和动作轮次不再追加加锁。来源单据记入 `involved`，由 write-pipeline
+    加锁读取（已持有，再锁一次并读出）并做冻结检查。驳回、撤回不写业务表，只锁审批记录。"""
 
     name = "确定涉及的单据"
 
@@ -150,13 +183,18 @@ class ResolveStage:
         return state.command.operation in APPROVAL_OPERATIONS
 
     def run(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> None:
-        if state.command.operation != "approval.pass":
+        locks = self.deps.locker()
+        approval_id = approval_id_of(state.command.params)
+        locks.lock(uow, ctx, [locks.approval(approval_id)])
+        record = load(self.deps, uow, approval_id)
+        if state.command.operation != "approval.pass" or record.progress.status != "pending":
             return
-        record = load(self.deps, uow, approval_id_of(state.command.params))
-        if record.progress.status == "pending" and not isinstance(record.patch.master, MasterAdd):
-            ref = DocumentRef(record.source.entity, record.source.record_key)
-            if ref not in state.involved:
-                state.involved.append(ref)
+        source = None if isinstance(record.patch.master, MasterAdd) else DocumentRef(record.source.entity, record.source.record_key)
+        targets = [locks.document(ctx, source)] if source is not None else []
+        targets += write_targets(self.deps, uow, ctx, record, self.deps.store.affected(uow, approval_id))
+        locks.lock(uow, ctx, targets)
+        if source is not None and source not in state.involved:
+            state.involved.append(source)
 
 
 class ProcessStage:
@@ -171,7 +209,7 @@ class ProcessStage:
 
     def run(self, uow: UnitOfWork, state: CommandState, ctx: ExecutionContext) -> None:
         params = state.command.params
-        record = load(self.deps, uow, approval_id_of(params), lock=True)
+        record = load(self.deps, uow, approval_id_of(params))  # 已在"确定涉及的单据"锁住（ResolveStage）
         directory = Directory(self.deps.directory)
         kind = state.command.operation.split(".", 1)[1]
         comment = params.get("comment")
@@ -304,7 +342,8 @@ class ProcessStage:
         return found
 
     def _table_write(self, uow: UnitOfWork, ctx: ExecutionContext, write: Any, base: dict[str, Any]) -> dict[str, Any]:
-        """没注册的表：加行锁、做冻结检查后按主键写入，不重算（WP-19）。"""
+        """没注册的表：读出整行（这一行已在"确定涉及的单据"按统一顺序锁住，`lock_row` 再锁一次并读出）、做冻结检查后
+        按主键写入，不重算（WP-19）。"""
         tables = self.deps.tables
         if tables is None:
             raise PlatformError(ErrorCode.INTERNAL_ERROR, "没有接入 TableWriter，不能写没在平台注册的表")

@@ -16,7 +16,7 @@ from .config import FakeConfigImporter, FakeConfigSnapshot, FakeConfigSnapshotRe
 from .db import FakeConnectionFactory, FakeSchemaInspector, FakeUnitOfWork, FakeUnitOfWorkFactory
 from .delivery import FakeDeliveryDispatcher
 from .identity import FakeAuthenticator, FakeDirectory
-from .pipeline import FakeCommandExecutor, FakeCommandMonitor, FakeStage, unchanged
+from .pipeline import FakeBusinessLocker, FakeCommandExecutor, FakeCommandMonitor, FakeStage, unchanged
 from .queries import FakeDocumentReader, FakePersonalConfigImporter, FakeRelatedQuery
 from .realtime import FakeRealtimePublisher
 from .rules import FakePack, FakeRulesEngine
@@ -36,6 +36,7 @@ PORT_FAKES = {
     "EntityDirectory": FakeEntityDirectory,
     "CommandExecutor": FakeCommandExecutor,
     "CommandMonitor": FakeCommandMonitor,
+    "BusinessLocker": FakeBusinessLocker,
     "PipelineStage": FakeStage,
     "PermissionChecker": FakePermissionChecker,
     "RulesEngine": FakeRulesEngine,
@@ -55,6 +56,7 @@ __all__ = [
     "PORT_FAKES",
     "Call",
     "FakeAuthenticator",
+    "FakeBusinessLocker",
     "FakeClock",
     "FakeCommandExecutor",
     "FakeCommandMonitor",

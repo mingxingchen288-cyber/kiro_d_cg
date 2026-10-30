@@ -1,6 +1,6 @@
 """插件 `approval`、`approval.service` 的 setup（plugin-spec 第 5 节），以及接线用的 `SnapshotApprovalCatalog`。
 
-- setup：用 contracts 的替代实现提供需要的端口，`Registry().boot` 之后 `FreezeReader`、5 个管道阶段和审批接口的
+- setup：用 contracts 的替代实现提供需要的端口，`Registry().boot` 之后 `FreezeReader`、6 个管道阶段和审批接口的
   `APIRouter` 都已注册，阶段名都是 `STAGE_ORDER` 中的位置。`TableWriter`、`ContextProvider` 在 contracts 中没有替代实现
   （C08 第 5a 节直接用真实实现验证；`ContextProvider` 由 assembly 提供），这里用只为 setup 的最小替身，不会被调用。
 - `SnapshotApprovalCatalog`：同一套配置（成本核算页和 C06 7.8、7.9 的两个审批流），经 `ConfigSnapshot.approval_flow_entries`
@@ -18,6 +18,7 @@ from cost_platform.approval.freeze import ApprovalFreezeReader
 from cost_platform.approval.plugin import MIGRATIONS, ApprovalPlugin, ApprovalServicePlugin
 from cost_platform.contracts import types as t
 from cost_platform.contracts.fakes import (
+    FakeBusinessLocker,
     FakeCommandExecutor,
     FakeConfigSnapshot,
     FakeConfigSnapshotReader,
@@ -29,6 +30,7 @@ from cost_platform.contracts.fakes import (
     FakeUnitOfWorkFactory,
 )
 from cost_platform.contracts.ports import (
+    BusinessLocker,
     CommandExecutor,
     ConfigSnapshotReader,
     ContextProvider,
@@ -74,8 +76,8 @@ class _SetupOnlyContext:
 
 class Providers:
     name = "fakes"
-    provides = (SchemaInspector, DirectoryReader, DocumentReader, RulesEngine, TableWriter, EntityDirectory, ConfigSnapshotReader,
-                UnitOfWorkFactory, CommandExecutor, ContextProvider)
+    provides = (SchemaInspector, DirectoryReader, DocumentReader, RulesEngine, TableWriter, BusinessLocker, EntityDirectory,
+                ConfigSnapshotReader, UnitOfWorkFactory, CommandExecutor, ContextProvider)
     requires = ()
 
     def setup(self, reg: PluginView) -> None:
@@ -84,6 +86,7 @@ class Providers:
         reg.provide(DocumentReader, FakeDocumentReader())
         reg.provide(RulesEngine, FakeRulesEngine())
         reg.provide(TableWriter, _SetupOnlyTableWriter())
+        reg.provide(BusinessLocker, FakeBusinessLocker())
         reg.provide(EntityDirectory, FakeEntityDirectory())
         reg.provide(ConfigSnapshotReader, FakeConfigSnapshotReader())
         reg.provide(UnitOfWorkFactory, FakeUnitOfWorkFactory())
@@ -107,7 +110,7 @@ def test_setup_registers_freeze_reader_stages_and_router() -> None:
     ordered = Registry().boot([consumer, ApprovalServicePlugin(), ApprovalPlugin(), Providers()])
     assert [p.name for p in ordered] == ["fakes", "approval", "approval.service", "consumer"]
     assert isinstance(consumer.freeze, ApprovalFreezeReader)
-    assert [s.name for s in consumer.stages] == ["确定涉及的单据", "冻结检查", "审批处理", "触发审批", "强制审批检查"]
+    assert [s.name for s in consumer.stages] == ["确定涉及的单据", "确定涉及的单据", "冻结检查", "审批处理", "触发审批", "强制审批检查"]
     assert {s.name for s in consumer.stages} <= set(STAGE_ORDER)
     [router] = consumer.routers
     paths = {(route.path, method) for route in router.routes for method in route.methods}  # type: ignore[attr-defined]
