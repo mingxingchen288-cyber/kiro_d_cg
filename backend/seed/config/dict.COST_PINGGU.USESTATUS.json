@@ -1,0 +1,34 @@
+{
+  "type": "dict",
+  "key": "COST_PINGGU.USESTATUS",
+  "name": "成本核算状态",
+  "content": {
+    "items": [
+      {
+        "value": "商业化",
+        "label": "商业化",
+        "order": 1
+      },
+      {
+        "value": "已立项",
+        "label": "已立项",
+        "order": 2
+      },
+      {
+        "value": "评估中",
+        "label": "评估中",
+        "order": 3
+      },
+      {
+        "value": "商业化-成本复核",
+        "label": "商业化-成本复核",
+        "order": 4
+      },
+      {
+        "value": "已立项-成本复核",
+        "label": "已立项-成本复核",
+        "order": 5
+      }
+    ]
+  }
+}

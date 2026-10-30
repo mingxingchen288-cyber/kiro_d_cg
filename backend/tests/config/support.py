@@ -99,6 +99,8 @@ TABLES: dict[str, tuple[str, list[ColumnInfo], str | None]] = {
                                           "CUSTOMNAME:V MEMO:V STRENGTH:V LIVERY:V GOODSNAME_EN:V"), None),
     "V_COST_CUSTOMER_LOOKUP": ("view", _cols("CUSTOMID:N CUSTOMNAME:V COUNTRY:V LIVERY:V TRANPOSID:N"), None),
     "V_COST_USER": ("view", _cols("USERNAME:V REAL_NAME:V"), None),
+    # 成本核算主表的币种 Lookup（seed 的 formoney）：列同 business_tables.json 的 T_COST_FORMONEY_V
+    "T_COST_FORMONEY_V": ("view", _cols("FMID:N FMNAME:V FMSIGN:V FMRATE:N"), None),
 }
 CMX_TABLES: dict[str, list[ColumnInfo]] = {
     "T_COST_BOM_GOODS_TREE_V": _cols("TREEID:V PID:V GOODSID:N GOODSNAME:V USEFLAG:V STANDARDTYPE:V LVCODE:N USEQTY:N ENTRYID:N"),

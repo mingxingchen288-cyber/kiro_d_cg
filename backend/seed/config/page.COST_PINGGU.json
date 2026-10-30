@@ -59,6 +59,20 @@
           },
           "searchable": true
         },
+        "FMNAME": {
+          "lookup": {
+            "code": "formoney",
+            "fill": {
+              "FMNAME": "FMNAME",
+              "FMRATE": "FMRATE"
+            }
+          },
+          "searchable": true
+        },
+        "USESTATUS": {
+          "dictType": "COST_PINGGU.USESTATUS",
+          "searchable": true
+        },
         "TOTAL_FL": {
           "aggregate": "sum",
           "searchable": true
@@ -181,6 +195,9 @@
           "searchable": true
         },
         "LIVERY": {
+          "searchable": true
+        },
+        "FMRATE": {
           "searchable": true
         }
       },

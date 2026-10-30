@@ -168,13 +168,20 @@ PRODUCT_FILL = ["GOODSNAME", "STRENGTH", "MA_NO", "MAH", "CUSTOMNAME", "LIVERY",
 
 def test_seed_master_lookups_fill_writable() -> None:
     """按旧系统 cost-pinggu 的列配置：产品ID、客户ID 配 Lookup 后可编辑（迁移 MG-10，旧系统点单元格即打开 Lookup）；
-    产品名称、规格等回填目标仍不可编辑，但 `fillWritable` 为 true（AZ-04 接受）；不是回填目标的项目号、币种两者都不是；
-    明细的物料名称（column 为 null，只在视图中）不是。页面视图序列化时只在为 true 时带 `fillWritable`。"""
+    产品名称、规格等回填目标仍不可编辑，但 `fillWritable` 为 true（AZ-04 接受）；不是回填目标的项目号不是；
+    明细的物料名称（column 为 null，只在视图中）不是。页面视图序列化时只在为 true 时带 `fillWritable`。
+    币种（2026-10-31，旧列 FMNAME 的 Lookup formoney）配 Lookup 后可编辑，回填币种、汇率，两者本来可编辑，不是 `fillWritable`；
+    状态（旧列 USESTATUS 的下拉）配字典 COST_PINGGU.USESTATUS。"""
     role = draft("role", "COST_ACCOUNTANT", {"name": "成本会计", "admin": False, "pages": {"COST_PINGGU": {"buttons": ["*"]}}})
     view = _view([*seed_drafts(), role], "COST_PINGGU", "COST_ACCOUNTANT")
     fields = {f.name: f for f in view.master.fields}
     assert fields["GOODSID"].editable and fields["GOODSID"].lookup is not None and fields["GOODSID"].lookup.code == "costGoods"
     assert fields["CUSTOMID"].editable and fields["CUSTOMID"].lookup is not None and fields["CUSTOMID"].lookup.code == "costCustomer"
+    money = fields["FMNAME"].lookup
+    assert fields["FMNAME"].editable and money is not None
+    assert (money.code, money.fill) == ("formoney", {"FMNAME": "FMNAME", "FMRATE": "FMRATE"})
+    assert fields["FMRATE"].editable and not fields["FMRATE"].fill_writable
+    assert fields["USESTATUS"].dict_type == "COST_PINGGU.USESTATUS" and fields["USESTATUS"].editable
     business = fields["BUSINESS_USER"].lookup
     assert business is not None and (business.code, business.multiple, business.fill) == ("costUser", True, {"BUSINESS_USER": "REAL_NAME"})
     assert sorted(n for n, f in fields.items() if f.fill_writable) == sorted([*PRODUCT_FILL, "COUNTRY", "TRANPOSID"])

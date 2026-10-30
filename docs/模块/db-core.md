@@ -28,7 +28,7 @@
   - 明细表在清单中写 `parent`（主表名和关联列），只复制主表中未删除的行的明细：已删除单据的明细不复制。
   - 去掉方案名；补上保留列的默认值和主键（cmx 中主键约束是系统生成的 `SYS_` 名称时改名为 `PK_<表名>`）；为每张表建序列 `<表名>_SEQ`，起始值为 cmx 中最大主键加一（含已删除的行，不重用旧主键）；不复制名称以 `BP_T09_` 或 `PF_` 开头的对象；可以重复执行，已存在的表和视图不动，`--refresh <名称>` 才重建。
   - 视图：清单中登记为 `"kind": "view"` 的项，写明来源视图和 d_cg 版本的 SQL（去掉方案名、引用 d_cg 的表、去掉不复制的列和 `DELETED` 条件），写在它引用的表之后，按这条 SQL 建视图。例如成本核算的两个明细视图 V_COST_PINGGU_MATERIAL、V_COST_PINGGU_PACKAGE 从 d_cg 的 T_COST_PINGGU_DTL 和 T_COST_GOODS 取数。核对：d_cg 视图查出的行与 cmx 视图（按未删除单据过滤）逐行相同。
-  - 例外：清单中标 `"readsCmx": true` 的视图直接读 cmx 的同名视图，`reason` 写明 d_cg 的表为什么做不出来（2026-10-30 起）：成本核算主表三个 Lookup 的数据源 V_COST_GOODS_LOOKUP（产品，BOM 状态由 cmx 视图经 ERP 数据库链接算出）、V_COST_CUSTOMER_LOOKUP（客户）、V_COST_USER（人员，只留工号、姓名）。与"由BOM生成明细"的 SQL 直接读 `CMX.T_COST_BOM_GOODS_TREE_V` 相同，数据随 cmx 变化。
+  - 例外：清单中标 `"readsCmx": true` 的视图直接读 cmx 的同名视图，`reason` 写明 d_cg 的表为什么做不出来（2026-10-30 起）：成本核算主表四个 Lookup 的数据源 V_COST_GOODS_LOOKUP（产品，BOM 状态由 cmx 视图经 ERP 数据库链接算出）、V_COST_CUSTOMER_LOOKUP（客户）、V_COST_USER（人员，只留工号、姓名）、T_COST_FORMONEY_V（币种，汇率由 cmx 视图经 ERP 数据库链接取出，2026-10-31 加入）。与"由BOM生成明细"的 SQL 直接读 `CMX.T_COST_BOM_GOODS_TREE_V` 相同，数据随 cmx 变化。
 - DB-04：`platform db upgrade` 用 Alembic 执行各模块的平台表迁移脚本；`platform db check` 核对平台表是否齐全、迁移是否为最新版本，不一致时以非零退出码结束。
 - DB-05：不修改 d_cg 中已有的 `BP_T09_*` 对象；cmx 只读。
 

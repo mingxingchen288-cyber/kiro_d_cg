@@ -1,0 +1,35 @@
+{
+  "type": "lookup",
+  "key": "formoney",
+  "name": "币种选择",
+  "content": {
+    "table": "T_COST_FORMONEY_V",
+    "columns": [
+      {
+        "column": "FMID",
+        "label": "币种ID"
+      },
+      {
+        "column": "FMNAME",
+        "label": "币种名称",
+        "width": 150
+      },
+      {
+        "column": "FMSIGN",
+        "label": "符号",
+        "width": 80
+      },
+      {
+        "column": "FMRATE",
+        "label": "汇率",
+        "width": 100
+      }
+    ],
+    "keywordColumns": [
+      "FMID",
+      "FMNAME",
+      "FMSIGN",
+      "FMRATE"
+    ]
+  }
+}
