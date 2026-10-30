@@ -137,6 +137,15 @@ describe('编辑缓冲：例子', () => {
     ]);
   });
 
+  it('新增明细中清空的单价：命令中写 null（后端对没写的数值字段补 0，必填就检查不到）；为空的文本字段不写', () => {
+    const buffer = newBuffer();
+    const id = buffer.addRow(DETAIL, '2550', { DTLID: null, DOCID: '2550', GOODSID: '115', PRICE: '0', MEMO: null }, null);
+    buffer.set(DETAIL, id, 'PRICE', null);
+    expect(buffer.documents()[0].details).toEqual([
+      { entity: DETAIL, op: 'add', clientRowId: id, values: { GOODSID: '115', PRICE: null } }
+    ]);
+  });
+
   it('删除已保存的行标为删除，命令中为 delete；删除主表行时不列出明细', () => {
     const buffer = newBuffer();
     buffer.deleteRow(DETAIL, '206324');

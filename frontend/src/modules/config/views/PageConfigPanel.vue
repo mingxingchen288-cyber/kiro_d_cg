@@ -24,6 +24,11 @@ const { shell, store, notify } = useConfigContext();
 const page = new ItemEditor(store, 'page', notify);
 const catalog = ref<PageCatalog | null>(null);
 const loadError = ref('');
+/**
+ * "页面行为"的校验规则弹窗保存了字段必填（实体或页面的字段设置）后加一，"表与列"重新挂载、按保存后的配置读取，
+ * 免得它显示旧的"必填"、保存列时又把必填改回去。"表与列"里没有保存的修改会丢掉。
+ */
+const tablesKey = ref(0);
 const content = computed(() => page.state.current?.content ?? null);
 
 async function load() {
@@ -70,11 +75,11 @@ onMounted(load);
         </NCollapseItem>
         <NCollapseItem title="表与列" name="tables">
           <template #header-extra><span class="section-summary">{{ catalog?.tables.length ?? 0 }} 张表</span></template>
-          <SectionTables v-if="catalog" :page="page" :catalog="catalog" @reload="load" />
+          <SectionTables v-if="catalog" :key="tablesKey" :page="page" :catalog="catalog" @reload="load" />
         </NCollapseItem>
         <NCollapseItem title="页面行为" name="behavior">
           <template #header-extra><span class="section-summary">{{ catalog?.tables.length ?? 0 }} 个区域</span></template>
-          <SectionBehavior v-if="catalog" :page="page" :catalog="catalog" />
+          <SectionBehavior v-if="catalog" :page="page" :catalog="catalog" @fields-saved="tablesKey += 1" />
         </NCollapseItem>
         <NCollapseItem title="表单布局" name="layout">
           <SectionFormLayout v-if="catalog" :page="page" :catalog="catalog" />

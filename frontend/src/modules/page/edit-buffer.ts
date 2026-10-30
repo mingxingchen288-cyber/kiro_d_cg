@@ -366,9 +366,12 @@ export class EditBuffer {
 
   private writableValues(row: PendingRow, isNew: boolean): FieldValues {
     const current = this.current(row.entity, row.id) ?? {};
+    const types = this.schema.entities[row.entity]?.fieldTypes ?? {};
     const result: FieldValues = {};
     for (const [field, value] of Object.entries(row.values)) {
-      if (isNew && value === null) continue;
+      // 新增行中为空的字段不写，由后端按默认值补（WP-16）。数值字段例外，写 null：后端对没写的数值字段补 0，
+      // 用户清空的单价（或 Lookup 带回的空单价）会存成 0，必填（WP-07）也检查不到；旧系统新增时同样写入空值
+      if (isNew && value === null && types[field] !== 'number') continue;
       if (!this.schema.writable(row.entity, field, current, isNew)) continue;
       result[field] = value;
     }
