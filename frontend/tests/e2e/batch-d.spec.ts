@@ -169,9 +169,10 @@ test(
     });
 
     const item = await adminApi.get('/api/config/items/page/COST_PINGGU');
-    expect(item.content.master.fields.GOODSNAME_EN).toBeUndefined();
+    // 页面配置没有隐藏产品英文名（第 7 批起它有"查询"标记 `searchable`，不影响显示）
+    expect(item.content.master.fields.GOODSNAME_EN?.visible).toBeUndefined();
     const changed = structuredClone(item.content);
-    changed.master.fields.GOODSNAME_EN = { visible: false };
+    changed.master.fields.GOODSNAME_EN = { ...changed.master.fields.GOODSNAME_EN, visible: false };
     try {
       await adminApi.ok('PUT', '/api/config/items/page/COST_PINGGU', { name: item.name, content: changed });
       // 经 WebSocket 收到 config.changed，重新读取页面视图，整张表都找不到这一列

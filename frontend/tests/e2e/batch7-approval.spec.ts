@@ -71,19 +71,37 @@ test('批次 7 审批：进度到详情、铃铛是待审批数、审批记录�
   await expect(userDetail.locator('.approval-information')).toContainText(approvalId);
   await expect(userDetail.locator('summary', { hasText: '审批记录（1）' })).toBeVisible();
 
-  // 2. admin 的铃铛：收到提交的通知后，角标等于待我审批的条数
-  const todoTotal = async () =>
-    (await adminApi.get<{ total: number }>('/api/approvals?box=todo&startRow=0&endRow=0')).total;
+  // 2. admin 的铃铛：收到提交的通知后，角标等于待我审批的条数；通过后这个审批不在待审批里，角标仍等于待我审批的条数。
+  // 整套并行运行时别的用例也在给 admin 提交、处理审批，所以每次都和当时的条数比（角标在通知、处理后或 60 秒内刷新）
+  const pending = () =>
+    adminApi.get<{ rows: Array<{ approvalId: string }>; total: number }>(
+      '/api/approvals?box=todo&startRow=0&endRow=500'
+    );
+  // 数字为 0 时角标不显示（元素去掉或隐藏）；一次读完，不等元素出现
+  const badgeText = () =>
+    badge(admin).evaluateAll(els => {
+      const el = els[0] as HTMLElement | undefined;
+      if (!el || !el.offsetParent) return null;
+      return el.getAttribute('title');
+    });
+  const badgeMatchesTodo = () =>
+    expect
+      .poll(
+        async () => {
+          const { total } = await pending();
+          return (await badgeText()) === (total > 0 ? String(total) : null);
+        },
+        { timeout: 65_000 }
+      )
+      .toBe(true);
   await expect.poll(() => noticed(adminEvents, `/approval/${approvalId}`)).toBe(true);
-  const before = await todoTotal();
-  await expect(badge(admin)).toHaveAttribute('title', String(before));
+  expect((await pending()).rows.map(r => r.approvalId)).toContain(approvalId);
+  await badgeMatchesTodo();
 
   const detail = await openTodo(admin, docId, approvalId);
   await passInDetail(admin, detail);
-  const after = await todoTotal();
-  expect(after).toBe(before - 1);
-  if (after > 0) await expect(badge(admin)).toHaveAttribute('title', String(after));
-  else await expect(badge(admin)).toBeHidden();
+  expect((await pending()).rows.map(r => r.approvalId)).not.toContain(approvalId);
+  await badgeMatchesTodo();
 
   // 3. 审批记录：提交、通过两行；默认收起，点开后显示
   const history = detail.locator('.approval-history');

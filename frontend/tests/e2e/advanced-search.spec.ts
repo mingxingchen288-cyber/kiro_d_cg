@@ -154,14 +154,15 @@ test('客户ID 用客户 Lookup 选两个客户（IN）：查出的单据只属�
     conditions: [{ field: 'CUSTOMID', operator: 'in', value: ids }]
   });
   expect(result.body.total).toBeGreaterThan(0);
-  // 全部满足条件的单据（不只第一块）都属于这两个客户
+  // 全部满足条件的单据（不只第一块）都属于这两个客户。整套并行运行时别的用例在复制 2550（同一个客户）建测试成本单，
+  // 两次查询之间总数可能多几张，所以不比总数，只核对查到的每一张
   const all = await api.ok<ListBody>('POST', '/api/pages/COST_PINGGU/rows', {
     startRow: 0,
-    endRow: result.body.total,
+    endRow: result.body.total + 100,
     sortModel: [],
     filterModel: {},
     advanced: result.request.advanced
   });
-  expect(all.total).toBe(result.body.total);
+  expect(all.rows.length).toBe(all.total);
   expect([...new Set(all.rows.map(r => r.values.CUSTOMID))].sort()).toEqual([...new Set(ids)].sort());
 });

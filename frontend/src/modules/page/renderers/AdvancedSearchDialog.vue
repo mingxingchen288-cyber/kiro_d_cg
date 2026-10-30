@@ -212,11 +212,13 @@ function search() {
               />
             </template>
           </div>
+          <!-- 运算符最多 14 个：关掉虚拟滚动，下拉中全部列出（虚拟滚动时 IN、NOT IN 等后面的项要滚动才渲染） -->
           <NSelect
             size="small"
             class="w-110px"
             :value="draft.operator"
             :options="operatorOptions(draft)"
+            :virtual-scroll="false"
             @update:value="(v: string) => changeOperator(draft, v)"
           />
           <div class="advanced-search__value">
