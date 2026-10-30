@@ -70,3 +70,12 @@
   - 模拟验证：`test_merge.py`、`test_flow.py` 的 E28；`test_review.py`（关闭时 Redis 中没有记录、开启后成功和失败的命令都有记录且含每条 SQL、关闭时删除、接口）。
   - 真实验证（待运行，标 redis 和 oracle）：`test_redis_review.py` 1 个。
   - 缺口：builtin `currentDeptName` 取不到（C04 没有部门名称），见 contract-gaps.md 第 3 条。
+
+### T-WP-6 启动时预读列定义
+
+- 归属与目标：WP-15 的列定义在平台启动时和配置变更后预读，第一次保存的 SQL 条数与 WP-10 相同。来源：2026-10-30 联调核对 WP-10 时发现，后端进程启动后第一次写某张表的命令多 1 条 `user_tab_columns` 查询（SchemaInspector 取列的小数位），同一进程之后不再读（`.reports/batch2-20261030/g5-acceptance/findings.md`）。
+- 前置输入：T-WP-2；config 的 `EntityDirectory`（C08 第 4 节加 `tables`）。
+- 负责范围：`pipeline/values.py` 的 `ColumnScales.preload`、`pipeline/warmup.py` 的 `SchemaWarmup`、`pipeline/plugin.py` 的 start、stop；`config/entities.py` 的 `tables`；contracts 的端口、替代实现和契约测试。缓存在本模块（db-core 的 `SchemaInspector` 不缓存，config 的校验、新建页面向导要读到最新的表结构），所以预读在本模块做。
+- 交付物：插件 start 时预读已发布实体写入的表，读完才返回；后台每 5 秒检查一次，新的表读进来；stop 停掉后台检查。WP-10 中"审批入口条件每行一条"不在本卡（等用户决定）。
+- 验收标准：后端启动后第一次保存不再有 `user_tab_columns` 查询；配置变更新增实体后，后台读进新的表。
+- 状态与证据：进行中（2026-10-30，H2 组，`batch3/approval-snapshot`）。模拟验证：`tests/pipeline/test_warmup.py` 2 个（start 读完已发布实体的表才返回，之后新增实体的表由后台读进来，保存时取小数位不再读；插件 start、stop），`test_values.py` 的预读不重复读，`EntityDirectoryContract.test_tables`（替代实现、`PublishedEntities`），`tests/pipeline tests/config tests/contracts tests/assembly` 705 passed。真实验证：`tests/config/test_oracle.py` 的 `TestOraclePublishedEntities` 4 passed（d_cg 已有这四个实体，没有保存配置）；后端 8088 启动日志和第一次保存的命令审查见 `.reports/batch3-20261030/h2-approval/`。`tests/e2e/test_batch_b.py` 中允许多 1 条列定义查询的断言（`sum(map(is_schema_query, sql)) <= 1`）没有改、没有运行（别组在用 8086、8087）。

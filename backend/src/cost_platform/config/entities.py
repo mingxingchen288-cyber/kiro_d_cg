@@ -1,7 +1,7 @@
 """`EntityDirectory`（C08 第 4 节）：最新已发布的实体配置，不按角色。
 
-使用方是 queries-export 的 `RelatedQuery`、`DocumentReader` 和 approval（按表找实体）：它们手里没有执行上下文，要的是
-实体层面的配置。
+使用方是 queries-export 的 `RelatedQuery`、`DocumentReader`、approval（按表找实体）和 write-pipeline（`tables`：启动时
+和配置变更后预读这些表的列定义）：它们手里没有执行上下文，要的是实体层面的配置。
 
 每次调用先取当前配置代号（`ConfigReader.current_version`：一次 Redis 读取，Redis 不可用时读 Oracle 的代号行）。代号不比
 已缓存的新时用缓存；否则用一条语句从 Oracle 读出全部实体配置项和代号，按读到的代号缓存（解析结果与配置快照共用
@@ -78,3 +78,7 @@ class PublishedEntities:
 
     def entities_on_table(self, table: str) -> list[TableEntity]:
         return list(self._current().tables.get(table, []))
+
+    def tables(self) -> list[str]:
+        """已发布的实体写入的表，按名称排列（write-pipeline 预读列定义用）。"""
+        return sorted(self._current().tables)

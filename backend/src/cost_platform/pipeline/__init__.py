@@ -14,7 +14,7 @@
 | 审计、命令结果 | `result.audit_changes`、`result.build_result`（由 `complete` 调用） | WP-11、WP-12 |
 | 审批通过后写没注册的表 | `table_writer.OracleTableWriter`（端口 TableWriter） | WP-19 |
 | 命令审查 | `review.RedisCommandMonitor`（端口 CommandMonitor）、`review.RedisCommandReview`、`review.command_review_router`（APIRouter）、`tracing.SqlTracer` | WP-17、C09 第 7a 节 |
-| 小数位 | `values.ColumnScales`（列的小数位取 SchemaInspector） | WP-15 |
+| 小数位 | `values.ColumnScales`（列的小数位取 SchemaInspector）；`warmup.SchemaWarmup`（插件 start 时和配置变更后预读已发布实体的表，EntityDirectory.tables） | WP-15、WP-10 |
 
 `merge.PatchMerger` 是原端口 `ChangeMerger` 的按实体合并（2026-10-29 起不是端口），管道阶段不用它。
 """

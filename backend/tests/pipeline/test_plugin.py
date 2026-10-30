@@ -11,6 +11,7 @@ from fastapi import APIRouter
 from cost_platform.contracts.fakes import (
     FakeClock,
     FakeContextProvider,
+    FakeEntityDirectory,
     FakePermissionChecker,
     FakeRulesEngine,
     FakeSchemaInspector,
@@ -20,6 +21,7 @@ from cost_platform.contracts.ports import (
     CommandMonitor,
     CommandRecorder,
     ContextProvider,
+    EntityDirectory,
     PermissionChecker,
     PipelineStage,
     RulesEngine,
@@ -37,7 +39,7 @@ from .support import STAGE_ORDER, Setup
 
 class Providers:
     name = "fakes"
-    provides = (PermissionChecker, RulesEngine, SchemaInspector, Clock, ContextProvider)
+    provides = (PermissionChecker, RulesEngine, SchemaInspector, Clock, ContextProvider, EntityDirectory)
     requires = ()
 
     def setup(self, reg: PluginView) -> None:
@@ -46,6 +48,7 @@ class Providers:
         reg.provide(SchemaInspector, FakeSchemaInspector())
         reg.provide(Clock, FakeClock(datetime(2026, 10, 29, 10, 0, 0)))
         reg.provide(ContextProvider, FakeContextProvider(Setup().context()))
+        reg.provide(EntityDirectory, FakeEntityDirectory())
 
 
 class Consumer:

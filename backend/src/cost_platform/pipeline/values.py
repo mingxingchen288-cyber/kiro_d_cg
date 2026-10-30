@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -51,7 +52,10 @@ def config_value(field: EntityField, text: str) -> Value:
 
 
 class ColumnScales:
-    """业务表数值列的小数位，按表名经 `SchemaInspector` 读取，每张表在进程内只读一次（表结构变更随部署重启生效）。"""
+    """业务表数值列的小数位，按表名经 `SchemaInspector` 读取，每张表在进程内只读一次（表结构变更随部署重启生效）。
+
+    平台启动时和配置变更新增实体后，插件用 `preload` 把已发布实体的表先读进来（`plugin.py`），保存时就不再读列定义；
+    预读之前就用到的表（例如刚发布的实体，后台还没来得及预读），照旧在第一次用到时读。"""
 
     def __init__(self, inspector: SchemaInspector) -> None:
         self._inspector = inspector
@@ -62,9 +66,21 @@ class ColumnScales:
             return None
         key = table.upper()
         if key not in self._tables:
-            columns = self._inspector.columns(table) or {}
-            self._tables[key] = {name.upper(): info.scale for name, info in columns.items()}
+            self._read(table)
         return self._tables[key].get(column.upper())
+
+    def preload(self, tables: Iterable[str]) -> list[str]:
+        """把还没读过的表的列定义读进来，每张表一次 `columns`；返回这次读了的表。"""
+        done = []
+        for table in tables:
+            if table.upper() not in self._tables:
+                self._read(table)
+                done.append(table)
+        return done
+
+    def _read(self, table: str) -> None:
+        columns = self._inspector.columns(table) or {}
+        self._tables[table.upper()] = {name.upper(): info.scale for name, info in columns.items()}
 
 
 class NoScales:

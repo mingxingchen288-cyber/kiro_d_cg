@@ -201,6 +201,11 @@ class EntityDirectory(Protocol):
         """`table` 上注册的实体（审批的冻结表、修改表注册与否，C06 7.4、7.5）；没有注册时为空。"""
         ...
 
+    def tables(self) -> list[str]:
+        """已发布的实体写入的表（实体的 `table`），去重，按名称排列。2026-10-30 由使用方 write-pipeline 提出：启动时和
+        配置变更后，把这些表的列定义预读进缓存（WP-15），第一次保存不再多读一次列定义。"""
+        ...
+
 
 class ConfigImporter(Protocol):
     def import_items(self, items: list[ConfigDraft]) -> ImportReport:
