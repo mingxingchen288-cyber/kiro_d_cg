@@ -126,3 +126,12 @@
 - 负责范围：page 的 `copy.ts`（`originOf`）、`edit-buffer.ts`（`PendingRow.origin`、`copyOrigin`、命令中的 `copyOf` 和不可写的复制字段）、`fields.ts`（`fieldCopyable`）、`view-model.ts`（`createBuffer` 的 `copyable`）。
 - 验收标准：模拟验证：E09 复制 2550 时命令带 `copyOf` 和不可编辑的创建人、明细的物料名称，不带计算字段和产品名称（没有 `erpRow` 的实体的 ERP 列）；复制 200721 只复制主表时命令带 `copyOf: 200721` 和项目号。业务例子（浏览器、d_cg）：复制 200721 只复制主表，保存后新单据的币种是"人民币"、项目号与源单据相同（源为空则为空），产品等字段照旧；删掉这张单据。
 - 状态与证据：模拟验证通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/page/copy-lookup.test.ts`、`tests/page/product-lookup.test.ts`。浏览器核对见 `.reports/batch4-20261030/p-pipeline-fixes/`。
+
+### T-FP-12 保存、按钮之后显示重新读到的值
+
+- 归属与目标：FP-06、FP-14 中"写入的行按主键重读再显示"。现象：点"由BOM生成明细"后，明细的"客户指定"显示不确定状态、"额外投料量"显示 0.00、包材"参考采购价""最后采购数量"为空；新单据保存后"币种"为空；重新打开单据后才正确（`.reports/batch3-20261030/v3-verify/findings.md` 观察 1-1、2-1）。原因：命令结果的行取自后端手里的数据，不重新查库（WP-12），只在读取视图中的字段和数据库端默认值到不了页面。来源：旧系统保存后后端重查主表行（`DynamicDataService.java` 第 1232–1255 行）、前端明细有改动时重读（`useWorkingSetStore.ts` 第 1047–1076 行），按钮执行后 `reloadMasterRow` + `loadDetailData`（`runtime/useRuntimeActions.ts` 第 75–110 行）；用户 2026-10-30 同意按旧系统做。
+- 前置输入：C09 第 4 节的按主键取行（`POST /api/pages/{pageCode}/rows/by-keys`）。
+- 负责范围：page 的 `page-runtime.ts`（`applySaveResult` 把结果中写入的行并入补查，`runOperation` 的 `rereadResultRows`）。
+- 交付物：命令成功后，结果中写入的行（被冻结的、删除的除外）按实体各一个 `rows/by-keys` 请求重读，读到的值登记为正式数据再显示。不在命令事务里，命令的 SQL 条数不变（WP-10）。用 `rows/by-keys` 而不是单据加载接口：两者经同一个视图、同样的字段读取；按主键只读命令写到的行，每个实体一个请求，一次保存几张单据也不多请求，明细的显示顺序（新增行保存后留在原位，FP-06）不被单据加载的排序打乱。
+- 验收标准：模拟验证：保存新单据后按新主键重读主表行，库里的默认值显示出来；按钮新增的明细按主键重读，显示视图中的物料名称。业务例子（浏览器、d_cg）：新建一张产品 392 的成本单（产品 Lookup 选 392）保存后币种马上显示"人民币"；点"由BOM生成明细"后客户指定为未勾选、额外投料量为空、包材参考采购价显示 0.10、0.07 等；最后删掉这张单据。
+- 状态与证据：模拟验证通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/page/save.test.ts` 的"保存成功后按主键重读结果中写入的行""按钮成功后按主键重读结果中写到的行再显示"。浏览器核对见 `.reports/batch4-20261030/p-pipeline-fixes/`。

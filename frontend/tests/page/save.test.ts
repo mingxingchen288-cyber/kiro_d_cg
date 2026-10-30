@@ -177,6 +177,50 @@ describe('保存（FP-06）', () => {
     expect(runtime.gridRow(MATERIAL, '206324').MEMO).toBe('测试');
   });
 
+  it('保存成功后按主键重读结果中写入的行：数据库端默认值、只在视图中的字段马上显示，与重新打开相同', async () => {
+    // 旧系统保存后后端重查主表行（DynamicDataService.java 第 1232–1255 行）。这里新单据的剂型 FORM 不在命令里，
+    // 命令结果中为空，库里取列的默认值"片剂"（相当于成本单的币种"人民币"）
+    const ctx = await openCostPage();
+    const { runtime, fake, master } = ctx;
+    await runtime.addRow(MASTER);
+    const id = master.ids[0];
+    runtime.edit(MASTER, id, 'MEMO', '新单');
+    const written = { ...masterRow('200800', '新单'), values: { ...masterRow('200800', '新单').values, FORM: null } };
+    fake.http.on(
+      'POST',
+      '/api/commands',
+      saved([{ ...written, entity: MASTER, clientRowId: id }], { idMap: { [id]: '200800' } })
+    );
+    fake.http.on('POST', '/api/pages/:pageCode/rows/by-keys', { rows: [masterRow('200800', '新单')] });
+    await runtime.save();
+    expect(fake.http.callsTo('POST', '/api/pages/:pageCode/rows/by-keys').map(c => c.body)).toEqual([
+      { entity: MASTER, rowKeys: ['200800'] }
+    ]);
+    expect(runtime.gridRow(MASTER, id).FORM).toBe('片剂');
+    expect(master.updated.at(-1)).toContain(id);
+  });
+
+  it('按钮成功后按主键重读结果中写到的行再显示：新增的明细显示视图中的值', async () => {
+    // 旧系统按钮执行后 reloadMasterRow + loadDetailData（useRuntimeActions.ts 第 75–110 行）
+    const ctx = await openCostPage();
+    const { runtime, fake, material } = ctx;
+    await selectRecord(ctx, '2550');
+    const button = runtime.view.value!.master.buttons.find(b => b.action === 'syncPrice')!;
+    const added = materialRow('206400', '2550', '25', '聚维酮K30', '75');
+    fake.http.on(
+      'POST',
+      '/api/commands',
+      saved([{ ...added, values: { ...added.values, GOODSNAME: null }, entity: MATERIAL }])
+    );
+    fake.http.on('POST', '/api/pages/:pageCode/rows/by-keys', { rows: [added] });
+    await runtime.runOperation(runtime.view.value!.master, button);
+    expect(fake.http.callsTo('POST', '/api/pages/:pageCode/rows/by-keys').map(c => c.body)).toEqual([
+      { entity: MATERIAL, rowKeys: ['206400'] }
+    ]);
+    expect(runtime.gridRow(MATERIAL, '206400').GOODSNAME).toBe('聚维酮K30');
+    expect(material.ids).toContain('206400');
+  });
+
   it('失败时保留全部修改，按错误明细定位到行和字段，不自动重发', async () => {
     const ctx = await openCostPage();
     const { runtime, fake, material } = ctx;
