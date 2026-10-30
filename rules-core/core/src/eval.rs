@@ -1,8 +1,9 @@
 //! C07 第 2、3 节：解析求值请求，按阶段选规则、组装输入（RC-08）、调用 zen-engine、解释结果。
-//! 数值处理按模块说明第 8 节：空值按 0，除以 0 和溢出为 0，求值出错为 0 并给出提示，分支都不匹配保持原值，不舍入。
+//! 数值处理按模块说明第 8 节：空值按 0，除以 0、溢出、空数组的汇总为 0，求值出错为 0 并给出提示，条件求值出错按成立，
+//! 分支都不匹配保持原值，不舍入。计算规则全部执行完后，再用最终值执行校验和界面规则（C06 第 5 节执行顺序 3）。
 
 use crate::decimal;
-use crate::pack::{CalcRule, FieldType, Layer, Pack};
+use crate::pack::{Branches, CalcRule, CheckKind, CheckRule, FieldType, Layer, Pack, UiEffect};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -141,6 +142,11 @@ struct Row {
     old: HashMap<String, Val>,
     /// 按计算顺序记下的计算字段的最终值。
     computed: Vec<(String, Val)>,
+    /// 界面规则给出的字段状态：字段 → {"editable": …, "required": …}（C07 第 3 节 `fields`）。
+    fields: Map<String, Value>,
+    /// 界面规则给出的行样式和单元格样式（C07 第 3 节 `style`）。
+    row_style: Option<Map<String, Value>>,
+    cells: Map<String, Value>,
 }
 
 type Types = HashMap<String, FieldType>;
@@ -183,42 +189,47 @@ pub fn evaluate(pack: &Pack, request_text: &str) -> Result<Value, Failure> {
         details.push((entity, parsed));
     }
 
-    let context = context_variable(&request.context);
-    let data = data_variable(&Value::Object(request.data));
+    let env = Env {
+        pack,
+        empty: Types::new(),
+        context: context_variable(&request.context),
+        data: data_variable(&Value::Object(request.data)),
+    };
     let mut effects: Vec<Value> = Vec::new();
     let (phase, operation, page) = (request.phase, request.operation, request.page);
+    let picked = |layer: Layer, rule_operation: &Option<String>, rule_page: &Option<String>, server_only: bool| {
+        selected(layer, rule_operation, rule_page, server_only, phase, &operation, &page)
+    };
 
-    for rule in pack.calc.iter().filter(|r| selected(r, phase, &operation, &page)) {
+    for rule in pack.calc.iter().filter(|r| picked(r.layer, &r.operation, &r.page, r.server_only)) {
         if rule.is_master {
-            let mut scope = row_object(&master, types_of(&master_entity), &[]);
-            for (entity, rows) in &details {
-                let types = types_of(entity);
-                let items = rows.iter().map(|r| Variable::from_object(row_object(r, types, &[]))).collect();
-                scope.insert_str(entity, Variable::from_array(items));
-            }
-            for entity in pack.fields.keys().filter(|e| **e != master_entity) {
-                if !scope.contains_key_str(entity) {
-                    scope.insert_str(entity, Variable::empty_array());
-                }
-            }
-            fill_refs(&mut scope, &rule.plain_refs);
-            scope.insert_str("old", old_variable(&master));
-            scope.insert_str("context", context.clone());
-            scope.insert_str("data", data.clone());
-            let ty = types_of(&master_entity).get(&rule.field).copied();
+            let scope = env.master_scope(&master, &details, &rule.plain_refs);
+            let ty = env.types(&master_entity).get(&rule.field).copied();
             apply(rule, &mut master, scope, ty, &mut effects);
         } else {
-            let master_var = Variable::from_object(row_object(&master, types_of(&master_entity), &[]));
-            let types = types_of(&rule.entity);
-            let ty = types.get(&rule.field).copied();
+            let master_var = env.row_variable(&master);
+            let ty = env.types(&rule.entity).get(&rule.field).copied();
             if let Some((_, rows)) = details.iter_mut().find(|(e, _)| *e == rule.entity) {
                 for row in rows.iter_mut() {
-                    let mut scope = row_object(row, types, &rule.plain_refs);
-                    scope.insert_str("master", master_var.clone());
-                    scope.insert_str("old", old_variable(row));
-                    scope.insert_str("context", context.clone());
-                    scope.insert_str("data", data.clone());
+                    let scope = env.detail_scope(row, &master_var, &rule.plain_refs);
                     apply(rule, row, scope, ty, &mut effects);
+                }
+            }
+        }
+    }
+
+    // 校验和界面规则用计算后的最终值（C06 第 5 节执行顺序 3）
+    for rule in pack.checks.iter().filter(|r| picked(r.layer, &r.operation, &r.page, r.server_only)) {
+        if rule.is_master {
+            let scope = env.master_scope(&master, &details, &rule.plain_refs);
+            check(rule, &mut master, scope, env.types(&master_entity), &mut effects);
+        } else {
+            let master_var = env.row_variable(&master);
+            let types = env.types(&rule.entity);
+            if let Some((_, rows)) = details.iter_mut().find(|(e, _)| *e == rule.entity) {
+                for row in rows.iter_mut() {
+                    let scope = env.detail_scope(row, &master_var, &rule.plain_refs);
+                    check(rule, row, scope, types, &mut effects);
                 }
             }
         }
@@ -231,15 +242,72 @@ pub fn evaluate(pack: &Pack, request_text: &str) -> Result<Value, Failure> {
     Ok(json!({"ok": true, "rows": rows_out, "effects": effects}))
 }
 
+/// 一次求值的公共输入：规则包、`context`、`data`。
+struct Env<'a> {
+    pack: &'a Pack,
+    empty: Types,
+    context: Variable,
+    data: Variable,
+}
+
+impl Env<'_> {
+    fn types(&self, entity: &str) -> &Types {
+        self.pack.fields.get(entity).unwrap_or(&self.empty)
+    }
+
+    /// 主表行作为明细规则的 `master`。
+    fn row_variable(&self, row: &Row) -> Variable {
+        Variable::from_object(row_object(row, self.types(&row.entity), &[]))
+    }
+
+    /// 主表规则的输入（RC-08）：主表字段直接写，明细实体编码为这个明细的行的数组。
+    fn master_scope(&self, master: &Row, details: &[(String, Vec<Row>)], refs: &[String]) -> VariableMap {
+        let mut scope = row_object(master, self.types(&master.entity), &[]);
+        for (entity, rows) in details {
+            let types = self.types(entity);
+            let items = rows.iter().map(|r| Variable::from_object(row_object(r, types, &[]))).collect();
+            scope.insert_str(entity, Variable::from_array(items));
+        }
+        for entity in self.pack.fields.keys().filter(|e| **e != master.entity) {
+            if !scope.contains_key_str(entity) {
+                scope.insert_str(entity, Variable::empty_array());
+            }
+        }
+        fill_refs(&mut scope, refs);
+        scope.insert_str("old", old_variable(master));
+        scope.insert_str("context", self.context.clone());
+        scope.insert_str("data", self.data.clone());
+        scope
+    }
+
+    /// 明细规则的输入（RC-08）：本行字段直接写，主表字段为 `master.字段`。
+    fn detail_scope(&self, row: &Row, master_var: &Variable, refs: &[String]) -> VariableMap {
+        let mut scope = row_object(row, self.types(&row.entity), refs);
+        scope.insert_str("master", master_var.clone());
+        scope.insert_str("old", old_variable(row));
+        scope.insert_str("context", self.context.clone());
+        scope.insert_str("data", self.data.clone());
+        scope
+    }
+}
+
 /// preview 执行实体、操作、页面三层规则；commit 只执行实体和操作规则（C07 第 2 节）。
 /// 依赖数据库数据的规则（serverOnly）在前端预览时不出结论。
-fn selected(rule: &CalcRule, phase: Phase, operation: &Option<String>, page: &Option<String>) -> bool {
-    let layer_ok = match rule.layer {
+fn selected(
+    layer: Layer,
+    rule_operation: &Option<String>,
+    rule_page: &Option<String>,
+    server_only: bool,
+    phase: Phase,
+    operation: &Option<String>,
+    page: &Option<String>,
+) -> bool {
+    let layer_ok = match layer {
         Layer::Entity => true,
-        Layer::Operation => rule.operation.is_some() && rule.operation == *operation,
-        Layer::Page => phase == Phase::Preview && rule.page.is_some() && rule.page == *page,
+        Layer::Operation => rule_operation.is_some() && rule_operation == operation,
+        Layer::Page => phase == Phase::Preview && rule_page.is_some() && rule_page == page,
     };
-    layer_ok && !(phase == Phase::Preview && rule.server_only)
+    layer_ok && !(phase == Phase::Preview && server_only)
 }
 
 fn row_id(row_key: Option<String>, client_row_id: Option<String>) -> Result<RowId, Failure> {
@@ -263,7 +331,16 @@ fn parse_row(entity: &str, row: RowJson, types: &Types) -> Result<Row, Failure> 
         }
         old
     };
-    Ok(Row { entity: entity.to_string(), id, values, old, computed: Vec::new() })
+    Ok(Row {
+        entity: entity.to_string(),
+        id,
+        values,
+        old,
+        computed: Vec::new(),
+        fields: Map::new(),
+        row_style: None,
+        cells: Map::new(),
+    })
 }
 
 fn parse_values(entity: &str, values: &Map<String, Value>, types: &Types) -> Result<HashMap<String, Val>, Failure> {
@@ -354,37 +431,20 @@ fn apply(rule: &CalcRule, row: &mut Row, scope: VariableMap, ty: Option<FieldTyp
     let probe = input.clone();
     let number = ty == Some(FieldType::Number);
     let outcome = match pollster::block_on(rule.decision.evaluate(input)) {
-        Ok(response) => match response.result.dot(&rule.field) {
-            Some(Variable::Number(d)) => Ok(Val::Num(d)),
-            // 除以 0 的直接结果为 null（zen-expression 的 checked_div），表达式节点不写出 null 的 key：都按 0
-            None | Some(Variable::Null) => Ok(if number { Val::Num(Decimal::ZERO) } else { Val::Null }),
-            Some(Variable::String(s)) if !number => Ok(Val::Str(s.to_string())),
-            Some(Variable::Bool(b)) if !number => Ok(Val::Bool(b)),
-            Some(other) => Err(format!("结果为 {}，不是数值", other.type_name())),
-        },
-        Err(error) => {
-            let text = error_text(error.as_ref());
-            if text.contains("Number overflow") || divides_by_zero(rule, &probe) {
-                Ok(Val::Num(Decimal::ZERO))
-            } else {
-                Err(text)
-            }
+        // 表达式节点不写出 null 的 key
+        Ok(response) => interpret(Ok(response.result.dot(&rule.field).unwrap_or(Variable::Null)), &rule.divisors, &probe, number),
+        // 有分支时逐段求值：条件出错按成立（模块说明第 8 节），再按选中的那一段判断除以 0
+        Err(_) if rule.branches.is_some() => {
+            let (result, divisors) = branch_value(rule.branches.as_ref().expect("有分支"), &probe);
+            interpret(result, divisors, &probe, number)
         }
+        Err(error) => interpret(Err(error_text(error.as_ref())), &rule.divisors, &probe, number),
     };
     let value = match outcome {
         Ok(v) => v,
         Err(reason) => {
-            let mut effect = Map::new();
-            effect.insert("kind".into(), "prompt".into());
-            effect.insert("rule".into(), rule.id.clone().into());
-            effect.insert("message".into(), format!("计算规则 {} 求值出错，{} 按 0 处理：{reason}", rule.id, rule.field).into());
-            effect.insert("entity".into(), row.entity.clone().into());
-            match &row.id {
-                RowId::Key(k) => effect.insert("rowKey".into(), k.clone().into()),
-                RowId::Client(c) => effect.insert("clientRowId".into(), c.clone().into()),
-            };
-            effect.insert("field".into(), rule.field.clone().into());
-            effects.push(Value::Object(effect));
+            let message = format!("计算规则 {} 求值出错，{} 按 0 处理：{reason}", rule.id, rule.field);
+            effects.push(effect("prompt", &rule.id, message, row, Some(&rule.field)));
             Val::Num(Decimal::ZERO)
         }
     };
@@ -406,12 +466,117 @@ fn error_text(error: &zen_engine::EvaluationError) -> String {
     parts.join("：")
 }
 
+/// 按模块说明第 8 节解释一条计算表达式的结果：
+/// 结果为 null（除以 0 的直接结果，zen-expression 的 checked_div）时数值字段为 0；
+/// 溢出、空数组的 avg/max/min、除以 0 之后的运算出错（某个除数在同一输入下为 0，含 0/0）都为 0，不算出错；
+/// 其余错误返回原因，由调用方按 0 处理并给出提示。
+fn interpret(result: Result<Variable, String>, divisors: &[String], scope: &Variable, number: bool) -> Result<Val, String> {
+    match result {
+        Ok(Variable::Number(d)) => Ok(Val::Num(d)),
+        Ok(Variable::Null) => Ok(if number { Val::Num(Decimal::ZERO) } else { Val::Null }),
+        Ok(Variable::String(s)) if !number => Ok(Val::Str(s.to_string())),
+        Ok(Variable::Bool(b)) if !number => Ok(Val::Bool(b)),
+        Ok(other) => Err(format!("结果为 {}，不是数值", other.type_name())),
+        Err(text) if text.contains("Number overflow") || text.contains("Empty array") || divides_by_zero(divisors, scope) => {
+            Ok(Val::Num(Decimal::ZERO))
+        }
+        Err(text) => Err(text),
+    }
+}
+
+/// 逐个分支求值：条件为 true 时取这个分支；条件求值出错按成立（旧系统 evalCondition 的 catch 返回 true）；
+/// 条件为 false 或 null 时看下一个；都不成立时取最后一段（字段自己）。返回选中那一段的结果和它的除数。
+fn branch_value<'a>(branches: &'a Branches, scope: &Variable) -> (Result<Variable, String>, &'a [String]) {
+    let part = branches
+        .arms
+        .iter()
+        .find(|(condition, _)| holds(condition.evaluate(scope.clone())))
+        .map(|(_, part)| part)
+        .unwrap_or(&branches.otherwise);
+    (part.expression.evaluate(scope.clone()).map_err(|e| e.to_string()), &part.divisors)
+}
+
+/// 条件是否成立：true 成立，false 和 null 不成立；求值出错或结果不是布尔时按成立（模块说明第 8 节）。
+fn holds(result: Result<Variable, zen_expression::IsolateError>) -> bool {
+    match result {
+        Ok(Variable::Bool(b)) => b,
+        Ok(Variable::Null) => false,
+        _ => true,
+    }
+}
+
 /// 求值出错时，表达式里有除数在同一输入下为 0，就是除以 0（含 0/0）：按 0，不算出错。
-fn divides_by_zero(rule: &CalcRule, scope: &Variable) -> bool {
-    rule.divisors.iter().any(|d| {
+fn divides_by_zero(divisors: &[String], scope: &Variable) -> bool {
+    divisors.iter().any(|d| {
         let mut isolate = Isolate::with_environment(scope.clone());
         matches!(isolate.run_standard(d), Ok(Variable::Number(n)) if n.is_zero())
     })
+}
+
+/// C07 第 3 节的效果：定位到实体、行（rowKey 或 clientRowId）和字段；规则没有作用字段时不写 field。
+fn effect(kind: &str, rule: &str, message: String, row: &Row, field: Option<&str>) -> Value {
+    let mut out = Map::new();
+    out.insert("kind".into(), kind.into());
+    out.insert("rule".into(), rule.into());
+    out.insert("message".into(), message.into());
+    out.insert("entity".into(), row.entity.clone().into());
+    match &row.id {
+        RowId::Key(k) => out.insert("rowKey".into(), k.clone().into()),
+        RowId::Client(c) => out.insert("clientRowId".into(), c.clone().into()),
+    };
+    if let Some(f) = field {
+        out.insert("field".into(), f.into());
+    }
+    Value::Object(out)
+}
+
+/// 执行一条校验或界面规则：`when` 成立时，校验给出 reject 或 prompt；界面规则把效果记到这一行。
+fn check(rule: &CheckRule, row: &mut Row, scope: VariableMap, types: &Types, effects: &mut Vec<Value>) {
+    if !holds(rule.condition.evaluate(Variable::from_object(scope))) {
+        return;
+    }
+    match &rule.kind {
+        CheckKind::Validate { level, message } => {
+            effects.push(effect(level.kind(), &rule.id, message.clone(), row, rule.field.as_deref()));
+        }
+        CheckKind::Ui(ui) => apply_ui(ui, rule.field.as_deref(), row, types),
+    }
+}
+
+/// 界面规则的效果（C06 第 5 节）：`editable`、`required` 记到 `fields`，`rowStyle` 记到 `style.row`，`cellStyle` 记到
+/// `style.cells`。`field` 为空时作用于整行：字段状态和单元格样式给到这一实体的每个字段（按字段名排序，结果与运行无关）。
+/// 多条规则命中同一处时按执行顺序合并，后面的覆盖前面的同名属性（旧系统 GRID_STYLE 合并样式的做法）。
+fn apply_ui(ui: &UiEffect, field: Option<&str>, row: &mut Row, types: &Types) {
+    let targets: Vec<String> = match field {
+        Some(f) => vec![f.to_string()],
+        None => {
+            let mut all: Vec<String> = types.keys().cloned().collect();
+            all.sort();
+            all
+        }
+    };
+    for name in &targets {
+        if ui.editable.is_some() || ui.required.is_some() {
+            let state = row.fields.entry(name.clone()).or_insert_with(|| Value::Object(Map::new()));
+            if let Value::Object(state) = state {
+                if let Some(b) = ui.editable {
+                    state.insert("editable".into(), b.into());
+                }
+                if let Some(b) = ui.required {
+                    state.insert("required".into(), b.into());
+                }
+            }
+        }
+        if let Some(style) = &ui.cell_style {
+            let cell = row.cells.entry(name.clone()).or_insert_with(|| Value::Object(Map::new()));
+            if let Value::Object(cell) = cell {
+                cell.extend(style.clone());
+            }
+        }
+    }
+    if let Some(style) = &ui.row_style {
+        row.row_style.get_or_insert_with(Map::new).extend(style.clone());
+    }
 }
 
 fn row_result(row: &Row) -> Value {
@@ -423,7 +588,8 @@ fn row_result(row: &Row) -> Value {
     };
     let computed: Map<String, Value> = row.computed.iter().map(|(f, v)| (f.clone(), v.to_json())).collect();
     out.insert("computed".into(), Value::Object(computed));
-    out.insert("fields".into(), Value::Object(Map::new()));
-    out.insert("style".into(), json!({"row": null, "cells": {}}));
+    out.insert("fields".into(), Value::Object(row.fields.clone()));
+    let style_row = row.row_style.clone().map(Value::Object).unwrap_or(Value::Null);
+    out.insert("style".into(), json!({"row": style_row, "cells": Value::Object(row.cells.clone())}));
     Value::Object(out)
 }
