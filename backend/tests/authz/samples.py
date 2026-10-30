@@ -10,6 +10,9 @@
 旧按钮键的分组换成区域编码（C06 第 8 节，分组取组件引用表的 TABLE_NAME，旧 RoleManageService.listPageButtons）：
 "物料成本核算表"→`master`，"原辅料明细"→`COST_MATERIAL`，"包材明细"→`COST_PACKAGE`，"物料清单及成本"→`master`，
 "系统默认按钮"→`system`，"自定义导出"→`export`。`approval.*` 不转换：审批不使用按钮权限（C06 第 8 节）。
+新增、删除、修改按区域给（C06 v24）：旧"系统默认按钮:addRow / deleteRow"（只管主表的新增、删除按钮）→`master:addRow`、
+`master:deleteRow`；旧后端保存只检查 save，有 save 的角色能改主表、能增删改明细，所以另给 `master:modify` 和各明细的
+`addRow`、`deleteRow`、`modify`。
 
 页面视图正常由 config 按（页面、角色）生成；这里的 `page_view` 是测试用的简化生成：实体、页面、角色三层只收紧可见和
 可编辑，区域按钮按角色的 `buttons` 过滤（C05）。实体、页面、保存操作取自种子配置 `backend/seed/config/`。
@@ -71,11 +74,20 @@ TECH_CENTER_PINGGU_BUTTONS = [
     # 旧 BUTTON_POLICY：["系统默认按钮:save","系统默认按钮:approval.apply","系统默认按钮:approval.cancel",
     # "系统默认按钮:approval.progress","系统默认按钮:advancedSearch","物料成本核算表:copyRow","物料成本核算表:generateFromBom",
     # "物料成本核算表:saveGridConfig","原辅料明细:copyRow","原辅料明细:saveGridConfig","包材明细:copyRow","包材明细:saveGridConfig"]
+    # 区域的新增、删除、修改（C06 v24 第 8 节）按旧系统的实际行为给：旧后端保存只检查 save（DynamicDataService 第 1095 行），
+    # 有保存就能改主表和明细、增删明细；主表的新增、删除旧系统要"系统默认按钮:addRow / deleteRow"，技术中心没有。
     "system:save", "system:advancedSearch",
-    "master:copyRow", "master:generateFromBom", "master:saveGridConfig",
+    "master:modify", "master:copyRow", "master:generateFromBom", "master:saveGridConfig",
+    "COST_MATERIAL:addRow", "COST_MATERIAL:deleteRow", "COST_MATERIAL:modify",
     "COST_MATERIAL:copyRow", "COST_MATERIAL:saveGridConfig",
+    "COST_PACKAGE:addRow", "COST_PACKAGE:deleteRow", "COST_PACKAGE:modify",
     "COST_PACKAGE:copyRow", "COST_PACKAGE:saveGridConfig",
 ]
+"""与 seed `role.技术中心.json` 的成本核算页相同。"""
+
+DETAIL_EDITING = ["COST_MATERIAL:addRow", "COST_MATERIAL:deleteRow", "COST_MATERIAL:modify",
+                  "COST_PACKAGE:addRow", "COST_PACKAGE:deleteRow", "COST_PACKAGE:modify"]
+"""有保存的角色在成本核算两个明细的新增、删除、修改（旧系统明细增删改只看 save）。"""
 
 TECH_CENTER_ROWS = {
     # 旧 ROW_POLICY 原样（可视化写法）
@@ -112,7 +124,9 @@ TECH_CENTER = {
         GOODS_PRICE_MANAGE: {
             # 旧：["系统默认按钮:addRow","系统默认按钮:save",…审批三项…,"系统默认按钮:advancedSearch","物料清单及成本:copyRow",
             # "物料清单及成本:saveGridConfig"]；列权限 {"grid":{"1428":{"visible":false,"editable":false,"columnName":"PRICE"}}}
-            "buttons": ["system:addRow", "system:save", "system:advancedSearch", "master:copyRow", "master:saveGridConfig"],
+            # 单表页只有主表：旧 addRow → master:addRow，有保存 → master:modify
+            "buttons": ["master:addRow", "master:modify", "system:save", "system:advancedSearch", "master:copyRow",
+                        "master:saveGridConfig"],
             "columns": {"master": {"PRICE": {"visible": False, "editable": False}}},
         },
     },
@@ -125,9 +139,11 @@ ROLE_001 = {
             # 旧：["自定义导出:cost-pinggu-export","包材明细:copyRow","包材明细:saveGridConfig","原辅料明细:copyRow",
             # "原辅料明细:saveGridConfig","物料成本核算表:copyRow","物料成本核算表:generateFromBom","物料成本核算表:syncPrice",
             # "物料成本核算表:saveGridConfig","系统默认按钮:addRow","系统默认按钮:save",…审批三项…,"系统默认按钮:advancedSearch"]
+            # 旧 addRow → master:addRow；有保存 → master:modify 和两个明细的新增、删除、修改
             "buttons": ["export:cost-pinggu-export", "COST_PACKAGE:copyRow", "COST_PACKAGE:saveGridConfig",
                         "COST_MATERIAL:copyRow", "COST_MATERIAL:saveGridConfig", "master:copyRow", "master:generateFromBom",
-                        "master:syncPrice", "master:saveGridConfig", "system:addRow", "system:save", "system:advancedSearch"],
+                        "master:syncPrice", "master:saveGridConfig", "master:addRow", "master:modify", *DETAIL_EDITING,
+                        "system:save", "system:advancedSearch"],
             "rows": {"mode": "visual", "logic": "OR",
                      "conditions": [{"field": "USESTATUS", "fieldLabel": "状态", "op": "eq", "valueType": "static", "value": "商业化"}],
                      "sql": "USESTATUS = '商业化'"},
@@ -135,8 +151,8 @@ ROLE_001 = {
         GOODS_MANAGE: {
             # 产品信息维护 goods-manage（09 查询）；技术中心没有这个页面。旧：["系统默认按钮:addRow","系统默认按钮:save",
             # …审批三项…,"系统默认按钮:advancedSearch","产品信息维护:copyRow","产品信息维护:saveGridConfig","系统默认按钮:deleteRow"]
-            "buttons": ["system:addRow", "system:save", "system:advancedSearch", "master:copyRow", "master:saveGridConfig",
-                        "system:deleteRow"],
+            "buttons": ["master:addRow", "master:modify", "system:save", "system:advancedSearch", "master:copyRow",
+                        "master:saveGridConfig", "master:deleteRow"],
         },
     },
 }
@@ -256,7 +272,7 @@ def page_view(page_code: str, page: PageConfig, entities: dict[str, EntityConfig
                         fields=_area_fields(master_entity, page.master.fields, grant.columns.get("master", {}),
                                             (lookups or {}).get("master", {})),
                         buttons=area_buttons("master"), grid=page.master.grid, form_layout=[],
-                        erp_row=master_entity.erp_row)
+                        erp_row=master_entity.erp_row, can_modify=permitted("master:modify"))
     links = {link.entity: link.parent_key for link in master_entity.details}
     details = []
     for d in page.details:
@@ -265,8 +281,8 @@ def page_view(page_code: str, page: PageConfig, entities: dict[str, EntityConfig
                                   fields=_area_fields(entity, d.fields, grant.columns.get(d.entity, {}),
                                                       (lookups or {}).get(d.entity, {})),
                                   buttons=area_buttons(d.entity), grid=d.grid or _GRID, form_layout=[],
-                                  erp_row=entity.erp_row))
-    system = [b for b in ("save", "addRow", "deleteRow", "advancedSearch") if permitted(f"system:{b}")]
+                                  erp_row=entity.erp_row, can_modify=permitted(f"{d.entity}:modify")))
+    system = [b for b in ("save", "advancedSearch") if permitted(f"system:{b}")]
     return PageView(page_code=page_code, title=page.title, version=1, layout=page.layout, detail_mode=page.detail_mode,
                     audit=page.audit, save_operation=page.save_operation, rules_pack=PackRef(pack_id=page_code, version=1),
                     master=master, details=details, system_buttons=system)

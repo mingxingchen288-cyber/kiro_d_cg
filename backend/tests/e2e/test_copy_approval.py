@@ -54,7 +54,7 @@ def admin(servers: list[Backend]) -> Iterator[Browser]:
 @pytest.fixture(scope="module")
 def copier(servers: list[Backend]) -> Iterator[Browser]:
     """复制、保存的会话：admin 在另一个后端进程上登录（d_cg 中成本会计 chengben01 没有成本核算的新增行权限
-    `system:addRow`、`copyRow`，复制保存返回 403）。"""
+    `<区域>:addRow`、`<区域>:copyRow`，复制保存返回 403）。"""
     browser = Browser(servers[1], *ADMIN)
     yield browser
     browser.close()

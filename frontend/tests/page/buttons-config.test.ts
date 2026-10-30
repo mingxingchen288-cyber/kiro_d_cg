@@ -31,13 +31,15 @@ describe('按钮（FP-14）', () => {
     expect(enabled()).toEqual({ 新增: true, 复制: true, 删除: true, 同步价格: true, 保存列配置: true });
   });
 
-  it('systemButtons 没有 addRow、deleteRow 时不显示新增、删除；没有 save 时整页只读', async () => {
+  it('角色没有主表的新增、删除时区域 buttons 里没有这两个按钮，不显示；没有 save 时整页只读', async () => {
     const view = costView();
+    view.master.buttons = view.master.buttons.filter(b => b.action !== 'addRow' && b.action !== 'deleteRow');
     view.systemButtons = ['advancedSearch'];
     const { runtime } = await openCostPage(view);
     expect(runtime.regionButtons(view.master).map(b => b.label)).toEqual(['复制', '同步价格', '保存列配置']);
     runtime.onSelection(MASTER, ['2550']);
-    expect(runtime.buttonEnabled(view.master, view.master.buttons[1])).toBe(false);
+    // 复制：没有保存时不可用
+    expect(runtime.buttonEnabled(view.master, view.master.buttons[0])).toBe(false);
     expect(runtime.cellEditable(MASTER, '2550', 'MEMO')).toBe(false);
     expect(runtime.edit(MASTER, '2550', 'MEMO', 'x')).toBe(false);
   });

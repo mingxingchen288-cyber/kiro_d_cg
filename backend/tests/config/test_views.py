@@ -1,5 +1,5 @@
-"""页面视图（CF-03、C05，T-CF-2）：三层叠加、可编辑与保存操作的 writableFields 取交集、内置按钮的 requiresSelection、
-按角色过滤按钮、新增和删除显示在页面配置放了它们的区域。"""
+"""页面视图（CF-03、C05，T-CF-2、T-AZ-2）：三层叠加、可编辑与保存操作的 writableFields 取交集、内置按钮的
+requiresSelection、按角色过滤按钮（新增、删除按区域授权）、区域的 canModify、新增和删除显示在页面配置放了它们的区域。"""
 
 from __future__ import annotations
 
@@ -95,17 +95,32 @@ def test_builtin_buttons_requires_selection() -> None:
     assert [(b.key, b.requires_selection) for b in view.details[0].buttons] == [
         ("COST_MATERIAL:addRow", False), ("COST_MATERIAL:copyRow", True), ("COST_MATERIAL:deleteRow", True)]
     assert view.details[1].buttons == []
-    assert view.system_buttons == ["save", "addRow", "deleteRow", "advancedSearch"]
+    assert view.system_buttons == ["save", "advancedSearch"]
     assert BUILTIN_REQUIRES_SELECTION == {"copyRow": True, "deleteRow": True, "addRow": False, "saveGridConfig": False}
 
 
 def test_buttons_filtered_by_role() -> None:
-    """按钮只留当前角色有权限的（C06 第 8 节的权限键）：新增、删除看 system:addRow、system:deleteRow；
-    没有 system:save 时 systemButtons 中没有 save。"""
-    view = _view(_seed_with_buttons(["master:copyRow", "system:addRow", "COST_MATERIAL:copyRow"]), "COST_PINGGU", "COST_ACCOUNTANT")
-    assert [b.key for b in view.master.buttons] == ["master:addRow", "master:copyRow"]
-    assert [b.key for b in view.details[0].buttons] == ["COST_MATERIAL:addRow", "COST_MATERIAL:copyRow"]
-    assert view.system_buttons == ["addRow"]
+    """按钮只留当前角色有权限的（C06 v24 第 8 节的权限键）：新增、删除也按区域，看 `<区域>:addRow`、`<区域>:deleteRow`；
+    区域的 canModify 看 `<区域>:modify`；没有 system:save 时 systemButtons 中没有 save。"""
+    view = _view(_seed_with_buttons(["master:copyRow", "COST_MATERIAL:addRow", "COST_MATERIAL:deleteRow", "COST_MATERIAL:modify",
+                                     "system:advancedSearch"]), "COST_PINGGU", "COST_ACCOUNTANT")
+    assert [b.key for b in view.master.buttons] == ["master:copyRow"]
+    assert [b.key for b in view.details[0].buttons] == ["COST_MATERIAL:addRow", "COST_MATERIAL:deleteRow"]
+    assert view.system_buttons == ["advancedSearch"]
+    assert (view.master.can_modify, view.details[0].can_modify, view.details[1].can_modify) == (False, True, False)
+    dumped = dump_wire(PageView, view)
+    assert (dumped["master"]["canModify"], "canModify" in dumped["details"][0]) == (False, False)  # true 时省略（C05 v8）
+
+
+def test_page_view_before_v8_still_parses() -> None:
+    """v8 之前生成、还没重新生成的页面视图（systemButtons 带 addRow、deleteRow，区域没有 canModify）照样能读：
+    区域按能修改读出。下次保存任何配置时 config 按新规则重新生成（CF-02）。"""
+    view = _view(_seed_with_buttons(["*"]), "COST_PINGGU", "COST_ACCOUNTANT")
+    old = dump_wire(PageView, view)
+    old["systemButtons"] = ["save", "addRow", "deleteRow", "advancedSearch"]
+    parsed = parse_wire(PageView, old)
+    assert parsed.system_buttons == ["save", "addRow", "deleteRow", "advancedSearch"]
+    assert parsed.master.can_modify is True and all(d.can_modify for d in parsed.details)
 
 
 def test_editable_within_save_operation_writable_fields() -> None:

@@ -110,7 +110,7 @@ export function costView(): PageView {
         formLayout: []
       }
     ],
-    systemButtons: ['save', 'addRow', 'deleteRow', 'advancedSearch']
+    systemButtons: ['save', 'advancedSearch']
   };
 }
 

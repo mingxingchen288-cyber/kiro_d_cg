@@ -6,10 +6,12 @@
 可编辑再与页面保存操作的 `writableFields` 取交集（C05）：后端保存时按它拒绝（authz 的 `writable_fields`），
 页面上显示能编辑的字段，保存时一定能写。不可编辑、但随可编辑字段的 Lookup 回填写库的字段标 `fillWritable`（C05）。
 
-按钮：区域按钮按页面配置的顺序，只留当前角色有权限的：`addRow`、`deleteRow` 是页面级按钮，要 `system:<动作>`
-（同时列在 `systemButtons` 中），前端只在页面配置放了这两个按钮的区域显示它们（C05、frontend-page 的 FP-14）；
-其他按钮要 `*` 或权限键 `master:<动作>`、`<明细实体>:<动作>`。内置动作是否要求选中行按 CF-03 的表，
-业务动作取页面配置中的值。
+按钮：区域按钮按页面配置的顺序，只留当前角色有权限的：要 `*` 或权限键 `master:<动作>`、`<明细实体>:<动作>`，
+新增、删除也一样按区域授权（C06 v24 第 8 节，用户 2026-10-30"控制到明细级别"）。`systemButtons` 只有 `save`、
+`advancedSearch`。内置动作是否要求选中行按 CF-03 的表，业务动作取页面配置中的值。
+
+修改：区域的 `canModify` 为角色有没有 `<区域>:modify`（C05 v8）。没有时前端把这个区域已经保存的行整行设为只读，
+新增、复制出的行照常按 `editable` 填写；字段的 `editable` 不因此改变。后端按同一规则拒绝（authz 的 AZ-01）。
 """
 
 from __future__ import annotations
@@ -39,8 +41,9 @@ from .catalog import Catalog
 BUILTIN_REQUIRES_SELECTION: dict[str, bool] = {"copyRow": True, "deleteRow": True, "addRow": False, "saveGridConfig": False}
 """CF-03：内置按钮动作是否要求选中行，由平台统一规定，管理员不配置。"""
 
-SYSTEM_BUTTONS: tuple[SystemButton, ...] = ("save", "addRow", "deleteRow", "advancedSearch")
-PAGE_LEVEL_ACTIONS = frozenset({"addRow", "deleteRow"})
+SYSTEM_BUTTONS: tuple[SystemButton, ...] = ("save", "advancedSearch")
+MODIFY_ACTION = "modify"
+"""区域的修改权限键 `<区域>:modify` 中的动作名（C06 第 8 节）；不是按钮。"""
 
 Layer = FieldFlags | FieldSetting | None
 
@@ -93,8 +96,7 @@ def _buttons(region: str, buttons: Sequence[ButtonConfig], grant: RolePage) -> l
     result = []
     for button in buttons:
         key = f"{region}:{button.action}"
-        permission = f"system:{button.action}" if button.action in PAGE_LEVEL_ACTIONS else key
-        if not _allowed(grant, permission):
+        if not _allowed(grant, key):
             continue
         if button.action in BUILTIN_REQUIRES_SELECTION:
             requires, operation = BUILTIN_REQUIRES_SELECTION[button.action], None
@@ -117,6 +119,7 @@ def build_page_view(page_code: str, page: PageConfig, entities: Mapping[str, Ent
                        set(writable_fields.get(page.master.entity, ()))),
         buttons=_buttons("master", page.master.buttons, grant), grid=page.master.grid,
         form_layout=page.master.form_layout, erp_row=entity.erp_row,
+        can_modify=_allowed(grant, f"master:{MODIFY_ACTION}"),
     )
     parent_keys = {link.entity: link.parent_key for link in entity.details}
     details = []
@@ -127,7 +130,7 @@ def build_page_view(page_code: str, page: PageConfig, entities: Mapping[str, Ent
             fields=_fields(detail, area.fields, grant.columns.get(area.entity, {}),
                            set(writable_fields.get(area.entity, ()))),
             buttons=_buttons(area.entity, area.buttons, grant), grid=area.grid, form_layout=area.form_layout,
-            erp_row=detail.erp_row,
+            erp_row=detail.erp_row, can_modify=_allowed(grant, f"{area.entity}:{MODIFY_ACTION}"),
         ))
     return PageView(
         page_code=page_code, title=page.title, version=version, layout=page.layout, detail_mode=page.detail_mode,

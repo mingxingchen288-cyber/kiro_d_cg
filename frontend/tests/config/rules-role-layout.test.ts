@@ -7,10 +7,19 @@ import { describe, expect, it } from 'vitest';
 import { loadPageCatalog } from '../../src/modules/config/core/catalog';
 import { ItemEditor } from '../../src/modules/config/core/item-editor';
 import { FormLayoutModel, toGrid } from '../../src/modules/config/layout/form-layout';
-import { columnPolicy, columnRows, generateRowSql, rowPolicyForm, rowPolicyValue } from '../../src/modules/config/role/role-model';
+import {
+  PAGE_BUTTONS,
+  areaPermissionRows,
+  buttonGroups,
+  columnPolicy,
+  columnRows,
+  generateRowSql,
+  rowPolicyForm,
+  rowPolicyValue
+} from '../../src/modules/config/role/role-model';
 import { RuleEditor } from '../../src/modules/config/rules/rule-editor';
 import { matchCondition, validateCondition } from '../../src/modules/config/rules/rule-model';
-import { createBackend, notifier } from './support';
+import { createBackend, notifier, useSeed } from './support';
 
 describe('规则表单（FC-06）', () => {
   it('包材明细的批量：多公式两条分支，分支条件由"分支字段 + 正则 + 值"生成，保存内容与 C06 样例相同', async () => {
@@ -110,6 +119,35 @@ describe('行权限（FC-04）', () => {
       admin: false,
       pages: { COST_PINGGU: { buttons: ['system:save', 'master:copyRow'], rows: 'CREATE_BY = ${username}' } }
     });
+  });
+
+  it('按钮权限（FC-12）：成本核算一行一个区域给新增、删除、修改；其余区域按钮和导出分组列出，新增、删除不重复', async () => {
+    const backend = createBackend();
+    useSeed(backend);
+    const { page } = await loadPageCatalog(backend.store, 'COST_PINGGU');
+    expect(PAGE_BUTTONS.map(b => [b.key, b.label])).toEqual([
+      ['system:save', '保存'],
+      ['system:advancedSearch', '高级查询']
+    ]);
+    expect(areaPermissionRows(page).map(r => [r.title, ...r.choices.map(c => `${c.label} ${c.key}`)])).toEqual([
+      ['主表', '新增 master:addRow', '删除 master:deleteRow', '修改 master:modify'],
+      ['原料/辅料', '新增 COST_MATERIAL:addRow', '删除 COST_MATERIAL:deleteRow', '修改 COST_MATERIAL:modify'],
+      ['包材', '新增 COST_PACKAGE:addRow', '删除 COST_PACKAGE:deleteRow', '修改 COST_PACKAGE:modify']
+    ]);
+    const groups = buttonGroups(page, [{ key: 'cost-pinggu-export', name: '物料成本核算表导出' }]);
+    expect(groups.map(g => [g.groupName, ...g.buttons.map(b => b.key)])).toEqual([
+      ['主表', 'master:copyRow', 'master:generateFromBom', 'master:saveGridConfig'],
+      ['原料/辅料', 'COST_MATERIAL:copyRow', 'COST_MATERIAL:saveGridConfig'],
+      ['包材', 'COST_PACKAGE:copyRow', 'COST_PACKAGE:saveGridConfig'],
+      ['导出', 'export:cost-pinggu-export']
+    ]);
+  });
+
+  it('按钮权限（FC-12）：单表页只有主表一行', async () => {
+    const backend = createBackend();
+    useSeed(backend);
+    const { page } = await loadPageCatalog(backend.store, 'GOODS_PRICE_MANAGE');
+    expect(areaPermissionRows(page).map(r => r.title)).toEqual(['主表']);
   });
 
   it('列权限：把单价改为不可编辑，只写这一个字段（同 C06 样例）', () => {

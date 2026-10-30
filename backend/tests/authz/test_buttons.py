@@ -1,7 +1,8 @@
-"""单角色授权、按钮权限（AZ-01、AZ-02、AZ-06，业务例子 E07）。工程约定第 5 节：先写失败的测试。
+"""单角色授权、按钮权限和区域的新增、删除、修改（AZ-01、AZ-02、AZ-06，业务例子 E07、E42）。工程约定第 5 节：先写失败的测试。
 
-角色权限取自旧系统 cmx 的真实数据（见 samples.py）。技术中心在成本核算页：有保存、三个区域的复制、由BOM生成明细，
-没有新增、删除、同步采购价和导出；001 有新增、同步采购价和导出 cost-pinggu-export。
+角色权限取自旧系统 cmx 的真实数据（见 samples.py）。技术中心在成本核算页：有保存、主表修改、三个区域的复制、
+两个明细的新增删除修改、由BOM生成明细，没有主表新增删除、同步采购价和导出；001 另有主表新增、同步采购价和导出
+cost-pinggu-export。
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from .samples import (
     TECH_CENTER_PINGGU_BUTTONS,
     context,
     role,
+    seed,
     snapshot,
 )
 
@@ -90,6 +92,13 @@ def denied(cmd: Command, role_code: str = "技术中心", **snapshot_args: Any) 
 
 # ---------------------------------------------------------------- E07
 
+def test_tech_center_sample_matches_seed() -> None:
+    """样例中技术中心的权限与 seed 的 `role.技术中心.json` 相同（seed 按同一规则从旧系统转换）。"""
+    seeded = seed("role", "技术中心")
+    assert seeded.pages[COST_PINGGU].buttons == TECH_CENTER_PINGGU_BUTTONS
+    assert seeded.pages == role("技术中心").pages
+
+
 def test_e07_tech_center_copies_master_row_and_saves() -> None:
     """技术中心复制成本核算主表行（连同明细）并保存：保存有 system:save，三个区域的新增行都有该区域的 copyRow。"""
     ctx = context(snapshot("技术中心"))
@@ -98,21 +107,23 @@ def test_e07_tech_center_copies_master_row_and_saves() -> None:
 
 
 def test_e07_new_row_not_from_copy_passes_by_area_copy_row() -> None:
-    """直接调接口提交一条不是复制出来的新增行：按新增处理，原辅料明细有 copyRow 而放行（技术中心没有 system:addRow）。"""
-    assert "system:addRow" not in TECH_CENTER_PINGGU_BUTTONS
-    run(command(details_of(DetailAdd(entity=COST_MATERIAL, op="add", client_row_id=MATERIAL_NEW, values={"GOODSID": "117"}))))
+    """直接调接口提交一条不是复制出来的主表新增行：按新增处理，主表有 copyRow 而放行（技术中心没有 master:addRow）。"""
+    assert "master:addRow" not in TECH_CENTER_PINGGU_BUTTONS
+    run(command(DocumentPatch(entity=COST_PINGGU, master=MasterAdd(op="add", client_row_id=MASTER_COPY,
+                                                                   values={"GOODSID": "1"}), details=[])))
 
 
-def test_e07_add_in_area_without_copy_row_is_denied() -> None:
-    """没有 copyRow 的区域新增返回 403。cmx 中技术中心在成本核算三个区域都有 copyRow（03 查询没有现成的反例），
-    这里在真实权限上去掉包材明细的 copyRow；原辅料明细照常放行，拒绝明细指向包材明细那一行。"""
-    assert "system:addRow" in role("001").pages[COST_PINGGU].buttons  # 001 有新增，但选了技术中心，不起作用
-    without = [b for b in TECH_CENTER_PINGGU_BUTTONS if b != "COST_PACKAGE:copyRow"]
+def test_e07_add_in_area_without_add_or_copy_row_is_denied() -> None:
+    """既没有 addRow 也没有 copyRow 的区域新增返回 403。cmx 中技术中心在成本核算三个区域都有 copyRow（03 查询没有现成的
+    反例），这里在真实权限上去掉包材明细的新增和复制；原辅料明细照常放行，拒绝明细指向包材明细那一行。"""
+    assert "master:addRow" in role("001").pages[COST_PINGGU].buttons  # 001 有主表新增，但选了技术中心，不起作用
+    without = [b for b in TECH_CENTER_PINGGU_BUTTONS if b not in ("COST_PACKAGE:copyRow", "COST_PACKAGE:addRow")]
     tech = role("技术中心", **{COST_PINGGU: {"buttons": without}})
     error = denied(command(details_of(
         DetailAdd(entity=COST_MATERIAL, op="add", client_row_id=MATERIAL_NEW, values={"GOODSID": "117"}),
         DetailAdd(entity=COST_PACKAGE, op="add", client_row_id=PACKAGE_NEW, values={"GOODSID": "201"}))), grant_role=tech)
     assert [(d.entity, d.client_row_id) for d in error.details] == [(COST_PACKAGE, PACKAGE_NEW)]
+    assert error.details[0].message == "没有新增行的权限：需要 COST_PACKAGE:addRow 或 COST_PACKAGE:copyRow"
 
 
 def test_e07_only_the_selected_role_applies() -> None:
@@ -132,13 +143,41 @@ def test_e07_only_the_selected_role_applies() -> None:
 
 # ---------------------------------------------------------------- AZ-01 其余
 
-def test_delete_without_delete_row_is_denied() -> None:
-    """技术中心没有 system:deleteRow：删除明细行、删除整张单据都返回 403，明细指向被删的行。"""
-    error = denied(command(details_of(DetailModify(entity=COST_MATERIAL, op="modify", row_key="5001", changes={"MEMO": "改"}),
-                                      DetailDelete(entity=COST_MATERIAL, op="delete", row_key="5002"))))
-    assert [(d.entity, d.row_key) for d in error.details] == [(COST_MATERIAL, "5002")]
+def test_delete_needs_area_delete_row() -> None:
+    """技术中心有原辅料的 deleteRow、没有 master:deleteRow：改一条原辅料、删另一条通过；删除整张单据返回 403，明细指向
+    被删的主表行。"""
+    run(command(details_of(DetailModify(entity=COST_MATERIAL, op="modify", row_key="5001", changes={"MEMO": "改"}),
+                           DetailDelete(entity=COST_MATERIAL, op="delete", row_key="5002"))))
     error = denied(command(DocumentPatch(entity=COST_PINGGU, master=MasterDelete(op="delete", row_key="200680"), details=[])))
     assert [(d.entity, d.row_key) for d in error.details] == [(COST_PINGGU, "200680")]
+    assert error.details[0].message == "没有删除行的权限：需要 master:deleteRow"
+
+
+def test_delete_master_row_only_needs_master_delete_row() -> None:
+    """删除主表行连同明细（WP-06）只看 master:deleteRow：角色有主表删除、没有任何明细的删除，删除整张单据通过。"""
+    granted = role("技术中心", **{COST_PINGGU: {"buttons": ["system:save", "master:deleteRow"]}})
+    run(command(DocumentPatch(entity=COST_PINGGU, master=MasterDelete(op="delete", row_key="200680"), details=[])),
+        grant_role=granted)
+
+
+def test_modify_needs_area_modify() -> None:
+    """用户 2026-10-30"控制到明细级别"：角色只有保存和原辅料的新增、删除、修改（端到端用例的 PF_TEST 角色）。
+    改原辅料的已有行、新增和删除原辅料都通过；改主表备注、改包材的已有行返回 403，明细逐行指出要哪个权限。
+    新增的原辅料行照常填写，不需要修改权限。"""
+    granted = role("技术中心", **{COST_PINGGU: {"buttons": ["system:save", "COST_MATERIAL:addRow", "COST_MATERIAL:deleteRow",
+                                                              "COST_MATERIAL:modify"]}})
+    run(command(details_of(DetailModify(entity=COST_MATERIAL, op="modify", row_key="5001", changes={"PRICE": "3.8"}),
+                           DetailAdd(entity=COST_MATERIAL, op="add", client_row_id=MATERIAL_NEW,
+                                     values={"GOODSID": "117", "PRICE": "2"}),
+                           DetailDelete(entity=COST_MATERIAL, op="delete", row_key="5002"))), grant_role=granted)
+    error = denied(command(DocumentPatch(
+        entity=COST_PINGGU, master=MasterModify(op="modify", row_key="200680", changes={"MEMO": "改"}),
+        details=[DetailModify(entity=COST_MATERIAL, op="modify", row_key="5001", changes={"PRICE": "3.8"}),
+                 DetailModify(entity=COST_PACKAGE, op="modify", row_key="6001", changes={"MEMO": "改"})])),
+        grant_role=granted)
+    assert [(d.entity, d.row_key, d.message) for d in error.details] == [
+        (COST_PINGGU, "200680", "没有修改行的权限：需要 master:modify"),
+        (COST_PACKAGE, "6001", "没有修改行的权限：需要 COST_PACKAGE:modify")]
 
 
 def test_star_allows_everything() -> None:
@@ -178,8 +217,10 @@ def test_approval_operations_only_need_a_selected_role() -> None:
 
 def test_approval_origin_writes_skip_button_checks() -> None:
     """来源为审批的写入不按某个人的权限（架构 10.4 第 3 步；旧系统审批通过的修改跳过保存权限检查）。"""
-    ctx = context(snapshot("技术中心"), origin=Origin(kind="approval", approval_id="203"))
-    cmd = command(details_of(DetailDelete(entity=COST_MATERIAL, op="delete", row_key="5002")))
+    granted = role("技术中心", **{COST_PINGGU: {"buttons": ["system:advancedSearch"]}})  # 没有保存、修改、删除
+    ctx = context(snapshot("技术中心", granted), origin=Origin(kind="approval", approval_id="203"))
+    cmd = command(DocumentPatch(entity=COST_PINGGU, master=MasterModify(op="modify", row_key="200680", changes={"MEMO": "改"}),
+                                details=[DetailDelete(entity=COST_MATERIAL, op="delete", row_key="5002")]))
     with FakeUnitOfWorkFactory().begin() as uow:
         stage.run(uow, CommandState(command=cmd), ctx)
     assert checker.can_run(ctx, SAVE, COST_PINGGU) is True

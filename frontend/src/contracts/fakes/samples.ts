@@ -282,7 +282,8 @@ export const pageViewSample: PageView = {
         "w": 12,
         "h": 1
       }
-    ]
+    ],
+    "canModify": false
   },
   "details": [
     {
@@ -330,9 +331,23 @@ export const pageViewSample: PageView = {
       ],
       "buttons": [
         {
+          "key": "COST_MATERIAL:addRow",
+          "action": "addRow",
+          "label": "新增",
+          "operation": null,
+          "requiresSelection": false
+        },
+        {
           "key": "COST_MATERIAL:copyRow",
           "action": "copyRow",
           "label": "复制",
+          "operation": null,
+          "requiresSelection": true
+        },
+        {
+          "key": "COST_MATERIAL:deleteRow",
+          "action": "deleteRow",
+          "label": "删除",
           "operation": null,
           "requiresSelection": true
         }
@@ -347,8 +362,6 @@ export const pageViewSample: PageView = {
   ],
   "systemButtons": [
     "save",
-    "addRow",
-    "deleteRow",
     "advancedSearch"
   ]
 };
