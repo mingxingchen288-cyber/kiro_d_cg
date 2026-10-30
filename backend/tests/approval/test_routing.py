@@ -130,6 +130,19 @@ def test_e14_withdraw_before_anyone_processed() -> None:
                       next_nodes=answers(TWO_LEVELS))
     assert withdraw.allowed and withdraw.destination == "closed"
     assert withdraw.progress.status == "withdrawn"
+    # 还没处理的节点和审批人记为已撤回（旧系统 DO_CANCEL_APPROVAL 把 PENDING 的审批记录改为 CANCELED）
+    [first] = withdraw.progress.nodes
+    assert (first.status, [m.status for m in first.members]) == ("withdrawn", ["withdrawn", "withdrawn"])
+
+
+def test_reject_in_countersign_marks_other_member_withdrawn() -> None:
+    """会签中李四驳回：节点已驳回，李四已驳回，还没处理的张三已撤回（旧系统 DO_REJECT_DETAIL 把其余 PENDING 改为 CANCELED）。"""
+    rejected = decide(two_level_start(), act("reject", "10", comment="数量不对"), applicant_id="112", is_member=is_member,
+                      next_nodes=answers(TWO_LEVELS))
+    assert rejected.allowed and rejected.progress.status == "rejected"
+    [first] = rejected.progress.nodes
+    assert (first.status, [(m.name, m.status) for m in first.members]) == (
+        "rejected", [("李四", "rejected"), ("张三", "withdrawn")])
 
 
 def test_only_applicant_can_withdraw() -> None:
@@ -192,6 +205,10 @@ def test_e15_reject_at_any_level_closes_whole_approval() -> None:
     assert rejected.progress.status == "rejected"
     zhao = next(n for n in rejected.progress.nodes if n.name == "赵六审批")
     assert zhao.status == "rejected" and zhao.members[0].comment == "价格偏高"
+    # 同一级另一个审批流还没处理的王五审批记为已撤回；第 1 级已通过的不变
+    assert [(n.level, n.name, n.status, [m.status for m in n.members]) for n in rejected.progress.nodes] == [
+        (1, "李四审批", "passed", ["passed"]), (1, "李四审批", "passed", ["passed"]),
+        (2, "王五审批", "withdrawn", ["withdrawn"]), (2, "赵六审批", "rejected", ["rejected"])]
 
 
 def test_finished_approval_accepts_no_more_actions() -> None:

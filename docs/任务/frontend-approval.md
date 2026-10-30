@@ -18,3 +18,4 @@
   - 浏览器渲染检查（模拟数据，不是联调）：用替代实现挂载详情页和待办页，勾选、preview、通过、页签切换的 DOM 结果记在 `.reports/modules/frontend-approval/progress.md`；检查用的临时入口已删除。
   - 契约缺口：`.reports/modules/frontend-approval/contract-gaps.md`（待办没有"我处理过的"、原单据不能定位单据、审批进度弹窗没有到详情的入口、详情没有处理记录、修改内容的列没有宽度）。
   - 上线后再补：请求结果不确定（网络中断）时暂停重复提交（旧系统 `ApprovalDetailDialog.vue` 的 `uncertain`）、preview 失败后的处理（现在只提示错误）。
+  - 已撤回（2026-10-30，RA 组，`batch4/rules-approval`，C09 v11）：`steps[].status`、`members[].status` 增加 `withdrawn`，`view-model.ts` 的 `STEP_STATUS`、`MEMBER_STATUS` 显示"已撤回"（同旧系统 `ApprovalDetailDialog.vue` 的 `statusText` 中 CANCELED），`contracts/http.ts` 同步；frontend-page 的审批进度弹窗 `ApprovalProgressDialog.vue` 同样加上。`tests/approval/e37.test.ts` 加一例（审批 29 撤回后的进度：状态"已撤回"、审批人"角色：系统管理员（已撤回）"）。后端改动和浏览器核对见 approval 的 T-AP-3。

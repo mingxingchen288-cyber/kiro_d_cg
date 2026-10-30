@@ -1714,7 +1714,7 @@ class StepMember(Wire):
     type: Literal["user", "role"]
     id: Key
     name: str
-    status: Literal["pending", "passed", "rejected"]
+    status: Literal["pending", "passed", "rejected", "withdrawn"]
     processed_by: UserBrief | None
     processed_at: DateTimeText | None
     comment: str | None
@@ -1726,7 +1726,7 @@ class ApprovalStep(Wire):
     flow_name: str
     node: str
     mode: Literal["or", "and"]
-    status: Literal["passed", "pending", "rejected", "upcoming"]
+    status: Literal["passed", "pending", "rejected", "upcoming", "withdrawn"]
     members: list[StepMember]
 
 

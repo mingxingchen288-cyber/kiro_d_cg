@@ -23,7 +23,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
-MemberStatus = Literal["pending", "passed", "rejected"]
+MemberStatus = Literal["pending", "passed", "rejected", "withdrawn"]
+"""`withdrawn`：审批撤回或被驳回时还没处理的节点和审批人（旧系统的 CANCELED，显示"已撤回"，见 `close_unprocessed`）。"""
 ApprovalStatus = Literal["pending", "approved", "rejected", "withdrawn"]
 Destination = Literal["stay", "next", "end", "closed"]
 
@@ -152,6 +153,23 @@ def advance(progress: Progress, next_nodes: NextNodes) -> Destination:
     return "next"
 
 
+def close_unprocessed(progress: Progress) -> None:
+    """审批撤回或被驳回后，还没处理的节点和审批人记为已撤回（`withdrawn`）；直接修改 `progress`。
+
+    对照旧系统 PKG_WF_APPROVAL：撤回 `DO_CANCEL_APPROVAL`、驳回 `DO_REJECT_DETAIL` 都把本轮还在 WAITING、PENDING 的审批记录
+    改为 CANCELED（驳回人那一条为 REJECTED），审批详情的进度显示"已撤回"。还在处理中的节点改为已撤回；驳回的节点保持已驳回，
+    其中没处理的审批人改为已撤回；已通过的节点不动（旧系统或签通过时其余审批人已是"已跳过"，不再改）。
+    已经结束、进度中仍记着待处理的审批（这个函数之前撤回、驳回的），显示时同样按这里换算（`service.py` 的 `_steps`）。"""
+    for node in progress.nodes:
+        if node.status not in ("pending", "rejected"):
+            continue
+        if node.status == "pending":
+            node.status = "withdrawn"
+        for member in node.members:
+            if member.status == "pending":
+                member.status = "withdrawn"
+
+
 def decide(progress: Progress, action: Action, *, applicant_id: str, is_member: Membership, next_nodes: NextNodes) -> Decision:
     """处理一次通过、驳回或撤回；不修改传入的进度。"""
     result = copy.deepcopy(progress)
@@ -159,6 +177,7 @@ def decide(progress: Progress, action: Action, *, applicant_id: str, is_member: 
         if not can_withdraw(progress, applicant_id, action.user_id):
             return Decision(False, "stay", progress, reason="只有发起人能撤回，并且还没有人通过")
         result.status = "withdrawn"
+        close_unprocessed(result)
         return Decision(True, "closed", result)
 
     mine = pending_nodes(result, action.user_id, is_member)
@@ -169,6 +188,7 @@ def decide(progress: Progress, action: Action, *, applicant_id: str, is_member: 
             _mark(node, action, "rejected", is_member)
             node.status = "rejected"
         result.status = "rejected"
+        close_unprocessed(result)
         return Decision(True, "closed", result, tuple(mine))
 
     for node in mine:

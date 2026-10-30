@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { createPlatformApi } from '../../src/contracts/api';
 import { ApprovalDetailRuntime } from '../../src/modules/approval/detail-runtime';
-import { gridRows, statusLabel, stepRows, triggerLabel } from '../../src/modules/approval/view-model';
+import { type ApprovalStep, gridRows, statusLabel, stepRows, triggerLabel } from '../../src/modules/approval/view-model';
 import { ADMIN, BUYER, E37Backend, MAKER, ROLES, shellFor } from './support';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -127,5 +127,35 @@ describe('E37 成本明细改价审批', () => {
     expect(statusLabel(done)).toBe('已通过 · 第 2 级');
     expect(done.actions).toEqual({ canPass: false, canReject: false, canWithdraw: false });
     expect(stepRows(done.steps).map(s => s.status)).toEqual(['已通过', '已通过']);
+  });
+});
+
+describe('撤回、驳回后的审批进度', () => {
+  it('还没处理的节点和审批人显示已撤回，不显示待处理（d_cg 审批 29 撤回后的进度）', () => {
+    const steps: ApprovalStep[] = [
+      {
+        level: 1,
+        flow: 'COST_TO_GOODS',
+        flowName: '成本明细改价审批',
+        node: '管理员审批',
+        mode: 'or',
+        status: 'withdrawn',
+        members: [
+          { type: 'role', id: 'ADMIN', name: '系统管理员', status: 'withdrawn', processedBy: null, processedAt: null, comment: null }
+        ]
+      }
+    ];
+    expect(stepRows(steps)).toEqual([
+      {
+        level: 1,
+        node: '管理员审批',
+        mode: '或签',
+        approvers: '角色：系统管理员（已撤回）',
+        flowName: '成本明细改价审批',
+        status: '已撤回',
+        time: '—',
+        comment: '—'
+      }
+    ]);
   });
 });

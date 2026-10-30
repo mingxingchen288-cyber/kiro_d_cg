@@ -431,8 +431,18 @@ fn old_variable(row: &Row) -> Variable {
 }
 
 /// 本次计算是否带出了这一行的变化：有计算字段算出的值与 `old`（本命令开始前的值，新增行为空）不同（C07 v7）。
+/// 算出的数值先按 WP-15 处理成保存后的值再比较（C07 v8）：计算不舍入（RC-04），库里存的最多 8 位小数，
+/// 超过 8 位小数的结果（例如 2 × 18.3333333333 = 36.6666666666，库里是 36.66666667）不处理时每次重算都"不同"，
+/// 而后端按 8 位处理后相同、不会写它。`old` 不处理：旧系统按浮点写入的值（例如 16326.530612244898）与保存后的值不同时，
+/// 后端会写入新值，算作变化。
 fn calc_changed(row: &Row) -> bool {
-    row.computed.iter().any(|(field, value)| !same_value(value, row.old.get(field).unwrap_or(&Val::Null)))
+    row.computed.iter().any(|(field, value)| {
+        let saved = match value {
+            Val::Num(d) => Val::Num(decimal::stored(*d)),
+            other => other.clone(),
+        };
+        !same_value(&saved, row.old.get(field).unwrap_or(&Val::Null))
+    })
 }
 
 /// 两个值是否相同：数值按 C01 第 3 节判定一致（old 多是旧系统按浮点算出写入的值，第 16 位以后的差异不算变化）；
