@@ -47,6 +47,17 @@ pub fn format(value: Decimal) -> String {
     value.normalize().to_string()
 }
 
+/// 保存时最多保留的小数位（write-pipeline 的 WP-15）。
+pub const STORED_PLACES: u32 = 8;
+
+/// 按 WP-15 的写法得到保存后的值：最多 8 位小数，第 9 位四舍五入，负数按绝对值四舍五入（与 Oracle、后端
+/// `pipeline/values.py` 的 `ROUND_HALF_UP` 相同）；小数位不超过 8 位的原样返回。只用于判断计算是否带出变化（C07 v8），
+/// 计算本身和 `computed` 仍不舍入（RC-04）。列定义了更小小数位的情况不在这里处理：rules-core 不知道列的小数位，
+/// 规则包字段的 `scale` 是显示小数位（C05），不是列的小数位；d_cg 和旧库 cmx 中计算字段的列都没有定义小数位，一律 8 位。
+pub fn stored(value: Decimal) -> Decimal {
+    value.round_dp_with_strategy(STORED_PLACES, rust_decimal::RoundingStrategy::MidpointAwayFromZero)
+}
+
 /// C01 第 3 节：两个十进制文本是否一致。
 pub fn numbers_consistent(a: &str, b: &str) -> Result<bool, String> {
     Ok(key(a)? == key(b)?)

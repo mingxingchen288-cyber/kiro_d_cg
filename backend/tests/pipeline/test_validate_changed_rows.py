@@ -10,6 +10,9 @@ C07 v7 起计算带出变化的行也校验（文件末尾两个测试，只改�
 - 单据 2712（样例 31，明胶空心胶囊的每片含量假设为 0）：胶囊的每批数量按批量算，跟着变了，被拒绝；
 - 单据 2757（样例 33）：过氧化氢溶液的每批数量仍是 0，不检查，保存成功。
 
+C07 v8 起算出的值先按 WP-15 处理再比较（最后一个测试）：单据 2712（样例 35）胶囊每批成本算出超过 8 位小数，
+处理后与库里相同，只改硬脂酸镁的单价时不被它拒绝。
+
 运行：`uv run --with <wheel> pytest tests/pipeline/test_validate_changed_rows.py`；没有装 wheel 时整个文件跳过。
 """
 
@@ -96,12 +99,14 @@ def _context(snapshot: Any) -> t.ExecutionContext:
                               config_version=1, origin=t.Origin(kind="user", approval_id=None), now=datetime(2026, 10, 30, 10, 0))
 
 
-def _save_price(row_key: str, price: str) -> tuple[Pipeline, RecordingEngine, t.ExecutionContext, t.Command]:
+def _save_price(row_key: str, price: str, case: str = "22",
+                docid: str = "2757") -> tuple[Pipeline, RecordingEngine, t.ExecutionContext, t.Command]:
+    """页面保存只改一行原辅料的单价，数据库中的值取样例 `case` 的请求（默认单据 2757）。"""
     snapshot = _snapshot()
     engine = RecordingEngine()
     entities = {code: snapshot.entity(code) for code in (MASTER, MATERIAL, PACKAGE)}
-    pipeline = Pipeline(setup=Setup(engine=engine), store=SeedStore(entities, _rows_2757(snapshot)))  # type: ignore[arg-type]
-    cmd = command([master_none("2757", [{"entity": MATERIAL, "op": "modify", "rowKey": row_key, "changes": {"PRICE": price}}])])
+    pipeline = Pipeline(setup=Setup(engine=engine), store=SeedStore(entities, _rows_2757(snapshot, case)))  # type: ignore[arg-type]
+    cmd = command([master_none(docid, [{"entity": MATERIAL, "op": "modify", "rowKey": row_key, "changes": {"PRICE": price}}])])
     return pipeline, engine, _context(snapshot), cmd
 
 
@@ -177,4 +182,23 @@ def test_2757_change_batch_saves() -> None:
     assert updated["207584"]["BATCH_QTY"] == Decimal("0.51")
     assert "207577" not in updated
     assert pipeline.store.rows[MASTER]["2757"]["APEX_PL"] == 1700000
+    assert result.prompts == []
+
+
+# C07 v8：算出的值先按 WP-15 处理成保存后的值再与 old 比较。
+
+
+def test_2712_more_than_8_places_row_not_checked() -> None:
+    """单据 2712（样例 35）：明胶空心胶囊 104679 的每片含量假设为 0、单价假设为 18.3333333333，库里每批成本是 36.66666667。
+    只改硬脂酸镁（104670）的单价 63 → 64：胶囊每批成本算出 36.6666666666，按 WP-15 处理后与库里相同，不算变化、不检查，
+    保存成功，104679 不写。"""
+    pipeline, engine, ctx, cmd = _save_price("104670", "64", case="35", docid="2712")
+    assert pipeline.store.rows[MATERIAL]["104679"]["COST_BATCH"] == Decimal("36.66666667")
+    result = pipeline.execute(cmd, ctx)
+    assert result.outcome == "saved"
+    [request] = engine.requests
+    assert request["changed"] == [{"entity": MATERIAL, "rowKey": "104670", "op": "modify", "fields": ["PRICE"]}]
+    updated = {r["rowKey"]: r for w in pipeline.store.writes if w.op == "update" and w.entity == MATERIAL for r in w.rows}
+    assert updated["104670"]["PRICE"] == 64
+    assert "104679" not in updated
     assert result.prompts == []

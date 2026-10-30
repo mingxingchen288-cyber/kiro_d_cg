@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from decimal import ROUND_HALF_UP
 from pathlib import Path
 from typing import Any
 
@@ -309,6 +310,43 @@ def cost_2757_batch(phase: str) -> dict[str, Any]:
                          check={("COST_MATERIAL", 1): {"BATCH_QTY": "0", "COST_BATCH": "0"}, ("COST_MATERIAL", 8): {"BATCH_QTY": "0.51"}})
 
 
+# ---------------------------------------------------------------- C07 v8：计算带出变化按保存后的值判断
+
+def wp15(text: str) -> str:
+    """write-pipeline WP-15 的写法：最多 8 位小数，第 9 位四舍五入（负数按绝对值）。"""
+    value = oracle.D(text)
+    if value.as_tuple().exponent < -8:
+        value = value.quantize(oracle.D(1).scaleb(-8), rounding=ROUND_HALF_UP)
+    return oracle.fmt(value)
+
+
+def cost_2712_stored_precision(phase: str) -> dict[str, Any]:
+    """算出的值超过 8 位小数：明胶空心胶囊每批成本 = 2 × 18.3333333333 = 36.6666666666，库里存的是 WP-15 处理后的 36.66666667。
+    按保存后的值比较没有变化，这一行不算计算带出变化（C07 v8）；用户只改硬脂酸镁的单价，不被胶囊这一行拒绝。"""
+    price = "18.3333333333"
+    stored = wp15(str(oracle.D(2) * oracle.D(price)))
+    assert stored == "36.66666667", stored
+    mat = [s if s[0] != "104679" else (*s[:5], price, s[6], stored) for s in MAT2712]
+
+    def build(spec: list[tuple], edited: str | None) -> list[dict[str, Any]]:
+        out = []
+        for dtlid, gid, gname, flag, per_hl, old_price, q, c in spec:
+            values = dtl(dtlid, "2712", gid, gname, flag, per_hl, None, old_price, q, c)
+            if dtlid == edited:
+                out.append(row({**values, "PRICE": "64"}, key=dtlid, old={"PRICE": old_price}))
+            else:
+                out.append(row(values, key=dtlid))
+        return out
+    changed = [{"entity": "COST_MATERIAL", "rowKey": "104670", "op": "modify", "fields": ["PRICE"]}]
+    source = ("d_cg 单据 2712 的真实主表和明细；明胶空心胶囊（104679）的每片含量假设为 0、单价假设为 18.3333333333（d_cg 单据 2757 乙醇的"
+              "真实单价），库里的每批成本是 WP-15 处理后的 36.66666667。只改硬脂酸镁的单价（63 → 64，假设的修改）：胶囊每批成本算出 "
+              "36.6666666666，按 WP-15 处理后与库里相同，不算计算带出变化、不校验（C07 v8），没有拒绝")
+    return cost_fixture(f"成本核算-单据2712-算出超过8位小数的行不算变化-{phase}", source, cost_master("2712", **M2712),
+                        {"COST_MATERIAL": build(mat, "104670"), "COST_PACKAGE": build(PKG2712, None)}, phase=phase, changed=changed,
+                        check={("COST_MATERIAL", 5): {"BATCH_QTY": "2", "COST_BATCH": "36.6666666666"},
+                               ("COST_MATERIAL", 0): {"COST_BATCH": "51.2"}})
+
+
 # ---------------------------------------------------------------- 显示求值（C07 v6 第 3.1 节，purpose 为 display）
 
 # 旧系统 GRID_STYLE 在表格渲染行时按行数据算样式（usePageRules.ts 的 buildRowStyleCallback），加载即显示、不需要编辑。
@@ -463,6 +501,8 @@ def main() -> None:
     items += [display_2919(False), display_2919(True), *display_demos()]
     # C07 v7：计算带出变化的行也校验（改主表批量）
     items += [cost_2712_batch("preview"), cost_2712_batch("commit"), cost_2757_batch("preview"), cost_2757_batch("commit")]
+    # C07 v8：算出的值先按 WP-15 处理再与 old 比较
+    items += [cost_2712_stored_precision("preview"), cost_2712_stored_precision("commit")]
     for i, item in enumerate(items, 1):
         write(HERE / "cases" / f"{i:02d}-{item['name']}.json", item)
     write(HERE / "cases" / "90-依赖成环.json", {"kind": "packInvalid", "name": "依赖成环", "source": "RC-09：跨实体成环，load_pack 返回 PACK_INVALID",
