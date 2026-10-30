@@ -67,9 +67,10 @@ async function rowWith(grid: Locator, column: string, text: string) {
         await frame();
         for (let top = 0; !find() && top <= el.scrollHeight; top += el.clientHeight / 2) {
           el.scrollTop = top;
-          // 逐段滚，每段等表格画完再看
-          // eslint-disable-next-line no-await-in-loop
-          await frame();
+          // 逐段滚，每段等表格画完再看（机器忙时一帧画不完，最多等 5 次两帧）
+          for (let i = 0; i < 5 && !find(); i += 1)
+            // eslint-disable-next-line no-await-in-loop
+            await frame();
         }
         return find()?.closest('.ag-row')?.getAttribute('row-id') ?? null;
       },
@@ -208,14 +209,19 @@ test('场景 2 部门和账号：系统管理新增部门、新增账号（部�
   const departments = await adminTab(page, '部门管理');
   await departments.getByRole('button', { name: '新增', exact: true }).click();
   await typeNew(page, departments, 'name', departmentName);
-  await departments.getByRole('button', { name: '保存', exact: true }).click();
+  // 等保存的请求返回（页面上前一次的"保存成功"提示可能还在，不能只看提示）
+  const [created] = await Promise.all([
+    page.waitForResponse(r => r.url().endsWith('/api/admin/departments') && r.request().method() === 'POST'),
+    departments.getByRole('button', { name: '保存', exact: true }).click()
+  ]);
+  const departmentId = String((await created.json()).departmentId);
+  data.adoptDepartment(departmentId);
   await toast(page, '保存成功');
   await expect(departments.locator('.ag-row', { hasText: departmentName }).first()).toBeVisible();
   const saved = (await adminApi.get('/api/admin/departments')).items.find(
     (d: { name: string }) => d.name === departmentName
   );
-  const departmentId = String(saved.departmentId);
-  data.adoptDepartment(departmentId);
+  expect(String(saved.departmentId)).toBe(departmentId);
 
   const accounts = await adminTab(page, '人员管理');
   await accounts.getByRole('button', { name: '新增', exact: true }).click();
@@ -232,17 +238,26 @@ test('场景 2 部门和账号：系统管理新增部门、新增账号（部�
     (await accounts.locator('.ag-row[row-id^="new-"] [col-id="password"]').first().textContent()) ?? ''
   ).trim();
   expect(password).toBeTruthy();
-  await accounts.getByRole('button', { name: '保存', exact: true }).click();
+  const [createdAccount] = await Promise.all([
+    page.waitForResponse(r => r.url().endsWith('/api/admin/accounts') && r.request().method() === 'POST'),
+    accounts.getByRole('button', { name: '保存', exact: true }).click()
+  ]);
+  const userId = String((await createdAccount.json()).userId);
+  data.adoptUser(userId);
   await toast(page, '保存成功');
-  const accountRow = accounts.locator('.ag-row', { hasText: username }).first();
+  const accountRow = accounts.locator('.ag-row:not([row-id^="new-"])', { hasText: username }).first();
   await expect(accountRow.locator('[col-id="departmentId"]')).toHaveText(departmentName);
   await expect(accountRow.locator('[col-id="roles"]')).toHaveText('');
 
   const account = (await adminApi.get(`/api/admin/accounts?keyword=${username}`)).rows.find(
     (r: { username: string }) => r.username === username
   );
-  data.adoptUser(account.userId);
-  expect([account.departmentId, account.enabled, account.roleCodes]).toEqual([departmentId, true, []]);
+  expect([String(account.userId), account.departmentId, account.enabled, account.roleCodes]).toEqual([
+    userId,
+    departmentId,
+    true,
+    []
+  ]);
 });
 
 // ---------------------------------------------------------------- 3 角色权限

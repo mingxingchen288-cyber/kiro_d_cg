@@ -207,10 +207,14 @@ async function sumColumn(grid: Locator) {
       await frame();
       for (let top = 0; top <= el.scrollHeight; top += el.clientHeight / 2) {
         el.scrollTop = top;
-        // 逐段滚，每段等表格画完再收集
-        // eslint-disable-next-line no-await-in-loop
-        await frame();
-        grab();
+        // 逐段滚，每段等表格画完再收集：连续两次没有收集到新行才往下滚（机器忙时一帧画不完，最多等 10 次两帧）
+        for (let i = 0, still = 0; i < 10 && still < 2; i += 1) {
+          const count = Object.keys(rows).length;
+          // eslint-disable-next-line no-await-in-loop
+          await frame();
+          grab();
+          still = Object.keys(rows).length === count ? still + 1 : 0;
+        }
       }
       el.scrollTop = 0;
       return rows;

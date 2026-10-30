@@ -685,11 +685,24 @@ export async function scrollToColumn(grid: Locator, column: string) {
         new Promise(resolve => {
           requestAnimationFrame(() => requestAnimationFrame(resolve));
         });
+      // 视野内渲染出的列：滚动后它变了，说明表格已按新位置画完
+      const rendered = () =>
+        Array.from(root.querySelectorAll('.ag-header-row-column .ag-header-cell[col-id]'))
+          .map(c => c.getAttribute('col-id'))
+          .join();
       for (let left = 0; !shown() && left <= el.scrollWidth; left += el.clientWidth) {
+        const [before, from] = [rendered(), el.scrollLeft];
         el.scrollLeft = left;
-        // 逐段滚，每段等表格画完再看
-        // eslint-disable-next-line no-await-in-loop
-        await frame();
+        const moved = el.scrollLeft !== from;
+        // 逐段滚，每段等表格按新位置画完再看（机器忙时一帧画不完，最多等 10 次两帧）；位置没变就不用等
+        if (moved) {
+          for (let i = 0; i < 10 && !shown() && rendered() === before; i += 1)
+            // eslint-disable-next-line no-await-in-loop
+            await frame();
+          // 列变了以后再等两帧，免得只画了一部分
+          // eslint-disable-next-line no-await-in-loop
+          if (!shown()) await frame();
+        }
       }
     }, column);
 }
@@ -717,9 +730,12 @@ export async function headerShown(grid: Locator, column: string): Promise<boolea
       let seen = found();
       for (let left = 0; left <= el.scrollWidth && !seen; left += el.clientWidth) {
         el.scrollLeft = left;
-        // eslint-disable-next-line no-await-in-loop
-        await frame();
-        seen = found();
+        // 每段等表格画完再看（机器忙时一帧画不完，最多等 5 次两帧）
+        for (let i = 0; i < 5 && !seen; i += 1) {
+          // eslint-disable-next-line no-await-in-loop
+          await frame();
+          seen = found();
+        }
       }
       el.scrollLeft = 0;
       return seen;
