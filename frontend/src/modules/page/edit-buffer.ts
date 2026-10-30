@@ -50,6 +50,11 @@ interface PendingRow {
    * 随行的状态一起记进撤销历史，撤销、重做后与当时相同；不按 Map 的插入顺序，因为撤销、重做会把行重新插到最后。
    */
   seq: number;
+  /**
+   * 复制出的新增行（FP-13）：命令中为空的可写字段也写成 null，后端就不补默认值（write-pipeline WP-16"复制出的行不补默认值"），
+   * 复制时没勾的字段保存后为空。不写时后端把为空的数值字段补成 0。
+   */
+  copied?: boolean;
 }
 
 type Step = Map<string, { before: PendingRow | undefined; after: PendingRow | undefined }>;
@@ -227,9 +232,15 @@ export class EditBuffer {
 
   /**
    * 新增一行，返回它的 clientRowId。主表行 `recordId` 传 null（单据就是它自己）；`after` 为插在哪一行之后。
-   * `values` 由调用方按默认值或复制的内容给出。
+   * `values` 由调用方按默认值或复制的内容给出；复制出的行 `copied` 为 true（见 PendingRow.copied）。
    */
-  addRow(entity: string, recordId: string | null, values: FieldValues, after: string | null): string {
+  addRow(
+    entity: string,
+    recordId: string | null,
+    values: FieldValues,
+    after: string | null,
+    options: { copied?: boolean } = {}
+  ): string {
     const id = this.newId();
     this.batch(() => {
       this.write(keyOf(entity, id), {
@@ -239,7 +250,8 @@ export class EditBuffer {
         isNew: true,
         values: { ...values },
         deleted: false,
-        after
+        after,
+        ...(options.copied ? { copied: true } : {})
       });
     });
     return id;
@@ -369,9 +381,11 @@ export class EditBuffer {
     const types = this.schema.entities[row.entity]?.fieldTypes ?? {};
     const result: FieldValues = {};
     for (const [field, value] of Object.entries(row.values)) {
-      // 新增行中为空的字段不写，由后端按默认值补（WP-16）。数值字段例外，写 null：后端对没写的数值字段补 0，
-      // 用户清空的单价（或 Lookup 带回的空单价）会存成 0，必填（WP-07）也检查不到；旧系统新增时同样写入空值
-      if (isNew && value === null && types[field] !== 'number') continue;
+      // 新增行中为空的字段不写，由后端按默认值补（WP-16）。两种例外照写 null：
+      // - 数值字段：后端对没写的数值字段补 0，用户清空的单价（或 Lookup 带回的空单价）会存成 0，必填（WP-07）也检查不到；
+      //   旧系统新增时同样写入空值；
+      // - 复制出的行：WP-16 规定复制出的行不补默认值，复制时没勾的字段保存后为空。
+      if (isNew && value === null && types[field] !== 'number' && !row.copied) continue;
       if (!this.schema.writable(row.entity, field, current, isNew)) continue;
       result[field] = value;
     }
