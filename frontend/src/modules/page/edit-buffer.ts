@@ -44,6 +44,11 @@ interface PendingRow {
   deleted: boolean;
   /** 新增行插在哪一行之后（同一实体、同一单据中），null 表示最前面 */
   after: string | null;
+  /**
+   * 复制出的新增行（FP-13）：命令中为空的可写字段也写成 null，后端就不补默认值（write-pipeline WP-16"复制出的行不补默认值"），
+   * 复制时没勾的字段保存后为空。不写时后端把为空的数值字段补成 0。
+   */
+  copied?: boolean;
 }
 
 type Step = Map<string, { before: PendingRow | undefined; after: PendingRow | undefined }>;
@@ -219,9 +224,15 @@ export class EditBuffer {
 
   /**
    * 新增一行，返回它的 clientRowId。主表行 `recordId` 传 null（单据就是它自己）；`after` 为插在哪一行之后。
-   * `values` 由调用方按默认值或复制的内容给出。
+   * `values` 由调用方按默认值或复制的内容给出；复制出的行 `copied` 为 true（见 PendingRow.copied）。
    */
-  addRow(entity: string, recordId: string | null, values: FieldValues, after: string | null): string {
+  addRow(
+    entity: string,
+    recordId: string | null,
+    values: FieldValues,
+    after: string | null,
+    options: { copied?: boolean } = {}
+  ): string {
     const id = this.newId();
     this.batch(() => {
       this.write(keyOf(entity, id), {
@@ -231,7 +242,8 @@ export class EditBuffer {
         isNew: true,
         values: { ...values },
         deleted: false,
-        after
+        after,
+        ...(options.copied ? { copied: true } : {})
       });
     });
     return id;
@@ -358,7 +370,8 @@ export class EditBuffer {
     const current = this.current(row.entity, row.id) ?? {};
     const result: FieldValues = {};
     for (const [field, value] of Object.entries(row.values)) {
-      if (isNew && value === null) continue;
+      // 新增行为空的字段不写，由后端补默认值；复制出的行照写 null，后端不补（WP-16）
+      if (isNew && value === null && !row.copied) continue;
       if (!this.schema.writable(row.entity, field, current, isNew)) continue;
       result[field] = value;
     }

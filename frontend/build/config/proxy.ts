@@ -41,6 +41,8 @@ function createProxyItem(item: App.Service.ServiceConfigItem, enableLog: boolean
   proxy[item.proxyPattern] = {
     target: item.baseURL,
     changeOrigin: true,
+    // 实时连接 `<代理前缀>/ws`（C10）也经代理转发到后端；不转发时开发服务器上收不到 config.changed、session.revoked 和通知（T-AS-7）
+    ws: true,
     agent: keepAliveAgent,
     configure: (_proxy, options) => {
       _proxy.on('proxyReq', (_proxyReq, req, _res) => {

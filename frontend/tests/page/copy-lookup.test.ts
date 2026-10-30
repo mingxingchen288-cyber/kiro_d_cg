@@ -48,10 +48,15 @@ describe('复制（FP-13）', () => {
     ]);
     const [document] = runtime.model.buffer.documents().filter(d => d.master.op === 'add');
     expect(array(DocumentPatch).parse([document])).toEqual([document]);
-    expect(document.master).toEqual({ op: 'add', clientRowId: newId, values: { QTY: '10', STATUS: '评估中' } });
+    // 没勾的备注写成 null：复制出的行后端不补默认值（WP-16），保存后为空
+    expect(document.master).toEqual({
+      op: 'add',
+      clientRowId: newId,
+      values: { MEMO: null, QTY: '10', STATUS: '评估中' }
+    });
     expect(document.details.map(d => (d.op === 'add' ? d.values : null))).toEqual([
-      { GOODSID: '25', PRICE: '75', USAGE: '10' },
-      { GOODSID: '115', PRICE: '72', USAGE: '10' }
+      { GOODSID: '25', PRICE: '75', USAGE: '10', MEMO: null },
+      { GOODSID: '115', PRICE: '72', USAGE: '10', MEMO: null }
     ]);
     // 撤销一次撤回整个复制（源单据的改价还在）
     runtime.undo();

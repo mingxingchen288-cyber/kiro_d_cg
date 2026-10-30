@@ -4,6 +4,8 @@
  *
  * - 主表区复制一行：勾选要复制的主表字段，以及每个明细要复制的行和字段；明细区复制：勾选行（默认是选中的行）和字段。默认全选。
  * - 只有主键不复制；明细的关联字段指向新的主表行（编辑缓冲按单据记录，命令中不带关联字段）；没勾选的字段留空。
+ *   复制出的行标为 copied：命令中为空的可写字段写成 null，后端不补默认值（WP-16），保存后仍为空（T-AS-7 发现：
+ *   原来这些字段不写进命令，后端把为空的数值字段补成 0，例如没勾的"年需求量"保存后为 0）。
  * - 复制的是当前显示的值（含未保存的修改和预览算出的计算字段），标为删除的行不复制。
  * - `erpRow.column` 由平台设为本地值，不从源行复制；ERP 列照样复制，新行是本地行，可以编辑。
  * - 复制出的主表行放在源行下方，明细行放在最后一个选中行的下方；撤销一次撤回整个复制。
@@ -73,7 +75,8 @@ export function copyMaster(model: PageModel, sourceId: string, selection: CopySe
       view.master.entity,
       null,
       copiedValues(model, view.master, sourceId, selection.fields),
-      sourceId
+      sourceId,
+      { copied: true }
     );
     model.ensureNewRecord(newId);
     for (const detail of view.details) {
@@ -84,7 +87,9 @@ export function copyMaster(model: PageModel, sourceId: string, selection: CopySe
         .filter(id => chosen.rows.includes(id) && !model.buffer.isDeleted(detail.entity, id));
       let after: string | null = null;
       for (const rowId of rows) {
-        after = model.buffer.addRow(detail.entity, newId, copiedValues(model, detail, rowId, chosen.fields), after);
+        after = model.buffer.addRow(detail.entity, newId, copiedValues(model, detail, rowId, chosen.fields), after, {
+          copied: true
+        });
       }
     }
     return newId;
@@ -106,7 +111,9 @@ export function copyDetailRows(
   return model.buffer.batch(() => {
     let after: string | null = sources[sources.length - 1];
     return sources.map(sourceId => {
-      after = model.buffer.addRow(entity, recordId, copiedValues(model, region, sourceId, fields), after);
+      after = model.buffer.addRow(entity, recordId, copiedValues(model, region, sourceId, fields), after, {
+        copied: true
+      });
       return after;
     });
   });
