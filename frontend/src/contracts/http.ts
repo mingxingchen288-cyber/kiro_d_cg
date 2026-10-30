@@ -304,7 +304,7 @@ export const StepMember = object('StepMember', {
   type: literal('user', 'role'),
   id: key,
   name: str,
-  status: literal('pending', 'passed', 'rejected'),
+  status: literal('pending', 'passed', 'rejected', 'withdrawn'),
   processedBy: nullable(UserBrief),
   processedAt: nullable(dateTimeText),
   comment: nullable(str)
@@ -316,7 +316,7 @@ export const ApprovalStep = object('ApprovalStep', {
   flowName: str,
   node: str,
   mode: literal('or', 'and'),
-  status: literal('passed', 'pending', 'rejected', 'upcoming'),
+  status: literal('passed', 'pending', 'rejected', 'upcoming', 'withdrawn'),
   members: array(StepMember)
 });
 export type ApprovalStep = Infer<typeof ApprovalStep>;

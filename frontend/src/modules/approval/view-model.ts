@@ -20,17 +20,20 @@ export const APPROVAL_STATUS: Record<ApprovalDetail['status'], string> = {
   withdrawn: '已撤回'
 };
 
+// withdrawn：审批撤回或被驳回时还没处理的节点和审批人，同旧系统 CANCELED 显示"已撤回"（C09 第 6 节）
 export const STEP_STATUS: Record<ApprovalStep['status'], string> = {
   passed: '已通过',
   pending: '待处理',
   rejected: '已驳回',
-  upcoming: '预计进入'
+  upcoming: '预计进入',
+  withdrawn: '已撤回'
 };
 
 export const MEMBER_STATUS: Record<StepMember['status'], string> = {
   passed: '已通过',
   pending: '待处理',
-  rejected: '已驳回'
+  rejected: '已驳回',
+  withdrawn: '已撤回'
 };
 
 export const MODE: Record<ApprovalStep['mode'], string> = { or: '或签', and: '会签' };

@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import json
+
+import sqlalchemy as sa
+
+from cost_platform.approval.tables import pf_approval
 from cost_platform.contracts import types as t
 
 from .support import ADMIN, BUYER, YANGNA, Harness, cost, goods, modify
@@ -61,6 +66,44 @@ def test_e37_price_80_has_no_second_level() -> None:
     h = Harness(["COST_TO_GOODS"])
     approval = e37_save(h, "80")
     assert [s.level for s in h.detail(ADMIN, approval.approval_id).steps] == [1]
+
+
+def test_withdrawn_and_rejected_steps_are_not_pending() -> None:
+    """撤回、驳回后进度不再写"待处理"：同旧系统 DO_CANCEL_APPROVAL、DO_REJECT_DETAIL，还没处理的节点和审批人为已撤回。
+    撤回的：第 1 级管理员审批和成员系统管理员都是 withdrawn（d_cg 审批 23、29 的情形）；驳回的：管理员审批为 rejected。"""
+    h = Harness(["COST_TO_GOODS"])
+    withdrawn = e37_save(h, "90").approval_id
+    h.withdraw(YANGNA, withdrawn)
+    detail = h.detail(ADMIN, withdrawn)
+    assert detail.status == "withdrawn"
+    assert [(s.level, s.node, s.status, [(m.name, m.status) for m in s.members]) for s in detail.steps] == [
+        (1, "管理员审批", "withdrawn", [("系统管理员", "withdrawn")])]
+
+    rejected = e37_save(h, "90").approval_id
+    h.reject(ADMIN, rejected, "价格偏高")
+    [step] = h.detail(YANGNA, rejected).steps
+    assert (step.status, [(m.status, m.comment) for m in step.members]) == ("rejected", [("rejected", "价格偏高")])
+
+
+def test_withdrawn_before_change_still_shows_withdrawn() -> None:
+    """改动之前撤回的审批（d_cg 的 23、29）：进度中节点和成员仍记着 pending，详情返回时换算为 withdrawn，不改存下的进度。"""
+    h = Harness(["COST_TO_GOODS"])
+    approval_id = e37_save(h, "90").approval_id
+    h.withdraw(YANGNA, approval_id)
+    with h.uow.begin() as uow:
+        row = uow.connection.execute(sa.select(pf_approval.c.progress).where(pf_approval.c.approval_id == int(approval_id))).one()
+        legacy = json.loads(row.progress)
+        for node in legacy["nodes"]:
+            node["status"] = "pending"
+            for member in node["members"]:
+                member["status"] = "pending"
+        uow.connection.execute(sa.update(pf_approval).where(pf_approval.c.approval_id == int(approval_id))
+                               .values(progress=json.dumps(legacy, ensure_ascii=False)))
+        uow.commit()
+    assert h.record(approval_id).progress.nodes[0].status == "pending"
+    [step] = h.detail(ADMIN, approval_id).steps
+    assert (step.status, [m.status for m in step.members]) == ("withdrawn", ["withdrawn"])
+    assert h.record(approval_id).progress.nodes[0].status == "pending"
 
 
 def test_after_first_level_steps_record_who_passed() -> None:

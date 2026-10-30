@@ -17,9 +17,10 @@ const STEP_STATUS: Record<string, string> = {
   passed: '已通过',
   pending: '待处理',
   rejected: '已驳回',
-  upcoming: '未到'
+  upcoming: '未到',
+  withdrawn: '已撤回'
 };
-const MEMBER_STATUS: Record<string, string> = { passed: '已通过', pending: '待处理', rejected: '已驳回' };
+const MEMBER_STATUS: Record<string, string> = { passed: '已通过', pending: '待处理', rejected: '已驳回', withdrawn: '已撤回' };
 const MODE: Record<string, string> = { or: '或签', and: '会签' };
 
 function members(step: ApprovalDetail['steps'][number]) {
