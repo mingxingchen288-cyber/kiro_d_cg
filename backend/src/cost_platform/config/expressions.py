@@ -21,7 +21,8 @@ _OPS = {"eq": "==", "ne": "!=", "gt": ">", "ge": ">=", "lt": "<", "le": "<="}
 
 
 def _string(value: str) -> str:
-    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+    """ZEN 的字符串常量没有转义，到下一个同样的引号为止（zen-expression 2.1.6）：含单引号时用双引号。"""
+    return f'"{value}"' if "'" in value else f"'{value}'"
 
 
 def _literal(value: Any, field_type: str | None) -> str:
