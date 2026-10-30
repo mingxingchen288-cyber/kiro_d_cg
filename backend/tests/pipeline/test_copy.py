@@ -13,10 +13,12 @@ from decimal import Decimal
 import pytest
 
 from cost_platform.contracts import types as t
+from cost_platform.contracts.fakes import FakeStage
 
 from .support import MASTER, MATERIAL, TMP_1, TMP_2, Pipeline, command, master_none
 
 D = Decimal
+TMP_3 = "tmp-8c3a4e5f-2d6a-4b7c-8e9f-1a2b3c4d5e6f"
 
 
 def copy_master(values: dict[str, str | None], copy_of: str | None = "1001") -> t.Command:
@@ -67,3 +69,33 @@ def test_copied_detail_rows() -> None:
     [inserted] = [r for w in pipeline.store.writes if w.op == "insert" for r in w.rows]
     assert set(inserted) == {"DOCID", "GOODSID", "USAGE", "PRICE", "MEMO"}
     assert pipeline.store.rows[MATERIAL][result.id_map[TMP_2]]["PRICE"] == D("3.50")
+
+
+def test_approved_copied_rows_are_written_as_resolved_without_defaults() -> None:
+    """审批通过时写入复制出的行（approval AP-10）：复制 1001 成新单据 1003（送审时取得主键），明细复制 5001，另新增一行物料 116。
+    approval 展开的意图中复制出的行带 `copy_of`，值是提交审批时按源行解出的：照写，不再读源行，没复制的状态、创建时间、
+    批量、用量不补默认值，写入的列与直接保存时相同；不是复制的新增明细照常补默认值（用量、每批成本为 0，WP-16）。"""
+    source = t.DocumentRef(MASTER, "1003")
+
+    def process(uow, state: t.CommandState, ctx: t.ExecutionContext) -> None:  # type: ignore[no-untyped-def]
+        state.approvals.append(t.ApprovalRef(approval_id="206", document=t.RecordRef(entity=MASTER, record_key="1003"),
+                                             status="approved", level=1, flows=["COST_TO_GOODS"]))
+        state.intents += [
+            t.RowIntent(document=source, entity=MASTER, op="add", row_key="1003", client_row_id=TMP_1, copy_of="1001",
+                        values={"GOODSNAME": "250mg乙酰唑胺片", "CREATE_BY": "王五", "MEMO": "复制"}),
+            t.RowIntent(document=source, entity=MATERIAL, op="add", row_key="300001", client_row_id=TMP_2, copy_of="5001",
+                        values={"GOODSID": D(115), "PRICE": D("3.50"), "DOCID": D(1003)}),
+            t.RowIntent(document=source, entity=MATERIAL, op="add", row_key="300002", client_row_id=TMP_3,
+                        values={"GOODSID": D(116), "PRICE": D("12"), "DOCID": D(1003)})]
+
+    pipeline = Pipeline(extra=[FakeStage("审批处理", effect=process)])
+    cmd = command([], page=None, operation="approval.pass", params={"approvalId": "206"})
+    result = pipeline.execute(cmd, pipeline.setup.context(origin=t.Origin(kind="approval", approval_id="206")))
+    assert result.outcome == "approvalProcessed"
+    master, *details = [r for w in pipeline.store.writes if w.op == "insert" for r in w.rows]
+    assert master == {"GOODSNAME": "250mg乙酰唑胺片", "CREATE_BY": "王五", "MEMO": "复制"}
+    assert [set(r) for r in details] == [{"DOCID", "GOODSID", "PRICE"}, {"DOCID", "GOODSID", "PRICE", "USAGE", "COST_BATCH"}]
+    row = pipeline.store.rows[MASTER]["1003"]
+    assert (row["USESTATUS"], row["CREATE_TIME"], row["APEX_PL"]) == (None, None, None)
+    assert (pipeline.store.rows[MATERIAL]["300002"]["USAGE"], pipeline.store.rows[MATERIAL]["300002"]["COST_BATCH"]) == (D(0), D(0))
+    assert not hasattr(pipeline.store, "copy_reads")  # 不再读源行

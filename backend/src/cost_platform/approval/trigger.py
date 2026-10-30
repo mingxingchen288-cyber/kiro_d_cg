@@ -48,7 +48,7 @@ from .catalog import ApprovalCatalog, NamedFlow
 from .deps import ApprovalDeps
 from .freeze import check_documents, frozen_detail
 from .model import AffectedRow, ApprovalRecord, FlowSnapshot, TriggerRow
-from .patch import assign_keys, bill_key, key_value, patch_ref
+from .patch import assign_keys, bill_key, key_value, patch_ref, resolved_patch
 from .routing import Node, start
 from .rows import ChangedRow, changed_rows, first_text, owners
 from .sql import RowScope, binds_for, display_sql, exists, freeze_sql, key_text, scalar
@@ -286,7 +286,8 @@ class TriggerStage:
             source=DocumentRef(hit.ref.entity, bill), source_label=label, applicant_id=ctx.identity.user_id,
             applicant_name=ctx.identity.display_name, applicant_department=ctx.identity.department_id, submitted_at=ctx.now,
             flows=[FlowSnapshot(f.flow.code, f.flow.name, f.flow.config) for f in hit.flows], triggers=prepared.triggers,
-            patch=hit.patch, key_map=prepared.key_map, progress=start([f.flow.code for f in hit.flows], entered),
+            patch=resolved_patch(hit.patch, state.changes.rows, config), key_map=prepared.key_map,
+            progress=start([f.flow.code for f in hit.flows], entered),
         )
         return _Submission(hit.ref, record, affected, prepared.freezes)
 

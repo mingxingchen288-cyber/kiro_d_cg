@@ -625,12 +625,31 @@ class Pipeline:
         types = {code: {f.name: f.type for f in ctx.config.entity(code).fields}
                  for code in [patch.entity, *(l.entity for l in entity.details)]}
 
-        def values(code: str, wire: Mapping[str, Any]) -> dict[str, Any]:
+        def values(code: str, wire: Mapping[str, Any], copy_of: str | None = None) -> dict[str, Any]:
+            if copy_of is not None:
+                return copied(code, wire, copy_of)
             return {k: from_wire(types[code][k], v) for k, v in wire.items()}
+
+        def copied(code: str, wire: Mapping[str, Any], copy_of: str) -> dict[str, Any]:
+            """代替 write-pipeline 的 WP-21：可写的字段取命令中的值；不可写、能写进表的字段取源行（World 中保存这一刻的
+            这一行）的值；计算字段和只在视图中的字段不写。"""
+            config = ctx.config.entity(code)
+            fields = {f.name: f for f in config.fields}
+            writable = set(ctx.config.operation(state.command.operation).writable_fields.get(code, []))
+            source = self.world.row(config.table, copy_of) or {}
+            found: dict[str, Any] = {}
+            for name, raw in wire.items():
+                f = fields[name]
+                if name in writable:
+                    found[name] = from_wire(f.type, raw)
+                elif f.column is not None and f.role != "calculated":
+                    found[name] = source.get(f.column)
+            return found
 
         master = patch.master
         if isinstance(master, t.MasterAdd):
-            state.candidate[ref] = t.DocumentData(ref, t.Row(patch.entity, None, master.client_row_id, values(patch.entity, master.values)),
+            state.candidate[ref] = t.DocumentData(ref, t.Row(patch.entity, None, master.client_row_id,
+                                                             values(patch.entity, master.values, master.copy_of)),
                                                   {l.entity: [] for l in entity.details})
         elif isinstance(master, t.MasterDelete):
             state.candidate.pop(ref, None)
@@ -643,7 +662,8 @@ class Pipeline:
             rows = doc.details.setdefault(detail.entity, [])
             if isinstance(detail, t.DetailAdd):
                 rows.append(t.Row(detail.entity, None, detail.client_row_id,
-                                  {**values(detail.entity, detail.values), parents[detail.entity]: doc.master.values.get(entity.primary_key)}))
+                                  {**values(detail.entity, detail.values, detail.copy_of),
+                                   parents[detail.entity]: doc.master.values.get(entity.primary_key)}))
             elif isinstance(detail, t.DetailModify):
                 next(r for r in rows if r.row_key == detail.row_key).values.update(values(detail.entity, detail.changes))
             else:

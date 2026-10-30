@@ -2280,6 +2280,9 @@ class RowIntent:
     row_key: str | None
     client_row_id: str | None
     values: dict[str, Value] = dc_field(hash=False)
+    copy_of: str | None = None
+    """新增行是复制出来的（C02 `copyOf`）：源行的主键。approval 展开的待审新增行带它时，`values` 是提交审批那一刻
+    write-pipeline 按源行解出的值（approval AP-10）；合并时不再读源行，也不补默认值（WP-16、WP-21）。"""
 
 
 @dataclass
