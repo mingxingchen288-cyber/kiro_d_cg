@@ -24,7 +24,7 @@ from decimal import Decimal
 from typing import Any
 
 from cost_platform.contracts import types as t
-from cost_platform.contracts.fakes import FakeConfigSnapshot, FakeRelatedQuery, FakeUnitOfWorkFactory
+from cost_platform.contracts.fakes import FakeBusinessLocker, FakeConfigSnapshot, FakeRelatedQuery, FakeUnitOfWorkFactory
 from cost_platform.contracts.ports import PipelineStage, UnitOfWork
 from cost_platform.operations import ActionStage, ButtonInvolvedStage
 
@@ -221,6 +221,8 @@ class Bench:
     """开启命令事务之前在替代数据库（内存 SQLite）中执行的语句，例如建逃生舱要写的表。"""
     merged: list[t.RowIntent] = field(default_factory=list)
     """每一轮合并的 intents，按先后。"""
+    locked: bool = False
+    """为 True 时两个阶段和模拟的加锁读取都经 `locks`（`FakeBusinessLocker`，读 `docs`）加锁，按统一顺序检查（WP-03）。"""
 
     def __post_init__(self) -> None:
         self._stack = ExitStack()
@@ -231,9 +233,10 @@ class Bench:
             connection.commit()
         self.uow: UnitOfWork = self._stack.enter_context(self.factory.begin())
         register_selection(self.related, self.docs)
-        self.involved = ButtonInvolvedStage(self.related)
+        self.locks = FakeBusinessLocker(lambda r: copy.deepcopy(self.docs[r]) if r in self.docs else None) if self.locked else None
+        self.involved = ButtonInvolvedStage(self.related, self.locks)
         if self.stage is None:
-            self.stage = ActionStage(self.related)
+            self.stage = ActionStage(self.related, locks=self.locks)
 
     def close(self) -> None:
         self._stack.close()
@@ -242,8 +245,12 @@ class Bench:
         return context(self.config, **kwargs)
 
     def lock(self, state: t.CommandState, refs: Iterable[t.DocumentRef] | None = None) -> None:
-        """模拟加锁读取：读入 `involved` 中还没有读入的单据；不存在的从 `involved` 去掉。"""
-        for r in list(refs if refs is not None else state.involved):
+        """模拟加锁读取：读入 `involved` 中还没有读入的单据；不存在的从 `involved` 去掉。`locked` 时先按统一顺序加锁。"""
+        wanted = list(refs if refs is not None else state.involved)
+        if self.locks is not None:
+            ctx = self.ctx()
+            self.locks.lock(self.uow, ctx, [self.locks.document(ctx, r) for r in wanted if r in self.docs and r not in state.current])
+        for r in wanted:
             if r in state.current:
                 continue
             if r in self.docs:
