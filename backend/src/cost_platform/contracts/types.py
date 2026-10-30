@@ -839,13 +839,34 @@ class UpdateRecords(Wire):
     field_mapping: list[FieldMap]
 
 
+class ReplaceDetails(Wire):
+    """按 SQL 查出的行替换选中单据的一个明细实体（C06 第 6 节，v18）：删除这个明细的全部行，再把 SQL 的每一行新增为
+    一行，列按列名写到同名字段；绑定变量只引用选中单据主表的字段，每张单据执行一次。"""
+
+    action: Literal["replaceDetails"]
+    entity: Code
+    sql: str
+    binds: dict[str, str] = {}
+
+
+class UpdateRows(Wire):
+    """按 SQL 找到要改的记录和新值并更新（C06 第 6 节，v18）：SQL 执行一次，不用绑定变量，不看选中行；
+    `recordKeyColumn`、`rowKeyColumns` 同 6.1，其余列按列名写到同名字段。"""
+
+    action: Literal["updateRows"]
+    entity: Code
+    sql: str
+    record_key_column: str
+    row_key_columns: list[str] = []
+
+
 class EscapeHatch(Wire):
     action: Literal["escapeHatch"]
     operation: Code
 
 
 ActionStep = Annotated[
-    Recalculate | UpdateTargets | UpdateRecords | EscapeHatch,
+    Recalculate | UpdateTargets | UpdateRecords | ReplaceDetails | UpdateRows | EscapeHatch,
     Field(discriminator="action"),
 ]
 """按钮操作的通用动作（C06 第 6 节）。审批流通过后的操作见 `BlockAction`。"""

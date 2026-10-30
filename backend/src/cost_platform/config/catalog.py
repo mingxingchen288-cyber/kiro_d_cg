@@ -15,10 +15,12 @@ from cost_platform.contracts.types import (
     MenuItem,
     OperationConfig,
     PageConfig,
+    ReplaceDetails,
     RoleApprover,
     RoleConfig,
     RuleConfig,
     UpdateRecords,
+    UpdateRows,
     UpdateTargets,
     parse_config_content,
 )
@@ -163,6 +165,8 @@ def references(config_type: str, content: Any) -> list[tuple[str, str, str]]:
                         refs.append(("entity", target.detail_entity, f"{here}.targets[{j}].detailEntity"))
             elif isinstance(step, UpdateRecords):
                 refs.append(("entity", step.find.entity, f"{here}.find.entity"))
+            elif isinstance(step, ReplaceDetails | UpdateRows):
+                refs.append(("entity", step.entity, f"{here}.entity"))
             elif isinstance(step, EscapeHatch):
                 refs.append(("operation", step.operation, f"{here}.operation"))
 

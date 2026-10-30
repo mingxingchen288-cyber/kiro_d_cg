@@ -28,8 +28,10 @@ from cost_platform.contracts.types import (
     PackInvalidError,
     QueryCompare,
     RelationKeyFinder,
+    ReplaceDetails,
     SqlFinder,
     UpdateRecords,
+    UpdateRows,
     UpdateTargets,
     EscapeHatch,
     VisualRowPolicy,
@@ -361,6 +363,10 @@ def _operation(run: Run, entry: Entry) -> None:
         elif isinstance(step, UpdateRecords):
             _finder(run, entry, f"{here}.find", step)
             _mapping(run, entry, f"{here}.fieldMapping", step.field_mapping, step.find.entity, writable)
+        elif isinstance(step, ReplaceDetails):
+            _replace_details(run, entry, here, step, writable)
+        elif isinstance(step, UpdateRows):
+            _update_rows(run, entry, here, step, writable)
         elif isinstance(step, EscapeHatch):
             target = run.catalog.operation(step.operation)
             if target is not None and target.kind != "escapeHatch":
@@ -410,6 +416,70 @@ def _finder(run: Run, entry: Entry, path: str, step: UpdateRecords) -> None:
         missing = [c for c in [finder.record_key_column, *finder.row_key_columns] if c.upper() not in columns]
         if missing:
             run.err(entry, f"{path}.sql", f"关联 SQL 的结果缺少列：{'、'.join(missing)}")
+
+
+def _sql_columns(run: Run, entry: Entry, path: str, columns: Sequence[str], dest: str,
+                 writable: Mapping[str, set[str]]) -> None:
+    """`replaceDetails`、`updateRows` 的 SQL 中要写的列（C06 第 6 节）：列名就是 `dest` 的字段名（不区分大小写），
+    字段在本操作的 `writableFields` 中，不是计算字段、不是只在视图中的字段，也不是只读的 ERP 列。"""
+    entity = run.catalog.entity(dest)
+    if entity is None:
+        return
+    names = {f.name.upper(): f for f in entity.fields}
+    for column in columns:
+        target = names.get(column.upper())
+        if target is None:
+            run.err(entry, path, f"SQL 的列 {column} 不是实体 {dest} 的字段：列名要写成字段名")
+            continue
+        if target.name not in writable.get(dest, set()):
+            run.err(entry, path, f"SQL 的列 {target.name} 不在本操作 writableFields.{dest} 中")
+        if target.role == "calculated":
+            run.err(entry, path, f"SQL 的列 {target.name} 是计算字段，由计算规则得出，不能写")
+        elif target.column is None:
+            run.err(entry, path, f"SQL 的列 {target.name} 只在视图中，不能写：名称这类字段由页面的 Lookup 带出")
+        run.writable_field(entry, path, entity, target)
+
+
+def _replace_details(run: Run, entry: Entry, path: str, step: ReplaceDetails, writable: Mapping[str, set[str]]) -> None:
+    """`replaceDetails`：`entity` 是明细实体；绑定变量只引用它所属主表的字段；SQL 只能是一条查询语句，结果的每一列
+    都是这个明细中本操作可写的字段（C06 第 6 节、第 10 节）。"""
+    parent = run.catalog.parent_of(step.entity)
+    if parent is None:
+        if run.catalog.entity(step.entity) is not None:
+            run.err(entry, f"{path}.entity", f"实体 {step.entity} 不是明细实体：replaceDetails 只替换单据的明细")
+        return
+    for name, ref in step.binds.items():
+        found = run.field_ref(entry, f"{path}.binds.{name}", ref)
+        if found is not None and found[0] != parent[0]:
+            run.err(entry, f"{path}.binds.{name}", f"绑定变量只能引用主表 {parent[0]} 的字段，{ref} 不是")
+    columns = run.query(entry, f"{path}.sql", step.sql, step.binds)
+    if columns is not None:
+        _sql_columns(run, entry, f"{path}.sql", columns, step.entity, writable)
+
+
+def _update_rows(run: Run, entry: Entry, path: str, step: UpdateRows, writable: Mapping[str, set[str]]) -> None:
+    """`updateRows`：SQL 只能是一条查询语句、不用绑定变量；结果包含 `recordKeyColumn` 和 `rowKeyColumns`（明细实体写一列
+    明细主键，主表实体不写），其余每一列都是 `entity` 中本操作可写的字段（C06 第 6 节、第 10 节）。"""
+    if run.catalog.entity(step.entity) is None:
+        return
+    detail = run.catalog.parent_of(step.entity) is not None
+    if detail and len(step.row_key_columns) != 1:
+        run.err(entry, f"{path}.rowKeyColumns", f"{step.entity} 是明细实体，rowKeyColumns 要写一列明细主键")
+    if not detail and step.row_key_columns:
+        run.err(entry, f"{path}.rowKeyColumns", f"{step.entity} 是主表实体，不写 rowKeyColumns")
+    used = parameters(step.sql)
+    if used:
+        run.err(entry, f"{path}.sql", f"updateRows 的 SQL 不用绑定变量，现在有 {', '.join(':' + p for p in used)}")
+        return
+    columns = run.query(entry, f"{path}.sql", step.sql)
+    if columns is None:
+        return
+    keys = [step.record_key_column, *step.row_key_columns]
+    missing = [c for c in keys if c.upper() not in columns]
+    if missing:
+        run.err(entry, f"{path}.sql", f"SQL 的结果缺少列：{'、'.join(missing)}")
+    folded = {k.upper() for k in keys}
+    _sql_columns(run, entry, f"{path}.sql", [c for c in columns if c not in folded], step.entity, writable)
 
 
 def _escape_writes(run: Run, entry: Entry, writes: Mapping[str, list[str]]) -> None:
