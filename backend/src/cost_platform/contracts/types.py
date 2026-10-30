@@ -302,6 +302,8 @@ class PlatformError(Exception):
 class MasterAdd(Wire):
     op: Literal["add"]
     client_row_id: ClientRowId
+    copy_of: Key | None = None
+    """复制出的行：源行（同一实体）的主键。不可写的复制字段由后端取源行的值，不补默认值（C02 第 1 节）。"""
     values: FieldValues
 
 
@@ -332,6 +334,8 @@ class DetailAdd(Wire):
     entity: Code
     op: Literal["add"]
     client_row_id: ClientRowId
+    copy_of: Key | None = None
+    """同 `MasterAdd.copy_of`：源行为同一明细实体的行。"""
     values: FieldValues
 
 
@@ -737,6 +741,8 @@ class EntityConfig(Wire):
     freezable: Bool
     read_view: str | None = None
     erp_row: ErpRow | None = None
+    updated_by_column: str | None = None
+    """写入修改人的列（`table` 中的列名，不是实体字段）：新增、修改这个实体的行时写当前用户的登录名（C06 第 2 节、WP-20）。"""
     fields: list[EntityField]
     details: list[DetailLink] = []
     field_defaults: dict[str, FieldFlags] = {}

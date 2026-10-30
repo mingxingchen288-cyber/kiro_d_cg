@@ -12,6 +12,7 @@
       "value": "1",
       "localValue": "0"
     },
+    "updatedByColumn": "UPDATE_BY",
     "fields": [
       {
         "name": "GOODSID",

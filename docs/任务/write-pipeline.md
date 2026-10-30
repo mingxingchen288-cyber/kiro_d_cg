@@ -24,10 +24,10 @@
 - 负责范围：pipeline 的加锁读取、合并、变更计划和业务表写入（Oracle 实现）。
 - 交付物：上述功能；写入语句的生成（主表 0 或 1 条，明细按写入的列分组批量执行，用 `RETURNING` 取新主键）。
 - 接入责任：T-AS-5 接入真实的 rules-core、authz 和 operations。
-- 验收标准：模拟验证：改一格只写该列和计算带出的列；提交相同的值不写业务表；计算字段、主键出现在 Patch 中被拒绝；物料表 ISERP 为 1 的行改 PRICE 被拒，ISERP 为 0 的行可以改；新增行的 ISERP 写为 0；计算值 `1.234567885` 保存为 `1.23456789`，`-1.234567885` 保存为 `-1.23456789`，命令结果与数据库中的值相同；行已被删除时默认跳过，配置为拒绝时返回 ROW_NOT_FOUND；删除主表行时先删明细；必填只检查新增和修改的行；动作执行中 `updateRecords` 找到第 3 步范围外的成本单 E 时，E 先加锁读取、再做冻结检查：E 被别的审批冻结时整个命令返回 FROZEN_BY_APPROVAL、什么都不写，被本审批冻结时放行（WP-18）；基于属性的测试：任意 Patch 的变更计划只含值有变化的列；真实验证：以上在 d_cg 上通过，等锁 5 秒后返回 DOCUMENT_BUSY；两个命令在第 7 步交叉加锁形成死锁时，其中一个返回 DOCUMENT_BUSY 并整体回滚。
+- 验收标准：模拟验证：改一格只写该列和计算带出的列；提交相同的值不写业务表；计算字段、主键出现在 Patch 中被拒绝；物料表 ISERP 为 1 的行改 PRICE 被拒，ISERP 为 0 的行可以改；新增行的 ISERP 写为 0；计算值 `1.234567885` 保存为 `1.23456789`，`-1.234567885` 保存为 `-1.23456789`，命令结果与数据库中的值相同；行已被删除时默认跳过，配置为拒绝时返回 ROW_NOT_FOUND；删除主表行时先删明细；必填检查新增、修改的行和计算带出变化的行（T-WP-8）；动作执行中 `updateRecords` 找到第 3 步范围外的成本单 E 时，E 先加锁读取、再做冻结检查：E 被别的审批冻结时整个命令返回 FROZEN_BY_APPROVAL、什么都不写，被本审批冻结时放行（WP-18）；基于属性的测试：任意 Patch 的变更计划只含值有变化的列；真实验证：以上在 d_cg 上通过，等锁 5 秒后返回 DOCUMENT_BUSY；两个命令在第 7 步交叉加锁形成死锁时，其中一个返回 DOCUMENT_BUSY 并整体回滚。
 - 状态与证据：进行中（2026-10-29），模拟验证通过，真实验证的测试已写好、还没有运行。链路 0、链路 1 的最小部分见 T-AS-9（[assembly](assembly.md)），现有 `SaveFlow` 用法保持兼容（`tests/pipeline/test_compat_saveflow.py`）。
   - 已实现：WP-03（按实体、主键排序，一个实体一条 `FOR UPDATE WAIT n`，行权限判断列在同一条 SQL 中）、WP-04、WP-05、WP-06（每张明细表按关联字段一条 DELETE，再删主表）、WP-07、WP-08（commit 阶段求值，计算带出的变化并入变更计划）、WP-09（按写入的列分组批量执行，新增用序列和 RETURNING）、WP-14、WP-15（列的小数位取 SchemaInspector）、WP-18（范围外单据加锁、只对它们做冻结检查后合并）。明细读取多个明细实体合成一条 UNION ALL 语句。
-  - 模拟验证：同一条命令 98 passed，其中 `test_merge.py`（改一格只写该列、相同值不写、计算字段/主键/关联字段被拒、ISERP 为 1 改 PRICE 被拒而为 0 可以、新增行 ISERP 为 0、1.234567885→1.23456789、行已删除跳过或 ROW_NOT_FOUND、删除主表连明细、基于属性的测试：变更计划只含值有变化的列）、`test_values.py`、`test_flow.py`（E04、E05、规则拒绝、必填只查新增和修改的行、WP-18 范围外单据被别的审批冻结时整个命令 FROZEN_BY_APPROVAL 且什么都不写）、`test_document_store_sql.py`（语句文本）。
+  - 模拟验证：同一条命令 98 passed，其中 `test_merge.py`（改一格只写该列、相同值不写、计算字段/主键/关联字段被拒、ISERP 为 1 改 PRICE 被拒而为 0 可以、新增行 ISERP 为 0、1.234567885→1.23456789、行已删除跳过或 ROW_NOT_FOUND、删除主表连明细、基于属性的测试：变更计划只含值有变化的列）、`test_values.py`、`test_flow.py`（E04、E05、规则拒绝、必填检查的行、WP-18 范围外单据被别的审批冻结时整个命令 FROZEN_BY_APPROVAL 且什么都不写）、`test_document_store_sql.py`（语句文本）。
   - 真实验证（待运行，标 oracle）：`tests/pipeline/test_oracle_store.py` 11 个（视图读取、E05、E04、新增删除明细和 idMap、新单据、删除主表级联和审计、E08、E28、行权限、TableWriter、相同值回滚）。测试自己建 T_WP_* 表并在结束时删除。
   - 上线后再补（用户没有点名的异常情况，工程约定第 5 节）：等锁 5 秒后返回 DOCUMENT_BUSY；两个命令在第 7 步交叉加锁形成死锁时其中一个返回 DOCUMENT_BUSY。行为由 `FOR UPDATE WAIT n` 和 db-core 的错误映射提供，没有写测试。
   - 缺口和待决定事项见 `.reports/modules/write-pipeline/contract-gaps.md`（主从页改主表字段的 SQL 条数、小数位取数据库列、部门名称、规则数据、端口签名）。
@@ -92,3 +92,29 @@
   - 模拟验证：`tests/contracts/test_business_locker.py`（契约，替代实现和 `PipelineLocks` 都跑）、`tests/pipeline/test_locks.py`（统一顺序、往后追加、已持有再锁、`defer_lock` 只读、`TableWriter` 共用顺序）、`test_document_store_sql.py`（一张单据一条、多张每行一条）、`tests/orchestration/test_runner.py` 的规则 4 重来；`backend` 下 `pytest -m "not oracle and not redis"` 全部通过（条数见 `.reports/batch4-20261030/l-lock-order/progress.md`）。
   - 真实验证（d_cg）：`tests/pipeline/test_oracle_lock_order.py` 8 个场景（建删 PF_TEST_LK_* 表，审批流只在内存配置中）全部通过，没有 ORA-00060、没有等锁超时，只有规则 4 的场景执行两次；输出和残留核对见 `.reports/batch4-20261030/l-lock-order/`。WP-10 条数测试 `test_oracle_sql_count.py` 照常通过。
   - 穷举：`model_check_v3.py` 重跑结果与原结果相同（`.reports/batch4-20261030/l-lock-order/model-check/`）。
+
+### T-WP-8 计算带出变化的行也检查必填
+
+- 归属与目标：WP-07 改为按旧系统：页面保存时，必填检查的行 = 本次新增、修改的行 ∪ 计算后有计算字段变化的行，删除的行不查。来源：旧系统 `useWorkingSetStore.ts` 第 886–934 行（保存时对有修改的行检查，含 `useCalcBroadcast.ts` 记成 `calc` 的计算带出变化）、`validator.ts` 第 52–85、116 行（列的 required）；上一组的核对见 `.reports/batch3-20261030/h1-rules-dirty/findings.md`；用户 2026-10-30 同意按旧系统做。rules-core 的校验规则已经这样做（C07 v7）。
+- 前置输入：T-WP-2。
+- 负责范围：`pipeline/stages.py` 的 `calc_changed_rows`、`required_rows`，`pipeline/calc.py` 的 `check_required`。
+- 交付物：计算带出变化的行由变更计划推出：修改的行中含计算字段的（Patch 和动作都不能写计算字段，计划中的计算字段只来自计算）。按钮操作、审批处理不带 Patch，不检查必填（旧系统按钮由后端执行，不经前端保存的校验），与原来相同。
+- 验收标准（业务例子）：d_cg 单据 2555（4mg马来酸氯苯那敏片）原料"马来酸氯苯那敏"（102126）每片含量 4、单价为空，页面配了原辅料单价必填；只改批量 3500000 → 4000000，它的每批数量 14 → 16，保存返回 422 VALIDATION_FAILED，只指出这一行的"单价 不能为空"，不写库。单据 2757 改批量能保存：每批数量变了的原辅料单价、每片含量都有，单价为空的 207577（每片含量 0）每批数量仍是 0，不检查。
+- 状态与证据：模拟验证和浏览器拒绝的一半通过（2026-10-30，P 组，`batch4/pipeline-fixes`）。浏览器（后端 8084 + d_cg，`.reports/batch4-20261030/p-pipeline-fixes/e2e/p1.out.json`、`p1-rejected.png`）：2555 批量改 4000000 保存，422 VALIDATION_FAILED，提示"有必填字段没有填写：单价 不能为空（原料/辅料 马来酸氯苯那敏）"，刷新后批量仍是 3500000；能保存的一半只有后端测试（真实单据保存批量会让每批数量变化的原辅料逐行判断 COST_TO_GOODS，可能提交审批，没有在浏览器做）。`tests/pipeline/test_validate_changed_rows.py` 的 `test_2555_change_batch_price_required_rejected`（数据 `tests/pipeline/data/doc-2555.json`，取自 d_cg 只读查询 `.reports/batch4-20261030/p-pipeline-fixes/q02-单据2555.sql`，真实 rules-core 和 seed 规则）、`test_2757_change_batch_saves`、`test_2757_change_batch_checks_changed_rows_required`；`test_flow.py` 的 `test_required_checked_on_rows_changed_by_calculation`（原 `test_required_not_checked_on_rows_changed_only_by_calculation` 按新规则改写）。
+
+### T-WP-9 写入修改人
+
+- 归属与目标：实现 WP-20：实体配置 `updatedByColumn`（C06 v19 第 2 节）后，新增、修改这个实体的行时写当前用户的登录名，审批通过时写审批人。来源：旧系统 `DynamicDataService.java` 第 290–293、392–393 行（UPDATE_BY = `SecurityUtils.getCurrentUsername()`，取 JWT 的 username，即登录名，`JwtAuthenticationFilter.java` 第 38–49 行）；审批通过在审批人的请求中执行（`ConfiguredApprovalRuntime.java` 的 `applyPending`）；用户 2026-10-30 同意按旧系统做。
+- 前置输入：T-WP-2；contracts 的 `EntityConfig.updated_by_column`；config 的保存校验（列在表中、不是实体字段的列）。
+- 负责范围：`pipeline/writer.py` 的 `_stamped`、`_write_stamped`（写入时在实体和变更计划的副本上加修改人字段，不改 `document_store.py`）；seed 的 `entity.COST_GOODS_PRICE.json` 配 `"updatedByColumn": "UPDATE_BY"`。成本核算的表在 d_cg 没有 UPDATE_BY 列（DB-03），不配。
+- 验收标准：模拟验证：改本地物料、新增物料时同一条语句写修改人，命令结果中没有它，没配的实体不写，来源为审批时写审批人的登录名。真实验证（业务例子）：测试自己建一个 ERP 物料（ISERP = 1、UPDATE_BY = `ERP_SYNC`），admin 在物料清单页改它的单价，提交审批 GOODS_TO_COST，admin 通过后 T_COST_GOODS 的 UPDATE_BY 为 admin、单价写入，视图 T_COST_GOODS_PRICE_V 的 ROW_CLASS_FLAG 为 `erp-updated`（黄底）；测试结束删掉这个物料、审批和命令记录。
+- 状态与证据：模拟验证和真实验证通过（2026-10-30，P 组，`batch4/pipeline-fixes`）。模拟验证 `tests/pipeline/test_updated_by.py` 4 个；真实验证 `tests/pipeline/test_oracle_updated_by.py` 1 个（d_cg，进程内接真实的权限、写入管道、审批阶段和审批服务，测试的内存配置取 seed）：ERP 物料改单价 12 提交 GOODS_TO_COST，admin 通过后 UPDATE_BY = admin、ZX_PRICE = 12、ROW_CLASS_FLAG = erp-updated；物料、审批、命令记录已删（`.reports/batch4-20261030/p-pipeline-fixes/q03-修改人测试清理核对.out.txt`）。`tests/config/test_oracle.py::test_seed_config_validates_against_d_cg` 通过（只校验不写）。浏览器部分（物料清单页黄底）要等 d_cg 写入新配置后由主代理做。
+
+### T-WP-10 复制出的行写入复制的全部字段
+
+- 归属与目标：实现 WP-21（C02 v8 的 `copyOf`）：复制出的行保存时，复制对话框里勾选的字段都写进新行，不论能不能编辑；后端按源行核对，不信前端给的不可写字段的值。来源：旧系统 `copy-row-fields.ts` 第 23–29 行、`useWorkingSetStore.ts` 第 834–876 行、`DynamicDataService.java` 第 274–327 行；现象见 `.reports/batch3-20261030/h3-new-doc/findings.md`、`v3-verify/findings.md` 观察 2-1（复制 200721 后币种、项目号为空）；用户 2026-10-30 同意按旧系统做。
+- 前置输入：T-WP-2；contracts 的 `MasterAdd.copy_of`、`DetailAdd.copy_of`。
+- 负责范围：`pipeline/copies.py`（`OracleCopySources`：按主键读源行，每个实体一条，不加锁，带行权限）；`pipeline/merge.py` 中 `_Rows.new_values` 的 `source`、`_copied_values` 和 `DocumentMerger` 的接线（小改动，IntentMerger 没动）；`pipeline/stages.py` 的 `MergePatchesStage`、`plugin.py`。
+- 验收标准：模拟验证：复制成本单时不可写的产品名称、创建人取源行的值（命令中的伪造值不用），计算字段不写，没复制的字段不补默认值；没有 `copyOf` 的新增行照旧拒绝不可写字段；源行超出行权限时 409 ROW_NOT_FOUND；明细复制只在视图中的物料名称、计算字段不写。业务例子（浏览器）：复制 200721 只复制主表，保存后新单据的币种为"人民币"、项目号与源单据相同（源为空则为空），产品等字段照旧；之后删掉这张单据。
+- 状态与证据：模拟验证和浏览器业务例子通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/pipeline/test_copy.py` 4 个；前端 `tests/page/copy-lookup.test.ts`、`product-lookup.test.ts` 的命令带 `copyOf` 和不可编辑的复制字段。浏览器（后端 8084 + d_cg，`.reports/batch4-20261030/p-pipeline-fixes/e2e/p2.out.json`）：复制 200721 只复制主表，命令带 `copyOf: 200721` 和币种"人民币"，保存后新单据 200834 的币种"人民币"、项目号为空（与源相同）、产品ID 392，随后删掉。
+  - 没做：复制出的行提交审批后，审批通过按原来的 Patch 重放（approval `patch.py` 的 `patch_intents` 不看 `copyOf`），不可写的复制字段按命令中的值写；只有复制带明细且触发审批时走到，在 approval 的文件里。

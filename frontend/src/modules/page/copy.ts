@@ -6,12 +6,17 @@
  * - 只有主键不复制；明细的关联字段指向新的主表行（编辑缓冲按单据记录，命令中不带关联字段）；没勾选的字段留空。
  *   复制出的行标为 copied：命令中为空的可写字段写成 null，后端不补默认值（WP-16），保存后仍为空（T-AS-7 发现：
  *   原来这些字段不写进命令，后端把为空的数值字段补成 0，例如没勾的"年需求量"保存后为 0）。
+ * - 勾选的字段不论能不能编辑都写进新行（同旧系统 copy-row-fields.ts 复制源行全部字段、useWorkingSetStore.ts 新增行
+ *   提交全部字段）：复制出的行记下来源（源行主键和勾选的字段），命令中带 `copyOf`，不可写的复制字段（例如成本单的币种、
+ *   项目号）也写进命令，后端取源行的值（C02 第 1 节、WP-21）。源行是还没保存的复制行时沿用它的来源，复制的字段取两次
+ *   勾选都有的；源行是还没保存的新增行（不是复制来的）时没有来源，不可写的字段不写。
  * - 复制的是当前显示的值（含未保存的修改和预览算出的计算字段），标为删除的行不复制。
  * - `erpRow.column` 由平台设为本地值，不从源行复制；ERP 列照样复制，新行是本地行，可以编辑。
  * - 复制出的主表行放在源行下方，明细行放在最后一个选中行的下方；撤销一次撤回整个复制。
  */
 import type { FieldValues } from '../../contracts/command';
 import type { ViewRegion } from '../../contracts/page-view';
+import type { CopyOrigin } from './edit-buffer';
 import type { PageModel } from './view-model';
 
 export interface FieldChoice {
@@ -67,6 +72,14 @@ function copiedValues(model: PageModel, region: ViewRegion, sourceId: string, fi
   return values;
 }
 
+/** 复制出的行的来源：源行已保存时为它的主键和勾选的字段；源行是没保存的复制行时沿用它的来源 */
+function originOf(model: PageModel, entity: string, sourceId: string, fields: string[]): CopyOrigin {
+  if (!model.buffer.isNew(entity, sourceId)) return { copyOf: sourceId, fields: [...fields] };
+  const previous = model.buffer.copyOrigin(entity, sourceId);
+  if (!previous?.copyOf) return { copyOf: null, fields: [] };
+  return { copyOf: previous.copyOf, fields: fields.filter(f => previous.fields.includes(f)) };
+}
+
 /** 主表区复制一行：返回新主表行的 clientRowId。调用前源单据的明细必须已加载 */
 export function copyMaster(model: PageModel, sourceId: string, selection: CopySelection): string {
   const view = model.view;
@@ -76,7 +89,7 @@ export function copyMaster(model: PageModel, sourceId: string, selection: CopySe
       null,
       copiedValues(model, view.master, sourceId, selection.fields),
       sourceId,
-      { copied: true }
+      { copied: true, origin: originOf(model, view.master.entity, sourceId, selection.fields) }
     );
     model.ensureNewRecord(newId);
     for (const detail of view.details) {
@@ -88,7 +101,8 @@ export function copyMaster(model: PageModel, sourceId: string, selection: CopySe
       let after: string | null = null;
       for (const rowId of rows) {
         after = model.buffer.addRow(detail.entity, newId, copiedValues(model, detail, rowId, chosen.fields), after, {
-          copied: true
+          copied: true,
+          origin: originOf(model, detail.entity, rowId, chosen.fields)
         });
       }
     }
@@ -112,7 +126,8 @@ export function copyDetailRows(
     let after: string | null = sources[sources.length - 1];
     return sources.map(sourceId => {
       after = model.buffer.addRow(entity, recordId, copiedValues(model, region, sourceId, fields), after, {
-        copied: true
+        copied: true,
+        origin: originOf(model, entity, sourceId, fields)
       });
       return after;
     });

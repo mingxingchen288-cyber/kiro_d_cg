@@ -229,10 +229,18 @@ def test_required_number_price_modified_to_empty_rejected() -> None:
     assert [(d.row_key, d.field) for d in caught.value.details] == [("5001", "PRICE")]
 
 
-def test_required_not_checked_on_rows_changed_only_by_calculation() -> None:
-    """主表 MEMO 必填且为空：只因计算发生变化的主表行不检查，改了的明细行检查通过。"""
+def test_required_checked_on_rows_changed_by_calculation() -> None:
+    """WP-07（2026-10-30 起，同旧系统 useWorkingSetStore.ts 的 save）：主表 MEMO 必填且为空，只改明细单价，汇总到主表的
+    TOTAL_COST 54.00 → 54.60，主表行计算带出了变化，也检查必填：拒绝，指出主表的 MEMO。计算结果与原值相同时
+    （TOTAL_COST 仍为 54.00）主表行没有变化，不检查，保存成功。"""
     pipeline = Pipeline(setup=Setup(required={MASTER: ["MEMO"], MATERIAL: ["GOODSID"]}))
     respond(pipeline, row_result(MASTER, "1001", TOTAL_COST="54.60"))
+    with pytest.raises(t.PlatformError) as caught:
+        pipeline.execute(price_change(), pipeline.setup.context())
+    assert caught.value.code is t.ErrorCode.VALIDATION_FAILED
+    assert [(d.entity, d.row_key, d.field) for d in caught.value.details] == [(MASTER, "1001", "MEMO")]
+
+    respond(pipeline, row_result(MASTER, "1001", TOTAL_COST="54.00"))
     assert pipeline.execute(price_change(), pipeline.setup.context()).outcome == "saved"
 
 

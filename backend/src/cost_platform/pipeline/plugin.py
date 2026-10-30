@@ -37,6 +37,7 @@ from cost_platform.contracts.registry import PluginView
 from . import migrations
 from .calc import Recalculator
 from .command_log import OracleCommandRecorder
+from .copies import OracleCopySources
 from .document_store import OracleDocumentStore
 from .loader import DocumentLoader, PageSaveInvolved
 from .locks import LockBook, PipelineLocks
@@ -91,7 +92,7 @@ class PipelinePlugin:
         stages: list[PipelineStage] = [
             PageSaveInvolved(),
             LockStage(loader),
-            MergePatchesStage(DocumentMerger(permission, scales)),
+            MergePatchesStage(DocumentMerger(permission, scales), OracleCopySources(permission)),
             MergeIntentsStage(IntentMerger(scales)),
             RecalculateStage(Recalculator(engine, scales)),
             WriteChangesStage(ChangeWriter(store)),

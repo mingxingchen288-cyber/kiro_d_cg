@@ -26,7 +26,13 @@ export const FieldValues = record(businessValue);
 export type FieldValues = Infer<typeof FieldValues>;
 export type FieldValue = FieldValues[string];
 
-export const MasterAdd = object('MasterAdd', { op: literal('add'), clientRowId, values: FieldValues });
+/** 新增行；复制出的行带 `copyOf`（源行的主键，同一实体），不可写的复制字段由后端取源行的值（C02 第 1 节） */
+export const MasterAdd = object('MasterAdd', {
+  op: literal('add'),
+  clientRowId,
+  copyOf: optional(key),
+  values: FieldValues
+});
 export const MasterModify = object('MasterModify', { op: literal('modify'), rowKey: key, changes: FieldValues });
 /** 删除主表行，连同它的全部明细 */
 export const MasterDelete = object('MasterDelete', { op: literal('delete'), rowKey: key });
@@ -40,7 +46,13 @@ export const MasterChange = tagged('op', {
 });
 export type MasterChange = Infer<typeof MasterChange>;
 
-export const DetailAdd = object('DetailAdd', { entity: code, op: literal('add'), clientRowId, values: FieldValues });
+export const DetailAdd = object('DetailAdd', {
+  entity: code,
+  op: literal('add'),
+  clientRowId,
+  copyOf: optional(key),
+  values: FieldValues
+});
 export const DetailModify = object('DetailModify', {
   entity: code,
   op: literal('modify'),

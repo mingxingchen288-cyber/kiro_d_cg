@@ -233,7 +233,9 @@ def _required_fields(ctx: ExecutionContext, state: CommandState) -> dict[str, di
 
 
 def check_required(state: CommandState, ctx: ExecutionContext, patched: set[RowRef], field_states: FieldStates) -> None:
-    """WP-07：只检查本次新增和修改的行（`patched`），检查这些行的全部必填字段；只因计算发生变化的行不检查。
+    """WP-07：检查 `patched` 中的行（页面保存时为本次新增、修改的行和计算后有计算字段变化的行，见
+    `stages.required_rows`）的全部必填字段，删除的行不查。对照旧系统 useWorkingSetStore.ts 的 save（有修改的行，
+    含计算带出变化的行，去掉删除的行）和 validator.ts 的 validateRow（列的 required）。
     规则给出的必填（C07 结果的 `fields`）一起检查。为空时 422 VALIDATION_FAILED，逐项给出字段。"""
     if not patched:
         return

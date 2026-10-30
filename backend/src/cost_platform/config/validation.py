@@ -241,6 +241,13 @@ def _entity(run: Run, entry: Entry) -> None:
     if entity.erp_row is not None:
         if kind == "table" and entity.erp_row.column not in table_columns:
             run.err(entry, "erpRow.column", f"列 {entity.erp_row.column} 不在表 {entity.table} 中")
+    if entity.updated_by_column is not None:
+        # 写入修改人的列（C06 第 2 节）：表中要有这一列；不能是实体字段写入的列，否则同一条语句写同一列两次
+        column = entity.updated_by_column
+        if kind == "table" and column not in table_columns:
+            run.err(entry, "updatedByColumn", f"列 {column} 不在表 {entity.table} 中")
+        if any(f.column is not None and f.column.upper() == column.upper() for f in entity.fields):
+            run.err(entry, "updatedByColumn", f"列 {column} 已是实体字段的列，修改人的列只能由平台写")
     for i, link in enumerate(entity.details):
         detail = run.catalog.entity(link.entity)
         if detail is not None and link.parent_key not in {f.name for f in detail.fields}:

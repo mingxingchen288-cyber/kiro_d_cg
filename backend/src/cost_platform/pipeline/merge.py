@@ -11,7 +11,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import dataclasses
+from collections.abc import Collection, Mapping
 from typing import Protocol
 
 from cost_platform.contracts.ports import PermissionChecker, UnitOfWork
@@ -39,6 +40,7 @@ from cost_platform.contracts.types import (
 )
 from cost_platform.contracts.values import from_wire, same_value
 
+from .copies import SourceRows, source_of
 from .entity_rules import EntityRules
 from .loader import candidate_of, document_ref, is_new_key, rejects_missing
 from .plan import find_change, note_modify, row_id
@@ -96,15 +98,45 @@ class _Rows:
 
     def new_values(self, provided: Mapping[str, BusinessValue | Value], writable: frozenset[str] | None,
                    ctx: ExecutionContext | None, client_row_id: str | None, row_key: str | None = None, *,
-                   wire: bool = True) -> dict[str, Value]:
+                   wire: bool = True, source: Mapping[str, Value] | None = None,
+                   readable: Collection[str] = ()) -> dict[str, Value]:
         """新增行要写入的值：填写的值、默认值（WP-16）、erpRow 列设为 localValue（WP-14）。不含主键和关联字段。
-        不可编辑字段的 builtin 默认值按执行上下文取，前端传来的值不用（E28）。"""
+        不可编辑字段的 builtin 默认值按执行上下文取，前端传来的值不用（E28）。复制出的行（`source` 为源行）见
+        `_copied_values`。"""
+        if source is not None:
+            return self._copied_values(provided, writable, source, readable, client_row_id, row_key, wire=wire)
         builtin_locked = {n for n in self.rules.builtin_names() if writable is not None and n not in writable}
         given = {n: v for n, v in provided.items() if n not in builtin_locked}
         self.check(sorted(given), None, writable, row_key, client_row_id)
         values = {n: self.value(n, v, row_key, client_row_id, wire=wire) for n, v in given.items()}
         for name, value in self.rules.defaults(set(given), writable if writable is not None else self._fields, ctx).items():
             values[name] = self.stored(name, value)
+        local = self.rules.local_erp_value()
+        if local is not None:
+            values[local[0]] = local[1]
+        return values
+
+    def _copied_values(self, provided: Mapping[str, BusinessValue | Value], writable: frozenset[str] | None,
+                       source: Mapping[str, Value], readable: Collection[str], client_row_id: str | None,
+                       row_key: str | None, *, wire: bool) -> dict[str, Value]:
+        """复制出的行（C02 `copyOf`，WP-21）：可写的字段取命令中的值（复制后用户可能改过）；不可写、但在页面上可见、
+        能写进表的字段（例如成本单的币种、项目号）取源行的值，不用命令中的值；只在视图中的字段和计算字段不写（旧系统插入
+        跳过虚拟列，计算字段由计算规则算出）；其余不可写的字段照常 422。不补默认值（WP-16）；erpRow 列设为 localValue。"""
+        allowed = writable if writable is not None else frozenset(self._fields)
+        taken: set[str] = set()
+        dropped: set[str] = set()
+        for name in provided:
+            field = self._fields.get(name)
+            if field is None or name in allowed:
+                continue
+            if field.column is None or field.role == "calculated":
+                dropped.add(name)
+            elif name in readable and self.rules.not_writable_reason(name, None) is None:
+                taken.add(name)
+        given = [n for n in provided if n not in taken and n not in dropped]
+        self.check(sorted(given), None, writable, row_key, client_row_id)
+        values = {n: self.value(n, provided[n], row_key, client_row_id, wire=wire) for n in given}
+        values.update({n: self.stored(n, source.get(n)) for n in taken})
         local = self.rules.local_erp_value()
         if local is not None:
             values[local[0]] = local[1]
@@ -125,8 +157,9 @@ class DocumentMerger:
             return self._permission.writable_fields(ctx, page, rules.code)
         return rules.structural_writable(current)
 
-    def merge_patches(self, state: CommandState, ctx: ExecutionContext) -> set[RowRef]:
-        """合并 `command.documents`，返回本次新增和修改的行（必填检查用，WP-07）。
+    def merge_patches(self, state: CommandState, ctx: ExecutionContext, sources: SourceRows | None = None) -> set[RowRef]:
+        """合并 `command.documents`，返回本次新增和修改的行（必填检查用，WP-07）。`sources` 为复制出的行的源行
+        （`copies.CopySources` 读出，WP-21）。
 
         加锁读取时已不存在的单据已按 `rowNotFound` 处理，这里跳过；单据中要修改或删除的明细行已不存在时，
         同样按 `rowNotFound` 跳过并写入 `skipped`，或返回 409 ROW_NOT_FOUND（WP-05）。"""
@@ -134,11 +167,20 @@ class DocumentMerger:
         reject = rejects_missing(state, ctx)
         patched: set[RowRef] = set()
         for patch in state.command.documents:
-            self._merge(state, ctx, page, reject, patch, patched)
+            self._merge(state, ctx, page, reject, patch, patched, sources or {})
         return patched
 
+    @staticmethod
+    def _readable(ctx: ExecutionContext, page: str | None, entity: str) -> frozenset[str]:
+        """用户在这个页面上能看到的字段（页面视图中 visible 的字段）：复制出的行只取这些字段的源行值（WP-21）。"""
+        if page is None:
+            return frozenset()
+        view = ctx.config.page_view(page)
+        area = next((a for a in [view.master, *view.details] if a.entity == entity), None)
+        return frozenset(f.name for f in area.fields if f.visible) if area is not None else frozenset()
+
     def _merge(self, state: CommandState, ctx: ExecutionContext, page: str | None, reject: bool, patch: DocumentPatch,
-               patched: set[RowRef]) -> None:
+               patched: set[RowRef], sources: SourceRows) -> None:
         entity = ctx.config.entity(patch.entity)
         master_rules = EntityRules(patch.entity, entity)
         master_rows = _Rows(master_rules, self._scales)
@@ -146,7 +188,8 @@ class DocumentMerger:
         master = patch.master
         if isinstance(master, MasterAdd):
             values = master_rows.new_values(master.values, self._writable(ctx, page, master_rules, None), ctx,
-                                            master.client_row_id)
+                                            master.client_row_id, source=source_of(sources, patch.entity, master.copy_of),
+                                            readable=self._readable(ctx, page, patch.entity))
             row = Row(entity=patch.entity, row_key=None, client_row_id=master.client_row_id,
                       values={**{f.name: None for f in entity.fields}, **values})
             doc = DocumentData(ref=ref, master=row, details={link.entity: [] for link in entity.details})
@@ -172,7 +215,9 @@ class DocumentMerger:
             rules = EntityRules(detail.entity, ctx.config.entity(detail.entity), links[detail.entity])
             rows = _Rows(rules, self._scales)
             if isinstance(detail, DetailAdd):
-                values = rows.new_values(detail.values, self._writable(ctx, page, rules, None), ctx, detail.client_row_id)
+                values = rows.new_values(detail.values, self._writable(ctx, page, rules, None), ctx, detail.client_row_id,
+                                         source=source_of(sources, detail.entity, detail.copy_of),
+                                         readable=self._readable(ctx, page, detail.entity))
                 add_detail(state, doc, rules, values, client_row_id=detail.client_row_id, row_key=None)
                 patched.add((detail.entity, detail.client_row_id))
                 continue

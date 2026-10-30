@@ -895,9 +895,18 @@ export class PageRuntime {
       const gridId = this.model.gridId(approval.document.recordKey);
       if (this.port(master)?.hasRow(gridId)) mark(master, gridId);
     }
+    // 结果中写入的行也按主键重读（FP-06，同旧系统保存后后端重查主表行、前端重读明细：DynamicDataService.java 第
+    // 1232–1255 行、useWorkingSetStore.ts 第 1047–1076 行）：只在读取视图中的字段、数据库端的默认值（例如新单据的币种
+    // "人民币"）命令结果里没有，重读后与重新打开单据看到的相同。提交审批的单据显示的就是正式数据，不重读
+    for (const row of result.rows) {
+      if ('deleted' in row || row.frozen) continue;
+      const keys = missing.get(row.entity) ?? [];
+      if (!keys.includes(row.rowKey)) missing.set(row.entity, [...keys, row.rowKey]);
+    }
     let reloadNeeded = false;
     for (const [entity, rowKeys] of missing) {
       try {
+        // eslint-disable-next-line no-await-in-loop
         const response = await this.api.rowsByKeys(this.pageCode, { entity, rowKeys });
         this.model.registerRows(entity, response.rows);
         for (const row of response.rows) mark(entity, this.model.gridId(row.rowKey));
@@ -1013,6 +1022,7 @@ export class PageRuntime {
     }
     this.model.buffer.discard(discard);
     this.model.clearPreview(discard);
+    await this.rereadResultRows(result);
     for (const approval of result.approvals) {
       if (approval.document.entity !== view.master.entity || approval.status !== 'pending') continue;
       this.model.freezeRecord(approval.document.recordKey, approval.approvalId);
@@ -1035,6 +1045,29 @@ export class PageRuntime {
     this.announce(result, `${button.label}已完成`, `${button.label}：没有需要修改的数据`);
     await this.refreshAggregates();
     return result;
+  }
+
+  /**
+   * 按钮成功后按主键重读结果中写到的行（rows/by-keys，每个实体一个请求，不在命令事务里），再显示：命令结果的行取自后端
+   * 手里的数据（WP-12），只在读取视图中的字段（例如包材的参考采购价、最后采购数量，"客户指定"的 NVL）和数据库端的
+   * 默认值到不了页面。同旧系统按钮执行后 reloadMasterRow + loadDetailData（useRuntimeActions.ts 第 75–110 行）。
+   * 读失败时保留命令结果的值。
+   */
+  private async rereadResultRows(result: CommandResult) {
+    const byEntity = new Map<string, string[]>();
+    for (const row of result.rows) {
+      if ('deleted' in row || row.frozen) continue;
+      byEntity.set(row.entity, [...(byEntity.get(row.entity) ?? []), row.rowKey]);
+    }
+    for (const [entity, rowKeys] of byEntity) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const response = await this.api.rowsByKeys(this.pageCode, { entity, rowKeys });
+        this.model.registerRows(entity, response.rows);
+      } catch {
+        // 读失败：页面显示命令结果中的值
+      }
+    }
   }
 
   /** 按钮结果中前端还没有的明细行：按钮新增的行，例如"由BOM生成明细"按 BOM 新增的原辅料、包材 */

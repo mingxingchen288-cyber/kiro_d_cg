@@ -123,7 +123,7 @@ describe('成本核算主表的产品 Lookup（C05 fillWritable）', () => {
     expect(document.master).toEqual({ op: 'add', clientRowId: id, values: { ...PRODUCT_392 } });
   });
 
-  it('复制 200721 只复制主表：新单据的命令带产品ID 392 和产品名称等；不是回填目标的项目号不写', async () => {
+  it('复制 200721 只复制主表：新单据的命令带 copyOf、产品ID 392 和产品名称等；不可编辑的项目号也写（后端取源行的值）', async () => {
     const ctx = await openCostPage(productView(), undefined, RECORDS);
     const { runtime, master } = ctx;
     master.select('200721');
@@ -143,6 +143,8 @@ describe('成本核算主表的产品 Lookup（C05 fillWritable）', () => {
       master: {
         op: 'add',
         clientRowId: newId,
+        // 同旧系统复制源行全部字段（copy-row-fields.ts）：不可编辑、也不是回填目标的项目号也写进命令（C02 copyOf，WP-21）
+        copyOf: '200721',
         values: {
           GOODSID: '392',
           GOODSNAME: '500mg对乙酰氨基酚片',
@@ -152,6 +154,7 @@ describe('成本核算主表的产品 Lookup（C05 fillWritable）', () => {
           MAH: 'Chelonia',
           CUSTOMID: '1210180',
           CUSTOMNAME: '邹总-古巴',
+          PROJECTNO: 'P-01',
           MEMO: null
         }
       },

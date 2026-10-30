@@ -63,6 +63,14 @@ export function fieldWritable(region: ViewRegion, field: ViewField, values: Fiel
   return (field.editable || Boolean(field.fillWritable)) && writableOnRow(region, field, values, isNew);
 }
 
+/**
+ * 复制出的行中，不可写的复制字段能否写进命令（C02 `copyOf`，FP-13）：可见、能写进表的字段（不是主键、关联字段、
+ * 计算字段、`erpRow.column`，没有 `erpRow` 时不是 ERP 列），后端取源行的值。同旧系统复制源行全部字段、新增行提交全部字段。
+ */
+export function fieldCopyable(region: ViewRegion, field: ViewField) {
+  return field.visible && writableOnRow(region, field, {}, true);
+}
+
 // ---- 默认值（FP-15，C06 第 2 节；旧系统 useWorkingSetStore.ts 的 resolveColumnDefaultValue）
 
 export interface DefaultContext {
