@@ -28,7 +28,7 @@
 - OP-08：按钮操作只按选中行的主键执行（C02 第 1 节）。"确定涉及的单据"阶段按 `params.selectedRows` 找出所属单据，写入 `involved`；命令带了 `documents` 时返回 400 INVALID_REQUEST。动作的来源都取 write-pipeline 加锁读到的当前数据，不用前端的值；选中的行已不存在时按 WP-05 处理。`updateRows` 不看选中行（OP-10）。
 - OP-09：`replaceDetails`（C06 v18 第 6 节）：对每张选中的单据，删除它在 `entity` 中的全部行（加锁读到的当前数据），再在命令事务的连接上执行一次 `sql`（绑定变量取这张单据主表计算后的值），把查出的每一行新增为 `entity` 的一行：列名就是字段名，按字段类型转换取值，`clientRowId` 按请求键、动作序号、单据和行序号生成（同一请求重放时相同）。要写的字段不在 `writableFields` 中或不可写时返回 422 FIELD_NOT_WRITABLE。展开只生成删除、新增的 `intents`；默认值、关联字段、名称这类只在视图中的字段（按页面 Lookup 带出）、计算和写入都由 write-pipeline 完成（WP-08、WP-16、WP-18）。
 - OP-10：`updateRows`（C06 v18 第 6 节）：在命令事务的连接上执行一次 `sql`，不用绑定变量，不看选中行。每一行按 `recordKeyColumn`（单据主键）和 `rowKeyColumns`（明细主键）找到一条记录，其余列写到同名字段；主键列为空的行跳过；同一记录的同一字段被写成不同的值时返回 422 VALIDATION_FAILED，不可写的字段返回 422 FIELD_NOT_WRITABLE（与 OP-02 相同）。找到的单据不在 `involved` 中，由 write-pipeline 加锁、做冻结检查后再合并（WP-18）。
-- 用户 2026-10-29："那两个存储过程是有问题的，它内部又计算了一次，这是不应该的，后续都可以不用存储过程计算了"；"按钮无论有多少动作，都应该在同一个事务内"。成本核算的"由BOM生成明细"（旧 P_COST_BOM_INSERT）用两个 `replaceDetails`，"同步采购价"（旧 P_PINGGU_COMPUTE_ALL）用两个 `updateRows`（seed 的 `operation.COST_PINGGU.generateFromBom.json`、`operation.COST_PINGGU.syncPrice.json`），不调存储过程；逃生舱保留。
+- 用户 2026-10-29："那两个存储过程是有问题的，它内部又计算了一次，这是不应该的，后续都可以不用存储过程计算了"；"按钮无论有多少动作，都应该在同一个事务内"。成本核算的"由BOM生成明细"（旧 P_COST_BOM_INSERT）用两个 `replaceDetails`（seed 的 `operation.COST_PINGGU.generateFromBom.json`），不调存储过程；逃生舱保留。旧系统的"同步采购价"（旧 P_PINGGU_COMPUTE_ALL）用户 2026-10-30 不要了，按钮和操作配置已删除；`updateRows` 是通用动作，保留。
 
 ## 4. 依赖
 
@@ -51,4 +51,4 @@
 - 开始开发的前置条件：contracts 完成。
 - 本模块完成（模拟验证）：每种动作的展开结果、字段映射、取值冲突、传播边界、选中行为空。
 - 联调后才能确认：按钮的 `updateRecords` 在 Oracle 上只更新找到的行（批次 B）。
-- `replaceDetails`、`updateRows` 的真实验证（T-OP-3）：在 d_cg 上经真实的写入管道跑"由BOM生成明细""同步采购价"。
+- `replaceDetails`、`updateRows` 的真实验证（T-OP-3）：在 d_cg 上经真实的写入管道跑"由BOM生成明细"和测试里自己定义的 `updateRows` 操作。

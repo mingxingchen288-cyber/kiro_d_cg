@@ -1,4 +1,5 @@
-"""按 SQL 的两个按钮动作的真实验证（d_cg，OP-09、OP-10）：成本核算的"由BOM生成明细""同步采购价"经真实的写入管道执行。
+"""按 SQL 的两个按钮动作的真实验证（d_cg，OP-09、OP-10）：成本核算的"由BOM生成明细"（seed 的操作）和 `updateRows`
+（本测试自己定义的操作）经真实的写入管道执行。
 
 组装：注册表 boot 真实的 db-core、rules-core、identity 目录、authz、queries 读取、write-pipeline、operations、approval
 插件，命令经 orchestration 的 `CommandRunner` 执行（一个命令一个事务）。配置快照由 `backend/seed/config` 在内存中生成
@@ -7,8 +8,8 @@
 
 测试数据：每个测试把成本单 200721（产品 392，500mg对乙酰氨基酚片，12 行明细）复制成一张新成本单（主键取
 T_COST_PINGGU_SEQ，明细主键取 T_COST_PINGGU_DTL_SEQ），结束时删掉这张单据、它的明细和本测试的命令记录。
-"同步采购价"的测试操作在 seed 的 SQL 上加了 `D.DOCID = <新单据>`，只改这张单据；seed 中覆盖全部成本单的那条操作
-不在 d_cg 上执行。
+用户 2026-10-30 不要"同步采购价"按钮，seed 中已删除它的操作和按钮；`updateRows` 是通用动作（OP-10），这里用一个只给
+测试用的操作和按钮（`UPDATE_ROWS`，只在内存配置中）验证它：SQL 同原来的"同步采购价"，加上 `D.DOCID = <新单据>`，只改这张单据。
 """
 
 from __future__ import annotations
@@ -69,10 +70,11 @@ pytestmark = pytest.mark.oracle
 SEED = Path(__file__).resolve().parents[2] / "seed" / "config"
 PAGE = "COST_PINGGU"
 BOM = "COST_PINGGU.generateFromBom"
-SYNC_PRICE = "COST_PINGGU.syncPrice"
+UPDATE_ROWS = "COST_PINGGU.pfTestUpdateRows"
+"""只给测试用的 `updateRows` 操作（`update_rows_for`），不在 seed 中。"""
 SOURCE = 200721
 """复制来源：产品 392（500mg对乙酰氨基酚片），BOM 11 行（原辅料 5 行、包材 6 行，.reports/batch1-20261029/bom-price/05）。"""
-MEMO = "PF_TEST 戊组 由BOM生成明细/同步采购价"
+MEMO = "PF_TEST 戊组 由BOM生成明细/updateRows"
 VIEWS = {"COST_MATERIAL": "V_COST_PINGGU_MATERIAL", "COST_PACKAGE": "V_COST_PINGGU_PACKAGE"}
 ADMIN = t.Identity(user_id="1", username="admin", display_name="系统管理员", department_id=None, role_code="ADMIN",
                    session_id="s-test-bom-price")
@@ -168,16 +170,31 @@ def seed_drafts() -> list[t.ConfigDraft]:
     return read_seed(SEED)
 
 
-def sync_price_for(docid: str) -> list[t.ConfigDraft]:
-    """seed 加上只改 `docid` 的"同步采购价"：两条 SQL 都加 `D.DOCID = docid`，其余与 seed 相同。"""
+def _update_rows_sql(view: str, docid: str | None) -> str:
+    """原来"同步采购价"的 SQL：单价和物料清单参考价不同的明细改成参考价；`docid` 不为空时只查这张单据。"""
+    only = f"D.DOCID = {int(docid)} AND " if docid is not None else ""
+    return (f"SELECT D.DOCID AS DOC_ID, D.DTLID AS DTL_ID, G.PRICE AS PRICE FROM {view} D JOIN T_COST_GOODS G "
+            f"ON G.GOODSID = D.GOODSID WHERE {only}G.USEFLAG NOT IN ('产成品', '半成品') AND DECODE(D.PRICE, G.PRICE, 0, 1) = 1 "
+            "ORDER BY D.DOCID, D.DTLID")
+
+
+def update_rows_for(docid: str | None) -> list[t.ConfigDraft]:
+    """seed 加上只给测试用的 `updateRows` 操作 `UPDATE_ROWS` 和主表上引用它、不需要选中行的按钮。"""
+    operation = t.ConfigDraft(type="operation", key=UPDATE_ROWS, name="PF_TEST 按 SQL 改单价", content={
+        "label": "PF_TEST 按 SQL 改单价", "kind": "action",
+        "writableFields": {"COST_MATERIAL": ["PRICE"], "COST_PACKAGE": ["PRICE"]},
+        "impact": ["COST_PINGGU", "COST_MATERIAL", "COST_PACKAGE"],
+        "actions": [{"action": "updateRows", "entity": entity, "sql": _update_rows_sql(view, docid),
+                     "recordKeyColumn": "DOC_ID", "rowKeyColumns": ["DTL_ID"]} for entity, view in VIEWS.items()],
+        "propagation": "end"})
     drafts = seed_drafts()
     for i, draft in enumerate(drafts):
-        if (draft.type, draft.key) == ("operation", SYNC_PRICE):
+        if (draft.type, draft.key) == ("page", PAGE):
             content = copy.deepcopy(draft.content)
-            for action in content["actions"]:
-                action["sql"] = action["sql"].replace(" WHERE ", f" WHERE D.DOCID = {int(docid)} AND ")
+            content["master"]["buttons"].append({"action": "pfTestUpdateRows", "label": "PF_TEST 按 SQL 改单价",
+                                                 "operation": UPDATE_ROWS, "requiresSelection": False})
             drafts[i] = draft.model_copy(update={"content": content})
-    return drafts
+    return [*drafts, operation]
 
 
 # ---------------------------------------------------------------- 测试数据
@@ -308,12 +325,13 @@ def command_record(engine: Engine, key: str) -> dict[str, Any]:
 # ---------------------------------------------------------------- 测试
 
 def test_seed_operations_pass_validation_on_d_cg(engine: Engine, platform_for: Callable[[list[t.ConfigDraft]], Platform]) -> None:
-    """C06 第 10 节：seed 的两条操作在 d_cg 的真实表结构上通过保存校验（SQL 交给 Oracle 解析，参数全部绑空值）。只读，不写配置。"""
-    drafts = seed_drafts()
+    """C06 第 10 节：seed 的"由BOM生成明细"和测试的 `updateRows` 操作在 d_cg 的真实表结构上通过保存校验（SQL 交给 Oracle 解析，
+    参数全部绑空值）。只读，不写配置。"""
+    drafts = update_rows_for(None)
     rules = platform_for(drafts).config.rules
     validator = Validator(OracleSchemaInspector(engine), OracleSequences(), StaticDepartments([]), rules)
     with OracleUnitOfWorkFactory(engine).begin() as uow:
-        problems = validator.check(uow, Catalog({}).merged(drafts), [("operation", BOM), ("operation", SYNC_PRICE)])
+        problems = validator.check(uow, Catalog({}).merged(drafts), [("operation", BOM), ("operation", UPDATE_ROWS)])
     assert problems == []
 
 
@@ -352,9 +370,9 @@ def test_generate_from_bom_replaces_the_details_and_recalculates(
     assert record["audit_diff"]
 
 
-def test_sync_price_without_selection_sets_goods_price_and_recalculates(
+def test_update_rows_without_selection_sets_goods_price_and_recalculates(
         engine: Engine, document: str, platform_for: Callable[[list[t.ConfigDraft]], Platform]) -> None:
-    """不选行点"同步采购价"（测试操作只查这张新单据）：单价和物料清单参考价（T_COST_GOODS.PRICE）不同的明细改成参考价，
+    """不选行点测试的 `updateRows` 按钮（SQL 只查这张新单据）：单价和物料清单参考价（T_COST_GOODS.PRICE）不同的明细改成参考价，
     这张单据按计算规则重算；来源单据 200721 不变。"""
     differ = ("SELECT D.DTLID, D.PRICE, G.PRICE AS GOODS_PRICE FROM {view} D JOIN T_COST_GOODS G ON G.GOODSID = D.GOODSID "
               "WHERE D.DOCID = :d AND G.USEFLAG NOT IN ('产成品', '半成品') AND DECODE(D.PRICE, G.PRICE, 0, 1) = 1")
@@ -365,8 +383,8 @@ def test_sync_price_without_selection_sets_goods_price_and_recalculates(
     total_before = master_row(engine, document)["total_cost"]
     source_before = fetch(engine, "SELECT DTLID, PRICE FROM T_COST_PINGGU_DTL WHERE DOCID = :d ORDER BY DTLID", d=SOURCE)
 
-    platform = platform_for(sync_price_for(document))
-    result = platform.press(SYNC_PRICE)
+    platform = platform_for(update_rows_for(document))
+    result = platform.press(UPDATE_ROWS)
     assert result.outcome == "saved"
 
     assert [r for view in VIEWS.values() for r in fetch(engine, differ.format(view=view), d=int(document))] == []

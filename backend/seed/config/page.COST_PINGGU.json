@@ -118,12 +118,6 @@
           "requiresSelection": true
         },
         {
-          "action": "syncPrice",
-          "label": "同步采购价",
-          "operation": "COST_PINGGU.syncPrice",
-          "requiresSelection": false
-        },
-        {
           "action": "saveGridConfig",
           "label": "保存列配置"
         }
