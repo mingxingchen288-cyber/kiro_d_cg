@@ -14,8 +14,10 @@ from .support import Env, draft, goods_price_items, seed_drafts
 
 def entity_drafts() -> list[ConfigDraft]:
     """契约测试的四个实体：seed 的成本核算主表和两个明细（同在 T_COST_PINGGU_DTL），加上物料清单的实体（T_COST_GOODS）。
-    契约测试的 ENTITIES 只是写法示意（物料清单的两个字段同名），不能经保存流程保存，所以用这几份真实配置。"""
-    return [*(d for d in seed_drafts() if d.type == "entity"), *(d for d in goods_price_items() if d.type == "entity")]
+    契约测试的 ENTITIES 只是写法示意（物料清单的两个字段同名），不能经保存流程保存，所以用这几份真实配置。
+    seed 中的物料清单实体带 approvalRequired，要求同时有启用的审批流，这里只保存实体，所以用 support 中不带它的那份。"""
+    seeded = [d for d in seed_drafts() if d.type == "entity" and d.key != "COST_GOODS_PRICE"]
+    return [*seeded, *(d for d in goods_price_items() if d.type == "entity")]
 
 
 class TestPublishedEntities(EntityDirectoryContract):

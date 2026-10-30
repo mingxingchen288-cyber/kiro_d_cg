@@ -18,6 +18,19 @@
         ]
       },
       {
+        "key": "basic",
+        "title": "基础信息",
+        "kind": "group",
+        "children": [
+          {
+            "key": "GOODS_PRICE_MANAGE",
+            "title": "物料清单及成本",
+            "kind": "page",
+            "pageCode": "GOODS_PRICE_MANAGE"
+          }
+        ]
+      },
+      {
         "key": "config",
         "title": "配置",
         "kind": "config"

@@ -20,9 +20,11 @@ def test_seed_and_c06_flow_samples_can_be_saved(env: Env) -> None:
     first = env.save(base_world())
     result = env.save(flow_samples())
     assert result.generation == first.generation + 1 == env.generation()
+    in_seed = {d.key for d in seed_drafts() if d.type == "approvalFlow"}  # seed 已有 7.9、7.10 两个（部门、液体两块按 d_cg 改过）
+    assert in_seed == {"TECH_CUSTOMER_MATERIAL", "GOODS_TO_COST"}
     for item in flow_samples():
         assert env.stored("approvalFlow", item.key) == item.content
-        assert result.versions[("approvalFlow", item.key)] == 1
+        assert result.versions[("approvalFlow", item.key)] == (2 if item.key in in_seed else 1)
 
 
 def test_save_writes_new_version_views_and_packs_in_one_generation(env: Env) -> None:
@@ -30,7 +32,8 @@ def test_save_writes_new_version_views_and_packs_in_one_generation(env: Env) -> 
     env.save(seed_drafts())
     records = env.records()
     assert {r.id for r in records.values() if r.type in ("pageView", "rulesPack")} == {
-        "pageView/COST_PINGGU|ADMIN", "rulesPack/COST_PINGGU"}
+        "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心", "pageView/GOODS_PRICE_MANAGE|ADMIN",
+        "pageView/GOODS_PRICE_MANAGE|技术中心", "rulesPack/COST_PINGGU", "rulesPack/COST_GOODS_PRICE"}
     page = next(d for d in seed_drafts() if d.type == "page")
     changed = page.content | {"title": "成本核算（改）"}
     result = env.save([draft("page", "COST_PINGGU", changed, "成本核算")])
@@ -41,7 +44,7 @@ def test_save_writes_new_version_views_and_packs_in_one_generation(env: Env) -> 
     assert view.content()["title"] == "成本核算（改）" and view.content()["version"] == result.generation
     # 规则包内容没变：不重写，版本不变
     assert after[item_id("rulesPack", "COST_PINGGU")] == records[item_id("rulesPack", "COST_PINGGU")]
-    assert sorted(result.changed) == ["page/COST_PINGGU", "pageView/COST_PINGGU|ADMIN"]
+    assert sorted(result.changed) == ["page/COST_PINGGU", "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心"]
 
 
 def test_failed_validation_writes_nothing(env: Env) -> None:
@@ -97,7 +100,8 @@ def test_ensure_admin_role(env: Env) -> None:
     env.save([d for d in items if d.type != "menu"])
     assert env.service.ensure_admin_role() is True
     admin = env.stored("role", "ADMIN")
-    assert admin == {"name": "系统管理员", "admin": True, "pages": {"COST_PINGGU": {"buttons": ["*"]}}}
+    assert admin == {"name": "系统管理员", "admin": True,
+                     "pages": {"COST_PINGGU": {"buttons": ["*"]}, "GOODS_PRICE_MANAGE": {"buttons": ["*"]}}}
     env.save([menu])
     generation = env.generation()
     assert env.service.ensure_admin_role() is False
@@ -107,8 +111,10 @@ def test_ensure_admin_role(env: Env) -> None:
 def test_list_and_get_items(env: Env) -> None:
     env.save(seed_drafts())
     pages = env.service.list_items("page")
-    assert [(i.type, i.key, i.version, i.updated_by) for i in pages] == [("page", "COST_PINGGU", 1, "1")]
-    assert {i.type for i in env.service.list_items()} == {"entity", "lookup", "menu", "operation", "page", "role", "rule"}
+    assert [(i.type, i.key, i.version, i.updated_by) for i in pages] == [("page", "COST_PINGGU", 1, "1"),
+                                                                         ("page", "GOODS_PRICE_MANAGE", 1, "1")]
+    assert {i.type for i in env.service.list_items()} == {"approvalFlow", "entity", "lookup", "menu", "operation", "page",
+                                                           "role", "rule"}
     item = env.service.get_item("entity", "COST_PINGGU")
     assert item.content == next(d for d in seed_drafts() if d.key == "COST_PINGGU" and d.type == "entity").content
     with pytest.raises(PlatformError) as caught:

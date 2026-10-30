@@ -1,0 +1,19 @@
+{
+  "type": "rule",
+  "key": "R_GOODS_ERP_GREEN",
+  "name": "ERP物料整行绿底",
+  "content": {
+    "layer": "page",
+    "target": "GOODS_PRICE_MANAGE",
+    "category": "ui",
+    "field": null,
+    "order": 1,
+    "when": {
+      "logic": "AND",
+      "conditions": [
+        {"source": "row", "field": "ROW_CLASS_FLAG", "op": "eq", "value": "erp"}
+      ]
+    },
+    "effect": {"rowStyle": {"backgroundColor": "#E6FFED"}}
+  }
+}

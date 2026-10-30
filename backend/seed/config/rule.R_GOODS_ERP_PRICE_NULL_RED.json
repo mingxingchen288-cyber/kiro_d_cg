@@ -1,0 +1,19 @@
+{
+  "type": "rule",
+  "key": "R_GOODS_ERP_PRICE_NULL_RED",
+  "name": "ERP物料被人工修改过且参考价格为空整行红底",
+  "content": {
+    "layer": "page",
+    "target": "GOODS_PRICE_MANAGE",
+    "category": "ui",
+    "field": null,
+    "order": 3,
+    "when": {
+      "logic": "AND",
+      "conditions": [
+        {"source": "row", "field": "ROW_CLASS_FLAG", "op": "eq", "value": "erp-price-null"}
+      ]
+    },
+    "effect": {"rowStyle": {"backgroundColor": "#f8d7da"}}
+  }
+}

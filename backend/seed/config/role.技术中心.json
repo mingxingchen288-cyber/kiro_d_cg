@@ -1,0 +1,85 @@
+{
+  "type": "role",
+  "key": "技术中心",
+  "name": "技术中心",
+  "content": {
+    "name": "技术中心",
+    "admin": false,
+    "pages": {
+      "COST_PINGGU": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:copyRow",
+          "master:generateFromBom",
+          "master:saveGridConfig",
+          "COST_MATERIAL:copyRow",
+          "COST_MATERIAL:saveGridConfig",
+          "COST_PACKAGE:copyRow",
+          "COST_PACKAGE:saveGridConfig"
+        ],
+        "rows": {
+          "mode": "visual",
+          "logic": "OR",
+          "conditions": [
+            {"field": "USESTATUS", "fieldLabel": "状态", "op": "eq", "valueType": "static", "value": "评估中"},
+            {"field": "USESTATUS", "fieldLabel": "状态", "op": "eq", "valueType": "static", "value": "已立项"}
+          ],
+          "sql": "USESTATUS = '评估中' OR USESTATUS = '已立项'"
+        },
+        "columns": {
+          "master": {
+            "ANNUAL_QTY": {"editable": false},
+            "P_PERPACK": {"editable": false},
+            "S_PERBACK": {"editable": false},
+            "X_PERBACK": {"editable": false},
+            "TOTAL_YL": {"visible": false},
+            "TOTAL_FL": {"visible": false},
+            "TOTAL_BC": {"visible": false},
+            "TOTAL_COST": {"visible": false},
+            "OUT_PRICE_RMB": {"visible": false},
+            "SALEMONEY": {"visible": false},
+            "JGF_BATCH": {"visible": false},
+            "COST_PERQP": {"visible": false, "editable": false},
+            "JGF_PERQP": {"visible": false},
+            "ML_PERQP": {"visible": false},
+            "Y_JG_RE": {"visible": false},
+            "Y_ML": {"visible": false},
+            "Y_SALE": {"visible": false},
+            "FMRATE": {"editable": false},
+            "COST_PERBOX": {"visible": false},
+            "USESTATUS": {"editable": false},
+            "OUT_PRICE_F": {"visible": false, "editable": false},
+            "M_PERPACK": {"editable": false},
+            "PINGGU_CLASS": {"editable": false},
+            "BUSINESS_USER": {"editable": false}
+          },
+          "COST_MATERIAL": {
+            "PRICE": {"visible": false, "editable": false},
+            "COST_BATCH": {"visible": false},
+            "BASE_PRICE": {"visible": false}
+          },
+          "COST_PACKAGE": {
+            "PRICE": {"visible": false, "editable": false},
+            "COST_BATCH": {"visible": false},
+            "BASE_PRICE": {"visible": false}
+          }
+        }
+      },
+      "GOODS_PRICE_MANAGE": {
+        "buttons": [
+          "system:addRow",
+          "system:save",
+          "system:advancedSearch",
+          "master:copyRow",
+          "master:saveGridConfig"
+        ],
+        "columns": {
+          "master": {
+            "PRICE": {"visible": false, "editable": false}
+          }
+        }
+      }
+    }
+  }
+}

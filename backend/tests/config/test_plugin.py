@@ -120,7 +120,7 @@ def test_departments_come_from_directory_reader() -> None:
 def test_import_seed_only_when_no_base_items() -> None:
     """PF_CONFIG_ITEM 没有基础配置项时一次保存 seed 的配置项（代号加一）；已有时不再导入。"""
     env = Env()
-    assert import_seed(env.service, SEED) == len(seed_drafts()) == 30
+    assert import_seed(env.service, SEED) == len(seed_drafts()) == 39
     stored = {(r.type, r.key) for r in env.records().values() if r.type in BASE_TYPES}
     assert stored == {(d.type, d.key) for d in seed_drafts()} and env.generation() == 1
     assert import_seed(env.service, SEED) == 0 and env.generation() == 1
@@ -144,6 +144,8 @@ def test_start_imports_seed_then_warms_up_and_stops() -> None:
         for name in SEQUENCES:
             c.exec_driver_sql("INSERT INTO user_sequences VALUES (?)", (name,))
     directory = FakeDirectory()
+    # seed 的审批流 TECH_CUSTOMER_MATERIAL 引用部门 18（d_cg 的技术中心），部门不存在时导入 seed 会校验失败
+    directory.departments = {d: (f"部门{d}", None) for d in DEPARTMENTS}
     client, namespace = redis_client(), fresh_namespace()
     started: list[ConfigPlugin] = []
     try:

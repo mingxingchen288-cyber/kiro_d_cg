@@ -1,0 +1,24 @@
+{
+  "type": "operation",
+  "key": "GOODS_PRICE_MANAGE.save",
+  "name": "物料清单保存",
+  "content": {
+    "label": "保存",
+    "kind": "save",
+    "writableFields": {
+      "COST_GOODS_PRICE": [
+        "GOODSNAME",
+        "USEFLAG",
+        "GOODSTYPE",
+        "PACKTYPE",
+        "FACTORYNAME",
+        "STANDARDTYPE",
+        "ZX_PRICE"
+      ]
+    },
+    "impact": [
+      "COST_GOODS_PRICE"
+    ],
+    "propagation": "continue"
+  }
+}

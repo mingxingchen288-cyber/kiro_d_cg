@@ -10,6 +10,11 @@
         "buttons": [
           "*"
         ]
+      },
+      "GOODS_PRICE_MANAGE": {
+        "buttons": [
+          "*"
+        ]
       }
     }
   }

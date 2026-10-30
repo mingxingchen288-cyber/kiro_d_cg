@@ -61,7 +61,8 @@ def test_page_view_and_rules_pack(client: TestClient, env: Env) -> None:
 def test_config_items_admin_only(client: TestClient) -> None:
     items = client.get("/api/config/items", params={"type": "page"})
     assert items.status_code == 200
-    assert [(i["type"], i["key"], i["version"]) for i in items.json()["items"]] == [("page", "COST_PINGGU", 1)]
+    assert [(i["type"], i["key"], i["version"]) for i in items.json()["items"]] == [
+        ("page", "COST_PINGGU", 1), ("page", "GOODS_PRICE_MANAGE", 1)]
     denied = client.get("/api/config/items", headers={"X-Test-Role": "R"})
     assert denied.status_code == 403 and denied.json()["code"] == "PERMISSION_DENIED"
     item = client.get("/api/config/items/page/COST_PINGGU")
@@ -93,10 +94,11 @@ def test_wizard_and_schema_endpoints(client: TestClient, env: Env) -> None:
     assert schema.json()["objectType"] == "view" and schema.json()["primaryKey"] is None
     assert client.post("/api/config/schema/columns", json={"name": "T_NO"}).json() == {
         "objectType": None, "primaryKey": None, "columns": []}
+    # seed 已有物料清单页 GOODS_PRICE_MANAGE，向导用另外的编码在同一张表上新建一页
     generated = client.post("/api/config/wizard/generate", json={
-        "parentMenu": "cost", "pageCode": "GOODS_PRICE_MANAGE", "title": "物料清单及成本", "layout": "single",
+        "parentMenu": "cost", "pageCode": "GOODS_WIZARD", "title": "物料清单（向导）", "layout": "single",
         "detailMode": "tabs", "audit": True, "details": [],
-        "master": {"entity": "COST_GOODS_PRICE", "table": "T_COST_GOODS", "readView": "T_COST_GOODS_PRICE_V"}})
+        "master": {"entity": "COST_GOODS_WIZARD", "table": "T_COST_GOODS", "readView": "T_COST_GOODS_PRICE_V"}})
     assert generated.status_code == 200
-    assert {(i["type"], i["key"]) for i in generated.json()["items"]} >= {("page", "GOODS_PRICE_MANAGE"), ("role", "ADMIN")}
-    assert client.get("/api/pages/GOODS_PRICE_MANAGE/view").status_code == 200
+    assert {(i["type"], i["key"]) for i in generated.json()["items"]} >= {("page", "GOODS_WIZARD"), ("role", "ADMIN")}
+    assert client.get("/api/pages/GOODS_WIZARD/view").status_code == 200
