@@ -24,6 +24,7 @@ import type { PersonalColumn } from '../../../contracts/http';
 import { fieldOf } from '../fields';
 import type { GridPort, GridRow, PageRuntime } from '../page-runtime';
 import { messageOf } from '../page-runtime';
+import { SUMMARY_ROW_ID } from '../summary';
 import { FORM_COLUMN, buildColumns } from './columns';
 
 defineOptions({ name: 'PageGrid' });
@@ -62,10 +63,14 @@ const sideBar = computed<SideBarDef | false>(() =>
 
 const cellSelection = computed(() => Boolean(region.value?.grid.cellSelection));
 
+/** 汇总行（C06 第 3 节 `aggregate`）：固定在表格底部；编辑、预览、加载明细、换单据和重新查询后重算 */
 const pinnedBottom = computed(() => {
-  if (!props.master) return undefined;
-  const aggregates = runtime.ui.aggregates.value;
-  return Object.keys(aggregates).length ? [{ ...aggregates, __id: '__aggregates' } as GridRow] : undefined;
+  void runtime.state.revision;
+  void runtime.state.viewVersion;
+  void runtime.state.activeRecord;
+  void runtime.ui.aggregates.value;
+  const row = runtime.summaryRow(props.entity);
+  return row ? [row] : [];
 });
 
 const rowSelection: RowSelectionOptions = {
@@ -244,7 +249,7 @@ function onSelectionChanged() {
 function onCellDoubleClicked(event: CellDoubleClickedEvent<GridRow>) {
   const field = event.colDef.field;
   const data = event.data;
-  if (!field || !data || data.__id === '__aggregates' || !runtime.view.value) return;
+  if (!field || !data || data.__id === SUMMARY_ROW_ID || !runtime.view.value) return;
   const meta = fieldOf(runtime.view.value, props.entity, field);
   if (meta?.lookup) {
     void runtime.openLookup(props.entity, data.__id, field);
@@ -270,7 +275,7 @@ function onPasteEnd() {
 function getContextMenuItems(params: GetContextMenuItemsParams<GridRow>): MenuItemDef[] {
   const current = region.value;
   if (!current) return [];
-  if (params.node?.data && !params.node.isSelected() && params.node.data.__id !== '__aggregates')
+  if (params.node?.data && !params.node.isSelected() && params.node.data.__id !== SUMMARY_ROW_ID)
     params.node.setSelected(true, true);
   return runtime.regionButtons(current).map(button => ({
     name: button.label,

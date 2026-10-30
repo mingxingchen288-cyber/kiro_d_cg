@@ -34,6 +34,7 @@ import { MASTER_GRID, fieldOf, newRowValues, regionKey } from './fields';
 import { canOpenLookup, fillsBack, lookupFill, lookupRequest } from './lookup';
 import { columnsToApply, mergePersonal, personalChanges } from './personal';
 import { PreviewEngine, buildPreviewRequest } from './preview';
+import { SUMMARY_ROW_ID, detailSummary, masterSummary, sumFields } from './summary';
 import { PageModel } from './view-model';
 
 /** 表格中的一行：`__id` 为表格行标识（rowKey；新增行为 clientRowId，保存后不变） */
@@ -174,6 +175,9 @@ export class PageRuntime {
   /** 配置变更后重新读取的规则包是后台请求（C09 第 1 节） */
   private backgroundPack = false;
 
+  /** 最近一次主表列表请求（排序、筛选、高级查询），保存后重新取汇总时用 */
+  private lastQuery: ListRequest | null = null;
+
   private get api() {
     return this.deps.api;
   }
@@ -281,6 +285,21 @@ export class PageRuntime {
     return { ...this.model.values(entity, id), __id: gridId };
   }
 
+  /**
+   * 区域底部的汇总行（C06 第 3 节 `aggregate`，见 summary.ts）：主表区为列表的汇总加上还没保存的修改，
+   * 明细区为当前单据的明细行之和。没有求和的列或没有行时为 null。
+   */
+  summaryRow(entity: string): GridRow | null {
+    const view = this.view.value;
+    const region = view && this.model.region(entity);
+    if (!view || !region) return null;
+    const values =
+      entity === view.master.entity
+        ? masterSummary(this.model, this.ui.aggregates.value)
+        : detailSummary(this.model, region, this.state.activeRecord);
+    return values ? { ...values, __id: SUMMARY_ROW_ID } : null;
+  }
+
   private detailGridIds(entity: string, recordId: string) {
     return this.model.detailIds(entity, recordId).map(id => this.model.gridId(id));
   }
@@ -289,6 +308,7 @@ export class PageRuntime {
   async fetchMasterRows(request: Pick<ListRequest, 'startRow' | 'endRow' | 'sortModel' | 'filterModel'>) {
     const body: ListRequest = { ...request };
     if (this.ui.advanced.value) body.advanced = this.ui.advanced.value;
+    this.lastQuery = body;
     const response = await this.api.listRows(this.pageCode, body);
     this.model.registerMasterRows(response.rows);
     this.state.total = response.total;
@@ -297,6 +317,22 @@ export class PageRuntime {
     const master = this.model.master;
     const rows = [...added, ...response.rows.map(r => this.model.gridId(r.rowKey))].map(id => this.gridRow(master, id));
     return { rows, total: response.total + added.length };
+  }
+
+  /**
+   * 汇总行（C06 第 3 节 `aggregate`）：保存或按钮成功后正式数据变了，按最近一次列表请求的条件重新取主表的汇总
+   * （`startRow` 等于 `endRow`，只取总数和汇总，C09 第 4 节）。主表没有求和的列时不取。
+   */
+  private async refreshAggregates() {
+    const view = this.view.value;
+    if (!view || !this.lastQuery || !sumFields(view.master).length) return;
+    try {
+      const response = await this.api.listRows(this.pageCode, { ...this.lastQuery, startRow: 0, endRow: 0 });
+      this.ui.aggregates.value = response.aggregates;
+      this.state.total = response.total;
+    } catch (error) {
+      this.deps.message.error(`汇总读取失败：${messageOf(error)}`);
+    }
   }
 
   /** 选中行变了（表格行标识） */
@@ -340,6 +376,8 @@ export class PageRuntime {
         record = await this.api.loadRecord(this.pageCode, recordId);
       } while (generation !== this.resultGeneration);
       this.model.registerRecord(recordId, record);
+      // 正式数据变了：明细区的汇总行等据此重算
+      this.state.revision += 1;
     } catch (error) {
       this.deps.message.error(`单据 ${recordId} 的明细读取失败：${messageOf(error)}`);
     }
@@ -798,6 +836,7 @@ export class PageRuntime {
     this.ui.effects.value = [];
     this.syncState();
     this.announce(result, '已保存');
+    await this.refreshAggregates();
   }
 
   /** 命令结果中的行属于哪张单据 */
@@ -884,6 +923,7 @@ export class PageRuntime {
     }
     this.syncState();
     this.announce(result, `${button.label}已完成`);
+    await this.refreshAggregates();
     return result;
   }
 
