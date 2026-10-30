@@ -732,11 +732,12 @@ def test_c04_c08_annotations_and_defaults_match() -> None:
             continue
         doc_fields, doc_methods = _class_members(node)
         impl_fields, impl_methods = _class_members(impl[name])
-        for field, (annotation, _) in doc_fields.items():
+        for field, (annotation, doc_default) in doc_fields.items():
             actual, default = impl_fields.get(field, (None, None))
             if actual != annotation:
                 problems.append(f"{name}.{field} 的类型 {actual} 与文档 {annotation} 不同")
-            if default is not None and name not in _ALLOWED_DEFAULTS and not re.fullmatch(
+            # 文档写了同样的默认值时允许（例如 C08 第 6 节 RowIntent.fill_defaults = True）
+            if default is not None and default != doc_default and name not in _ALLOWED_DEFAULTS and not re.fullmatch(
                     r"dc_field\((?:(?:repr|hash|compare)=\w+(?:, )?)+\)", default):
                 problems.append(f"{name}.{field} 有文档没有写的默认值 {default}")
         for method, signature in doc_methods.items():

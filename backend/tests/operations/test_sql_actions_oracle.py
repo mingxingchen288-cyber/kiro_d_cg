@@ -339,7 +339,7 @@ def test_generate_from_bom_replaces_the_details_and_recalculates(
         engine: Engine, document: str, platform_for: Callable[[list[t.ConfigDraft]], Platform]) -> None:
     """选中新成本单点"由BOM生成明细"：原来的 12 行明细全部删掉；按产品 392 的 BOM 新增 11 行，物料、每片含量、单价、分类
     与旧 P_COST_BOM_INSERT 的查询相同（每片含量按 WP-15 保留 8 位小数）；名称由 Lookup 带出；每批数量、每批成本和主表合计
-    由计算规则算出。命令一次提交，命令记录为 done、带审计差异。"""
+    由计算规则算出；额外投料量为空、客户指定为库默认值 0（不补默认值）。命令一次提交，命令记录为 done、带审计差异。"""
     before = {r["dtlid"] for rows in detail_rows(engine, document).values() for r in rows}
     assert len(before) == 12
     platform = platform_for(seed_drafts())
@@ -364,6 +364,14 @@ def test_generate_from_bom_replaces_the_details_and_recalculates(
     added = [r for r in result.rows if isinstance(r, t.ResultRow) and r.entity != PAGE]
     assert {r.row_key for r in added} == {str(r["dtlid"]) for r in after}
     assert {r.values["GOODSNAME"] for r in added} == {r["goodsname"] for r in after}  # 求值前按 Lookup 带出（WP-08）
+
+    # 旧 P_COST_BOM_INSERT 的 INSERT 不写额外投料量、客户指定（WP-16 的例外）：额外投料量为空（列没有默认值），
+    # 客户指定为列默认值 0（.reports/batch5-20261030/b1-pipeline/q01）；计算照常（空值按 0 参与，上面 check_recalculated）
+    stored = fetch(engine, "SELECT DTLID, EXADD_MATER, CUSTOMER_SPECIFIED FROM T_COST_PINGGU_DTL WHERE DOCID = :d", d=int(document))
+    assert len(stored) == 11
+    assert [r["exadd_mater"] for r in stored] == [None] * 11
+    assert [r["customer_specified"] for r in stored] == [0] * 11
+    assert all(r.values["EXADD_MATER"] is None for r in added)
     assert {r.row_key for r in result.rows if isinstance(r, t.DeletedRow)} == {str(k) for k in before}
     record = command_record(engine, platform.request_keys[-1])
     assert (record["status"], record["operation"], record["page"]) == ("done", BOM, PAGE)

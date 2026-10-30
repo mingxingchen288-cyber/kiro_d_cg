@@ -101,7 +101,9 @@ def expand_replace_details(rnd: Round, action: ReplaceDetails, cursor: int) -> l
     `entity` 的一行（C06 第 6 节）。
 
     - SQL 的绑定变量取这张单据主表计算后的值（前面动作合并、计算后的候选数据），每张单据执行一次。
-    - 新增行的值：SQL 的每一列写到同名字段；没有的字段按新增行的默认值（WP-16）；关联字段取这张单据的主键（write-pipeline）。
+    - 新增行的值：SQL 的每一列写到同名字段；关联字段取这张单据的主键（write-pipeline）。没有的字段不补默认值
+      （`RowIntent.fill_defaults` 为 False，WP-16 的例外），INSERT 不写这些列，取数据库的列默认值：旧 P_COST_BOM_INSERT
+      的 INSERT 不写额外投料量、客户指定，额外投料量为空、客户指定为库默认值 0。
       计算字段不在 SQL 里写，由计算规则算出；名称、分类这类只在视图中的字段，求值前由 write-pipeline 按页面的 Lookup 带出。
     - 新增行按 SQL 返回的顺序，`clientRowId` 见 `_client_row_id`。"""
     entity = rnd.entity(action.entity)
@@ -125,7 +127,7 @@ def expand_replace_details(rnd: Round, action: ReplaceDetails, cursor: int) -> l
             client = _client_row_id(rnd.state, cursor, ref, n)
             checks.append((action.entity, client, names, None))
             intents.append(RowIntent(document=ref, entity=action.entity, op="add", row_key=None, client_row_id=client,
-                                     values={f.name: _value(f, record[i]) for i, f in mapped}))
+                                     values={f.name: _value(f, record[i]) for i, f in mapped}, fill_defaults=False))
     check_writable(rnd.operation_code, rnd.operation, {action.entity: entity}, checks)
     return intents
 
