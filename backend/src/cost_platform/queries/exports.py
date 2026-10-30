@@ -6,9 +6,10 @@
   第一行为字段标题。
 - 按导出配置（`mode: config`）：authz 的 `can_export` 为 true 才能使用，否则 403。配置的 SQL 不改动，外面包一层：
   `scope` 为 `current` 时按当前查询条件和行权限、为 `all` 时只按行权限，用 `EXISTS (SELECT 1 FROM 页面主表 a WHERE
-  a.主键 = q.keyColumn AND 条件)` 限定（与旧系统 buildPageExistsClause 相同，旧系统 all 不限定，新契约改为按行权限）；
-  没有任何条件时不限定。外层用行号保持 SQL 自己的顺序；SQL 没有 ORDER BY 且请求的排序字段是导出列时按它排序（旧系统
-  appendOrderByClause）。明细 SQL 同样按 `linkColumn` 限定。
+  a.主键 = qe_src.keyColumn AND 条件)` 限定（与旧系统 buildPageExistsClause 相同，旧系统 all 不限定，新契约改为按行权限）；
+  没有任何条件时不限定。限定和行号在同一层，行号按限定后数据库返回的先后编，外层按行号排序，行的先后与旧系统把条件接在
+  SQL 后面时相同；SQL 没有 ORDER BY 且请求的排序字段是导出列时按它排序（旧系统 appendOrderByClause）。明细 SQL 同样按
+  `linkColumn` 限定。
 
 版式与旧系统相同（见 xlsx.py 的样式说明）：主表一张工作表；`perMaster` 时每张有明细的主单一张"明细_<主单主键>"，块依次为
 标题行"【明细 sheet】"、表头行、数据行，块之间空一行；主表中 keyColumn 所在列的单元格链接到这张主单的明细工作表，明细工作表
@@ -223,17 +224,20 @@ class Exports:
     def _rows(self, uow: UnitOfWork, dialect_name: str, scope: PageScope, sql: str, link_column: str,
               columns: list[ExportColumn], clauses: Sequence[str], binds: Binds, sorts: Sequence[tuple[str, str]]) -> _Rows:
         source = scope.source
-        numbered = f"SELECT qe_src.*, {row_number(dialect_name)} AS QE_RN FROM ({sql}) qe_src"
+        # 限定条件和行号放在同一层：数据库先按条件取行、再按返回的先后编号，行的先后与旧系统把 EXISTS 直接接在 SQL 后面时相同
+        # （d_cg 上 2550、2551、2566 三条 SQL 逐行相同，.reports/batch6-20261030/q03-候选写法的行顺序.out.txt）；
+        # 条件放在外层时数据库先按整张表的顺序编号，顺序就与旧系统不同。
         where = ""
         if clauses:
             where = (f" WHERE EXISTS (SELECT 1 FROM {source.name} a WHERE {source.column(source.entity.primary_key, 'a')} "
-                     f"= q.{_ref(link_column)} AND {' AND '.join(clauses)})")
+                     f"= qe_src.{_ref(link_column)} AND {' AND '.join(clauses)})")
+        numbered = f"SELECT qe_src.*, {row_number(dialect_name)} AS QE_RN FROM ({sql}) qe_src{where}"
         order = ["QE_RN"]
         if sorts and " ORDER BY " not in f" {' '.join(sql.upper().split())} ":
             fields = {c.field.casefold(): c.field for c in columns}
             order = [f"q.{_ref(fields[col.casefold()])} {direction.upper()}" for col, direction in sorts
                      if col.casefold() in fields] + order
-        result = uow.connection.execute(text(f"SELECT * FROM ({numbered}) q{where} ORDER BY {', '.join(order)}"), binds.values,
+        result = uow.connection.execute(text(f"SELECT * FROM ({numbered}) q ORDER BY {', '.join(order)}"), binds.values,
                                         execution_options={"yield_per": self._batch})
         names = Columns(result.keys())
         positions = [names.index(c.field) for c in columns]
