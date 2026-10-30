@@ -1,9 +1,8 @@
-"""按请求的执行上下文取 Lookup、字典、导出配置（C06 第 9 节）和汇总字段（缺口见
-`.reports/modules/queries-export/contract-gaps.md`）。
+"""按请求的执行上下文取 Lookup、字典、导出配置（C06 第 9 节）和汇总字段（C06 第 3 节 `aggregate`）。
 
 - `QueryCatalog`：本模块用到的配置读取。Lookup、字典、导出配置由 C08 第 4 节 `ConfigSnapshot` 的 `lookup`、`dict_config`、
-  `exports` 给出；汇总字段 C05、C06 还没有配置（缺口第 2 条）。服务构造时注入 `CatalogOf`。
-- `SnapshotCatalog`、`snapshot_catalog`：按执行上下文中的配置快照实现（插件用它），`sum_fields` 为空。
+  `exports` 给出；汇总字段取页面视图中 `aggregate` 为 `sum` 的可见字段（C05）。服务构造时注入 `CatalogOf`。
+- `SnapshotCatalog`、`snapshot_catalog`：按执行上下文中的配置快照实现（插件用它）。
 - `ItemsCatalog`：按给定配置内容的实现，测试用。
 
 实体配置：`RelatedQuery`、`DocumentReader` 用 C08 第 4 节的端口 `EntityDirectory`，其余查询用执行上下文中的配置快照。
@@ -41,7 +40,7 @@ CatalogOf = Callable[[ExecutionContext], QueryCatalog]
 
 
 class SnapshotCatalog:
-    """按配置快照实现 `QueryCatalog`。汇总字段没有配置（C06 还没有写法，缺口第 2 条），为空：列表的 `aggregates` 为空。"""
+    """按配置快照实现 `QueryCatalog`。汇总字段取当前角色的页面视图：区域中 `aggregate` 为 `sum` 的可见字段，按字段顺序。"""
 
     def __init__(self, snapshot: ConfigSnapshot) -> None:
         self._snapshot = snapshot
@@ -56,7 +55,9 @@ class SnapshotCatalog:
         return self._snapshot.exports(page)
 
     def sum_fields(self, page: str, area: str) -> Sequence[str]:
-        return []
+        view = self._snapshot.page_view(page)
+        fields = view.master.fields if area == "master" else next(d.fields for d in view.details if d.entity == area)
+        return [f.name for f in fields if f.aggregate == "sum" and f.visible]
 
 
 def snapshot_catalog(ctx: ExecutionContext) -> QueryCatalog:

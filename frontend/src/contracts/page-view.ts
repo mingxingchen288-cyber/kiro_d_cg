@@ -52,6 +52,8 @@ export const ViewField = object('ViewField', {
   pinned: nullable(literal('left', 'right')),
   dictType: nullable(code),
   lookup: nullable(LookupSetting),
+  /** 汇总行（C06 第 3 节 `aggregate`）：`sum` 为这一列在表格底部的汇总行中求和；没有设置时省略 */
+  aggregate: optional(nullable(literal('sum'))),
   default: optional(nullable(FieldDefault)),
   compare: optional(nullable(FieldCompareView))
 });

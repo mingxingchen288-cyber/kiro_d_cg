@@ -147,6 +147,20 @@ def test_seed_page_view() -> None:
     assert dump_wire(PageView, parse_wire(PageView, dump_wire(PageView, view))) == dump_wire(PageView, view)
 
 
+def test_seed_page_view_summary_fields() -> None:
+    """汇总行（C06 第 3 节 `aggregate`，由旧系统列配置 aggFunc: "sum" 推出）：seed 的成本核算页按 cmx 的 cost-pinggu 列配置，
+    主表 14 个字段、原辅料和包材的 COST_BATCH 求和；页面视图带出 `aggregate`，没有设置的字段省略。"""
+    role = draft("role", "COST_ACCOUNTANT", {"name": "成本会计", "admin": False, "pages": {"COST_PINGGU": {"buttons": ["*"]}}})
+    view = _view([*seed_drafts(), role], "COST_PINGGU", "COST_ACCOUNTANT")
+    assert [f.name for f in view.master.fields if f.aggregate == "sum"] == [
+        "TOTAL_FL", "TOTAL_BC", "TOTAL_YL", "TOTAL_COST", "COST_PERBOX", "OUT_PRICE_RMB", "SALEMONEY", "JGF_BATCH", "COST_PERQP",
+        "JGF_PERQP", "ML_PERQP", "Y_JG_RE", "Y_ML", "Y_SALE"]
+    assert [[f.name for f in d.fields if f.aggregate == "sum"] for d in view.details] == [["COST_BATCH"], ["COST_BATCH"]]
+    master = dump_wire(PageView, view)["master"]["fields"]
+    assert next(f for f in master if f["name"] == "TOTAL_COST")["aggregate"] == "sum"
+    assert "aggregate" not in next(f for f in master if f["name"] == "DOCID")
+
+
 def test_erp_row_entity() -> None:
     """有 erpRow 的物料清单：ERP 列按页面设置可编辑（前端在 ERP 行上再显示为只读），erpRow.column 本身不可编辑。
     PRICE 同时列入保存操作的 writableFields（页面视图的 editable 与它取交集）。"""

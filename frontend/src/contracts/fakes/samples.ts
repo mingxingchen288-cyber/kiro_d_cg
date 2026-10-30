@@ -249,7 +249,8 @@ export const pageViewSample: PageView = {
         "width": 120,
         "pinned": null,
         "dictType": null,
-        "lookup": null
+        "lookup": null,
+        "aggregate": "sum"
       }
     ],
     "buttons": [

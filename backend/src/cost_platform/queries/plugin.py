@@ -3,7 +3,7 @@
 - `queries.readers`：`RelatedQuery`、`DocumentReader`（C08 第 9 节），实体配置取自 `EntityDirectory`。
 - `queries`：C09 第 4 节的 HTTP 接口。approval 要用 `DocumentReader`，而这里的列表要用 approval 的 `FreezeReader`，
   放在同一个插件里会成环，所以单列。接口的实体配置、Lookup、字典、导出配置都取自执行上下文中的配置快照
-  （`snapshot_catalog`），不用 `EntityDirectory`；列表汇总字段还没有配置，`aggregates` 为空（缺口第 2 条）。
+  （`snapshot_catalog`），不用 `EntityDirectory`；列表汇总字段取页面视图中 `aggregate` 为 `sum` 的可见字段。
 """
 
 from __future__ import annotations

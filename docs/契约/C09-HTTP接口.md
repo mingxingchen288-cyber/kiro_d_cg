@@ -1,6 +1,6 @@
 # C09 HTTP 接口
 
-版本：v9。维护：contracts。状态：已确认。v9 随 C06 v17（用户 2026-10-28 确认《审批流配置定稿》）：审批人改了勾选后详情重新计算，增加 `preview`；受影响单据按修改表的主键勾选（`checkedRows[].key`、`ref.key`）；`steps` 按审批流的 `order` 排列，`entry` 改名为 `node`；`view.master` 带块的 `key`、`title`；记录已不存在的行改为 `missing: true` 并给出查到的值。`preview` 的请求响应格式、字段改名属于实现细节，由实施者决定（架构第 5 节）。v8 按用户 2026-10-28 的纠正，通过请求提交勾选的行（`checkedRows`）。v7 随 C06 v15 把审批详情的候选单据改为影响对象、按行勾选（用户 2026-10-28 确认审批流合并展示与动作）。
+版本：v10。维护：contracts。状态：已确认。v10 随 C06 v18（由旧系统 SUMMARY_CONFIG 功能推出）：写明列表 `aggregates` 的内容（第 4 节）。v9 随 C06 v17（用户 2026-10-28 确认《审批流配置定稿》）：审批人改了勾选后详情重新计算，增加 `preview`；受影响单据按修改表的主键勾选（`checkedRows[].key`、`ref.key`）；`steps` 按审批流的 `order` 排列，`entry` 改名为 `node`；`view.master` 带块的 `key`、`title`；记录已不存在的行改为 `missing: true` 并给出查到的值。`preview` 的请求响应格式、字段改名属于实现细节，由实施者决定（架构第 5 节）。v8 按用户 2026-10-28 的纠正，通过请求提交勾选的行（`checkedRows`）。v7 随 C06 v15 把审批详情的候选单据改为影响对象、按行勾选（用户 2026-10-28 确认审批流合并展示与动作）。
 
 ## 1. 通用规则
 
@@ -80,6 +80,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 ```
 
 `ListRequest` 的 `sortModel`、`filterModel` 沿用 AG Grid 服务端行模型的格式；没有排序时按主键排序。
+列表响应的 `aggregates` 是主表区汇总行的值：页面视图主表区中 `aggregate` 为 `sum` 的可见字段（C05），对全部满足行权限和查询条件的行求和（不只是本页），键为字段名，值的格式同 C01 的数值，没有满足条件的行时为 null；没有这样的字段时为空对象。`endRow` 等于 `startRow` 时不返回行，只返回总数和汇总。
 高级查询的条件不写 `entity` 时属于主表。写了明细实体的条件，同一明细实体的条件合成一个 `EXISTS`，必须由同一条明细行同时满足，`group` 和 `logic` 用于组内的且、或；不同明细实体的条件之间是且。上例查的是"含有物料 115 且该行价格大于 3 的明细"的成本单。
 
 ```json
