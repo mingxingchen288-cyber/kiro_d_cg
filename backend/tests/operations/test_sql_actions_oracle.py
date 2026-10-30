@@ -47,6 +47,7 @@ from cost_platform.contracts.fakes import (
 )
 from cost_platform.contracts.ports import (
     CommandRecorder,
+    ConfigSnapshotReader,
     ContextProvider,
     EntityDirectory,
     PipelineStage,
@@ -96,7 +97,7 @@ class _Config:
     """内存中的已发布配置：seed 加本测试的操作，经 config 的 `derive` 生成页面视图和规则包。"""
 
     name = "test.config"
-    provides = (EntityDirectory, ContextProvider)
+    provides = (EntityDirectory, ContextProvider, ConfigSnapshotReader)
     requires = (RulesEngine,)
 
     def __init__(self, drafts: Sequence[t.ConfigDraft]) -> None:
@@ -112,6 +113,13 @@ class _Config:
         self.snapshot = Snapshot(1, ADMIN.role_code, {r.id: r for r in [*base, *derived]}, ParsedCache(self.rules))
         reg.provide(EntityDirectory, FakeEntityDirectory(catalog.entities()))
         reg.provide(ContextProvider, FakeContextProvider(self.context()))
+        reg.provide(ConfigSnapshotReader, self)  # approval 取角色名称（AP 审批进度）
+
+    def read(self, role_code: str) -> Snapshot:
+        return self.snapshot
+
+    def current_version(self) -> int:
+        return 1
 
     def context(self) -> t.ExecutionContext:
         return t.ExecutionContext(request_id=str(uuid.uuid4()), identity=ADMIN, config=self.snapshot, config_version=1,
