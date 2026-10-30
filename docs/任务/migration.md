@@ -18,6 +18,7 @@
   - 模拟验证：`uv run pytest tests/migration -v`（用 cmx 只读快照 `tests/migration/data/cmx-snapshot.json`）27 passed、0 failed：重复生成逐字节相同、每项能按 C06 解析、每项和每条清单的来源都能在旧数据中找到、MG-12/13/14、确认改写后生成暂缓的项。`uv run lint-imports` 3 kept、0 broken。输出 `.reports/migration/证据/pytest-2.txt`、`lint-imports-2.txt`。
   - 真实验证：`.reports/migration/run-twice.ps1` 只读连接 cmx 生成两次，比较 74 个文件 0 个不同（`.reports/migration/证据/run-twice.txt`）；用 config 现有的 `FileConfigSnapshotReader` 按 8 个角色构建全部页面视图和菜单，引用检查 0 个问题（`证据/smoke-config.txt`）。
   - 输出：`.reports/migration/`：`config/`（配置项）、`来源.json`、`迁移报告.md`（按旧系统行为取值的字段、同一张表对应多个实体的区分方式等）、`人工改写清单.md`、`业务表清单.json`（交 T-DB-3）、`cmx-snapshot.json`。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：migration 暂停（`.kiro/steering/交付方式.md`"先有功能，才谈迁移"），本卡的联调、清单确认和复核一并暂停，状态不改。
 
 ### T-MG-2 规则、行权限与审批的转换
 
@@ -30,6 +31,7 @@
 - 状态与证据：待联调（2026-10-28；还没有独立复核，审批确认清单中有待用户决定的项）。
   - 模拟验证：`tests/migration/test_expressions.py` 12 passed（虚拟列的 NVL、除数为 0、CASE 分支、REGEXP_INSTR、CEIL、去掉 `_OLD` 兜底、换成其他虚拟列；旧 CALC 的 SUM_IF、三目、`||`、`&`、`== null`、正则分支、断言正则和隐藏字段不转换）；`test_generator.py` 中两个审批流与 C06 7.4、7.5 的写法一致（changedFields、ADMIN 审批、freeze、updateFields）。合计 27 passed（`.reports/migration/证据/pytest-2.txt`）。
   - 输出：`.reports/migration/候选逃生舱清单.md`（4 项）、`审批确认清单.md`（8 项）；与 C06 样例的差异（包材也触发和同步、物料清单一块按旧行为不显示、不含液体成本核算等）列在审批确认清单中。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：migration 暂停（`.kiro/steering/交付方式.md`"先有功能，才谈迁移"），本卡的联调、清单确认和复核一并暂停，状态不改。
 
 ### T-MG-3 导入与对账
 
@@ -40,6 +42,7 @@
 - 接入责任：经 `ConfigImporter`、`AccountImporter`、`PersonalConfigImporter` 写入，T-AS-8 接入真实实现。
 - 验收标准：模拟验证：导入的数据与生成结果一致，重复导入不重复写入；两条旧记录生成了类型和编码相同的配置项（例如两个旧页面各自定义了同一个字典）时，整批被拒绝、一项都没有写入，拒绝清单列出这两项，各自给出来源表和行，原因说明同一批中类型和编码重复；某一项引用不存在的配置项时，拒绝清单列出这一项的来源和原因；真实联调中对账没有未解释的差异，有时交用户决定。
 - 状态与证据：未开始。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：migration 暂停（`.kiro/steering/交付方式.md`"先有功能，才谈迁移"），本卡的联调、清单确认和复核一并暂停，状态不改。
 
 ### T-MG-4 切换手册与演练
 
@@ -50,3 +53,4 @@
 - 接入责任：T-AS-8 演练。
 - 验收标准：在 d_cg 上按手册演练一次切换和一次回退：切换后各表行数不变，抽查单据的非计算字段不变、计算字段与对账一致；回退后业务表的结构和数据恢复到切换前。
 - 状态与证据：未开始。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：migration 暂停（`.kiro/steering/交付方式.md`"先有功能，才谈迁移"），本卡的联调、清单确认和复核一并暂停，状态不改。
