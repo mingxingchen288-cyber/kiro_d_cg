@@ -71,7 +71,16 @@
         "NUM_EMPTY": []
       }
     },
-    "changed": [],
+    "changed": [
+      {
+        "entity": "NUM_DEMO",
+        "rowKey": "1",
+        "op": "modify",
+        "fields": [
+          "NAME"
+        ]
+      }
+    ],
     "data": {}
   },
   "expected": {

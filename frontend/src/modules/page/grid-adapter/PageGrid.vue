@@ -97,7 +97,8 @@ const rowClassRules = {
 
 function getRowStyle(params: RowClassParams<GridRow>) {
   if (!params.data) return undefined;
-  const style = runtime.model.previewOf(props.entity, runtime.model.rowIdOf(params.data.__id))?.style.row;
+  // 界面规则的行样式：有修改时取预览，否则取页面加载时的显示求值（旧系统 GRID_STYLE 加载即显示）
+  const style = runtime.model.ruleView(props.entity, runtime.model.rowIdOf(params.data.__id))?.style.row;
   return style && typeof style === 'object' && !Array.isArray(style) ? (style as Record<string, string>) : undefined;
 }
 

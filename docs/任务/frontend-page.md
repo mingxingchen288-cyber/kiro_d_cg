@@ -73,3 +73,16 @@
 - 接入责任：页面上的汇总行要已发布的配置（seed 的 COST_PINGGU 已配），浏览器验证由合并后完成（T-AS-7）。
 - 验收标准：模拟验证：成本核算主表的汇总等于列表的 `aggregates` 加上还没保存的修改（改数量、预览改总成本、新增一张单据、撤销），保存后按同样的筛选重新取汇总；成本单 2550 的原辅料金额为三行之和，改价后按预览的金额，标为删除的行不计入，新增行计入；汇总行按列的小数位显示、不能编辑、没有表单按钮。真实验证（浏览器）：打开成本核算，主表底部显示 14 个求和列的汇总，与 d_cg 上同样筛选的 SUM 相同；选中一张单据，原辅料、包材底部显示金额合计。
 - 状态与证据：进行中（模拟验证通过；浏览器中没有验证）。2026-10-30（丙组，`batch1/summary`）：`frontend/src/modules/page/summary.ts`（对照旧系统 `useMasterGridBindings.ts` 的 `updatePinnedSumRow`、`usePageRules.ts` 的 `computeSumRow`、`DetailGridV3.vue` 的 `grandTotalRow`），`PageRuntime.summaryRow`、`refreshAggregates`，`PageGrid.vue` 主表和明细都用 `pinnedBottomRowData`。模拟验证 `frontend/tests/page/summary.test.ts` 2 个通过（`pnpm test` 30 个文件 498 个通过，`pnpm typecheck` 通过）。
+
+### T-FP-8 页面一显示就带界面规则的效果
+
+- 归属与目标：实现 FP-18。由旧系统 `usePageRules.ts` 的 `buildRowStyleCallback` 推出：GRID_STYLE 作为 `getRowStyle` 在渲染行时按行数据算样式，页面加载即显示，不需要编辑。
+- 前置输入：C07 v6 第 3.1 节（显示求值，`purpose: display`）；rules-core 的 RC-11。
+- 负责范围：page 的 preview（`buildDisplayRequest`）、view-model（显示求值的结果、`ruleView`）、page-runtime（何时做显示求值）、grid-adapter（行样式、单元格样式取 `ruleView`）。
+- 交付物：主表每取到一块数据、单据的明细加载时做显示求值；保存、按钮成功、配置变更后重新做；单据有修改后改用预览的结果。
+- 接入责任：用 assembly 已接好的 `ShellApi.calc`，不另接线。
+- 验收标准：成本核算页加载后不编辑，MEMO 为"ERP未搭建BOM"的主表行就是红底，其他行不是；显示的仍是加载来的值；没有修改时不出校验提示；选中单据后明细行一显示就按界面规则不可编辑、必填；在已取到的块里滚动不再求值。
+- 状态与证据：进行中——模拟验证和真实浏览器验证都已通过，待独立复核（工程约定第 7 节）后改为完成。2026-10-30（G1，worktree `batch2/rules-ui`，输出在 `.reports/batch2-20261030/g1-rules-ui/`）：
+  - 模拟验证：`frontend/tests/page/display.test.ts` 3 个：主表一块数据取到后 2919（MEMO 为 ERP未搭建BOM）就是红底、显示的仍是加载来的值、没有规则提示、请求不带明细和修改；选中 2550 后硬脂酸镁的单价不可编辑、字体变灰、备注必填，其他行不受影响；备注改成 ERP未搭建BOM 后按预览变红，保存后按保存的值重新做显示求值仍是红底。`buttons-config.test.ts` 的预览用例改为只取 `purpose` 为 `operation` 的请求，"Worker 不可用"用例改为每次求值都失败（单据加载时的显示求值也经 Worker）。`pnpm typecheck` 通过，`pnpm test` 32 个文件 507 passed，`pnpm lint:deps` 没有违规（`frontend-*.log`）。
+  - 真实浏览器（后端 8084 + d_cg、前端 9532、本机 Chrome，`e2e/rules-ui.spec.cjs`，`e2e/results.json`）：打开成本核算页不编辑，第一块 100 行中 MEMO 为 ERP未搭建BOM 的 2553、2555、2561、2563、2565、2569 都是红底（`rgb(255, 204, 204)`），其他行都不是，页面没有未保存修改、没有规则提示（截图 `e2e/01-加载即红底.png`）；显示求值向 Worker 发了 100 个求值请求，从第一个发出到最后一个回复 20–29 毫秒；在已取到的块里来回滚动，求值请求数不变（100 → 100）。
+  - 没有验证：明细行的界面规则在浏览器中的效果（d_cg 目前没有发布明细的界面规则）；配置变更后重新做显示求值（只有模拟验证）。

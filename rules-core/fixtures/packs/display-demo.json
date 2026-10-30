@@ -1,0 +1,411 @@
+{
+  "packId": "DISP_DEMO",
+  "version": 1,
+  "coreVersion": "0.1.0",
+  "fields": {
+    "DISP_DEMO": {
+      "ID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "STATUS": {
+        "type": "text",
+        "role": "input",
+        "source": "own"
+      },
+      "TOTAL": {
+        "type": "number",
+        "role": "calculated",
+        "source": "own"
+      }
+    },
+    "DISP_DTL": {
+      "DTLID": {
+        "type": "number",
+        "role": "system",
+        "source": "own",
+        "scale": 0
+      },
+      "QTY": {
+        "type": "number",
+        "role": "input",
+        "source": "own"
+      }
+    }
+  },
+  "rules": [
+    {
+      "id": "R_DISP_TOTAL",
+      "layer": "entity",
+      "entity": "DISP_DEMO",
+      "category": "calc",
+      "order": 10,
+      "serverOnly": false,
+      "jdm": "R_DISP_TOTAL"
+    },
+    {
+      "id": "R_DISP_TOTAL_MAX",
+      "layer": "entity",
+      "entity": "DISP_DEMO",
+      "category": "validate",
+      "order": 20,
+      "serverOnly": false,
+      "jdm": "R_DISP_TOTAL_MAX"
+    },
+    {
+      "id": "R_DISP_QTY_GT0",
+      "layer": "entity",
+      "entity": "DISP_DTL",
+      "category": "validate",
+      "order": 21,
+      "serverOnly": false,
+      "jdm": "R_DISP_QTY_GT0"
+    },
+    {
+      "id": "R_DISP_STOPPED",
+      "layer": "page",
+      "entity": "DISP_DEMO",
+      "page": "DISP_DEMO",
+      "category": "ui",
+      "order": 30,
+      "serverOnly": false,
+      "jdm": "R_DISP_STOPPED"
+    },
+    {
+      "id": "R_DISP_NO_DTL",
+      "layer": "page",
+      "entity": "DISP_DEMO",
+      "page": "DISP_DEMO",
+      "category": "ui",
+      "order": 31,
+      "serverOnly": false,
+      "jdm": "R_DISP_NO_DTL"
+    },
+    {
+      "id": "R_DISP_QTY_RED",
+      "layer": "page",
+      "entity": "DISP_DTL",
+      "page": "DISP_DEMO",
+      "category": "ui",
+      "order": 32,
+      "serverOnly": false,
+      "jdm": "R_DISP_QTY_RED"
+    }
+  ],
+  "jdm": {
+    "R_DISP_TOTAL": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_DISP_TOTAL",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "TOTAL",
+                "value": "sum(map(DISP_DTL, #.QTY))"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_DISP_TOTAL_MAX": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_DISP_TOTAL_MAX",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "TOTAL > 100"
+              },
+              {
+                "id": "e2",
+                "key": "field",
+                "value": "'TOTAL'"
+              },
+              {
+                "id": "e3",
+                "key": "level",
+                "value": "'reject'"
+              },
+              {
+                "id": "e4",
+                "key": "message",
+                "value": "'合计不能超过100'"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_DISP_QTY_GT0": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_DISP_QTY_GT0",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "QTY <= 0"
+              },
+              {
+                "id": "e2",
+                "key": "field",
+                "value": "'QTY'"
+              },
+              {
+                "id": "e3",
+                "key": "level",
+                "value": "'reject'"
+              },
+              {
+                "id": "e4",
+                "key": "message",
+                "value": "'数量必须大于0'"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_DISP_STOPPED": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_DISP_STOPPED",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "STATUS == '停用'"
+              },
+              {
+                "id": "e2",
+                "key": "editable",
+                "value": "false"
+              },
+              {
+                "id": "e3",
+                "key": "rowStyle",
+                "value": "'{\"color\":\"#999999\"}'"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_DISP_NO_DTL": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_DISP_NO_DTL",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "count(DISP_DTL, true) == 0"
+              },
+              {
+                "id": "e2",
+                "key": "rowStyle",
+                "value": "'{\"backgroundColor\":\"#fff3cd\"}'"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    },
+    "R_DISP_QTY_RED": {
+      "nodes": [
+        {
+          "id": "in",
+          "name": "输入",
+          "type": "inputNode",
+          "content": {}
+        },
+        {
+          "id": "expr",
+          "name": "R_DISP_QTY_RED",
+          "type": "expressionNode",
+          "content": {
+            "expressions": [
+              {
+                "id": "e1",
+                "key": "matched",
+                "value": "QTY <= 0"
+              },
+              {
+                "id": "e2",
+                "key": "field",
+                "value": "'QTY'"
+              },
+              {
+                "id": "e3",
+                "key": "required",
+                "value": "true"
+              },
+              {
+                "id": "e4",
+                "key": "cellStyle",
+                "value": "'{\"color\":\"#d03050\"}'"
+              }
+            ]
+          }
+        },
+        {
+          "id": "out",
+          "name": "输出",
+          "type": "outputNode",
+          "content": {}
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-in",
+          "sourceId": "in",
+          "targetId": "expr"
+        },
+        {
+          "id": "e-out",
+          "sourceId": "expr",
+          "targetId": "out"
+        }
+      ]
+    }
+  }
+}

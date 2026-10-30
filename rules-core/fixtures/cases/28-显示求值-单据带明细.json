@@ -1,0 +1,95 @@
+{
+  "kind": "evaluate",
+  "name": "显示求值-单据带明细",
+  "source": "C07 第 3.1 节：明细数量 -1 的一行数量必填、标红，不给'数量必须大于0'的拒绝；主表 TOTAL 照请求原样（不汇总成 4）（假设的规则和数据）",
+  "pack": "packs/display-demo.json",
+  "match": "full",
+  "request": {
+    "purpose": "display",
+    "operation": "DISP_DEMO.save",
+    "page": "DISP_DEMO",
+    "phase": "preview",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "DISP_DEMO",
+      "master": {
+        "rowKey": "2",
+        "values": {
+          "ID": "2",
+          "STATUS": "启用",
+          "TOTAL": "0"
+        }
+      },
+      "details": {
+        "DISP_DTL": [
+          {
+            "rowKey": "21",
+            "values": {
+              "DTLID": "21",
+              "QTY": "-1"
+            }
+          },
+          {
+            "rowKey": "22",
+            "values": {
+              "DTLID": "22",
+              "QTY": "5"
+            }
+          }
+        ]
+      }
+    },
+    "changed": [],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "DISP_DEMO",
+        "rowKey": "2",
+        "computed": {},
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      },
+      {
+        "entity": "DISP_DTL",
+        "rowKey": "21",
+        "computed": {},
+        "fields": {
+          "QTY": {
+            "required": true
+          }
+        },
+        "style": {
+          "row": null,
+          "cells": {
+            "QTY": {
+              "color": "#d03050"
+            }
+          }
+        }
+      },
+      {
+        "entity": "DISP_DTL",
+        "rowKey": "22",
+        "computed": {},
+        "fields": {},
+        "style": {
+          "row": null,
+          "cells": {}
+        }
+      }
+    ],
+    "effects": []
+  }
+}

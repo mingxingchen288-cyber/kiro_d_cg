@@ -167,6 +167,8 @@ pub struct CheckRule {
     pub field: Option<String>,
     pub server_only: bool,
     pub plain_refs: Vec<String>,
+    /// 主表规则的条件引用的明细实体（值是行的数组）。显示求值时请求没有给出这些明细的，这条规则不出结论（C07 第 3.1 节）。
+    pub detail_refs: Vec<String>,
     pub condition: Expression<Standard>,
     pub kind: CheckKind,
 }
@@ -208,7 +210,12 @@ pub fn load(bytes: &[u8]) -> Result<Pack, String> {
         let entity = rule.entity.clone().unwrap_or_else(|| master.clone());
         let is_master = entity == master;
         if rule.category != Category::Calc {
-            checks.push((rule.order, rule.id.clone(), check_rule(rule, &graph, entity, is_master)?));
+            let details: BTreeSet<&str> = if is_master {
+                fields.keys().map(String::as_str).filter(|e| *e != master).collect()
+            } else {
+                BTreeSet::new()
+            };
+            checks.push((rule.order, rule.id.clone(), check_rule(rule, &graph, entity, is_master, &details)?));
             continue;
         }
         let (field, expression) = single_expression(&rule.id, &graph)?;
@@ -268,7 +275,14 @@ fn branches(expression: &str) -> Option<Branches> {
 /// 校验、界面规则的 JDM（config `packs.py` 生成）：表达式节点依次为 `matched`（条件，空为 `true`）、`field`（作用的字段，
 /// 整行时没有）；校验另有 `level`、`message`，界面另有 `editable`、`required`、`rowStyle`、`cellStyle`（样式 JSON 文本）。
 /// 除 `matched` 外都是常量，在 load_pack 时求出；`matched` 编译一次，求值时对每行执行。
-fn check_rule(rule: &PackRuleJson, graph: &GraphContent, entity: String, is_master: bool) -> Result<CheckRule, String> {
+/// `details`：主表规则可以引用的明细实体编码（明细规则为空）。
+fn check_rule(
+    rule: &PackRuleJson,
+    graph: &GraphContent,
+    entity: String,
+    is_master: bool,
+    details: &BTreeSet<&str>,
+) -> Result<CheckRule, String> {
     let items: HashMap<String, String> = expressions(graph).into_iter().collect();
     let matched = items.get("matched").map(String::as_str).unwrap_or("true");
     let condition = compile_expression(matched).map_err(|e| format!("规则 {} 的条件 \"{matched}\" 不能编译：{e}", rule.id))?;
@@ -316,6 +330,9 @@ fn check_rule(rule: &PackRuleJson, graph: &GraphContent, entity: String, is_mast
             cell_style: style("cellStyle")?,
         })
     };
+    let chains = scan(matched).chains;
+    let detail_refs: BTreeSet<String> =
+        chains.iter().filter_map(|c| c.first()).filter(|f| details.contains(f.as_str())).cloned().collect();
     Ok(CheckRule {
         id: rule.id.clone(),
         layer: rule.layer,
@@ -325,7 +342,8 @@ fn check_rule(rule: &PackRuleJson, graph: &GraphContent, entity: String, is_mast
         is_master,
         field: text("field")?,
         server_only: rule.server_only,
-        plain_refs: plain_refs(&scan(matched).chains),
+        plain_refs: plain_refs(&chains),
+        detail_refs: detail_refs.into_iter().collect(),
         condition,
         kind,
     })

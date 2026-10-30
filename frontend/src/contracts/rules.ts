@@ -95,8 +95,9 @@ export const ChangedRow = object('ChangedRow', {
 });
 export type ChangedRow = Infer<typeof ChangedRow>;
 
+/** `operation`：计算和规则；`display`：只执行界面规则，页面一显示就用（C07 v6 第 3.1 节） */
 export const EvaluationRequest = object('EvaluationRequest', {
-  purpose: literal('operation'),
+  purpose: literal('operation', 'display'),
   operation: optional(nullable(code)),
   page: optional(nullable(code)),
   phase: literal('preview', 'commit'),

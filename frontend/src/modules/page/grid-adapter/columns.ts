@@ -131,7 +131,7 @@ export function buildColumns(runtime: PageRuntime, region: ViewRegion, withFormC
         'cell-lookup': () => Boolean(field.lookup)
       },
       cellStyle: params => {
-        const style = runtime.model.previewOf(entity, runtime.model.rowIdOf(idOf(params as { data?: GridRow })))?.style
+        const style = runtime.model.ruleView(entity, runtime.model.rowIdOf(idOf(params as { data?: GridRow })))?.style
           .cells[field.name];
         return style && typeof style === 'object' && !Array.isArray(style)
           ? (style as Record<string, string>)

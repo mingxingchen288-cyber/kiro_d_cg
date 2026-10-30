@@ -1,6 +1,7 @@
 /**
  * 本地预览（FP-05）：编辑后按 C07 第 2 节组装一张单据的 preview 阶段求值请求，经 `ShellApi.calc`（rules-core 的
  * 计算 Worker）求值。请求中的 `old` 取编辑缓冲中的已提交值（从后端加载到的值）。结果只用于显示。
+ * 显示求值（FP-18）：页面一显示就按行的值执行界面规则（`buildDisplayRequest`），与预览共用同一个规则包和 Worker。
  */
 import type { FieldValues } from '../../contracts/command';
 import type { CurrentUser, RoleRef } from '../../contracts/http';
@@ -58,20 +59,52 @@ export function buildPreviewRequest(model: PageModel, recordId: string, ctx: Pre
     });
   }
   return {
+    ...buildContext(view, ctx),
     purpose: 'operation',
+    document: { entity: view.master.entity, master: master.row, details },
+    changed,
+    data: {}
+  };
+}
+
+/**
+ * 一张单据的显示求值请求（C07 v6 第 3.1 节，`purpose: display`）：页面一显示就按行的值执行界面规则，不计算、不校验，
+ * 对应旧系统 GRID_STYLE 在渲染行时按行数据算样式（usePageRules.ts 的 buildRowStyleCallback）。值取编辑缓冲的当前值
+ * （没有修改的行就是加载来的值）；`changed` 为空。明细还没加载时只给主表行，`details` 为空，引用明细的主表界面规则
+ * 这次不出结论（rules-core 按 C07 处理）。
+ */
+export function buildDisplayRequest(model: PageModel, recordId: string, ctx: PreviewContext): EvaluationRequest {
+  const view: PageView = model.view;
+  const row = (entity: string, id: string): EvalRow => {
+    const values = model.buffer.current(entity, id) ?? {};
+    return model.buffer.isNew(entity, id) ? { clientRowId: id, values } : { rowKey: id, values };
+  };
+  const details: Record<string, EvalRow[]> = {};
+  if (model.isRecordLoaded(recordId)) {
+    for (const detail of view.details)
+      details[detail.entity] = model.detailIds(detail.entity, recordId).map(id => row(detail.entity, id));
+  }
+  return {
+    ...buildContext(view, ctx),
+    purpose: 'display',
+    document: { entity: view.master.entity, master: row(view.master.entity, recordId), details },
+    changed: [],
+    data: {}
+  };
+}
+
+function buildContext(view: PageView, ctx: PreviewContext) {
+  return {
     operation: view.saveOperation,
     page: view.pageCode,
-    phase: 'preview',
+    phase: 'preview' as const,
     context: {
       userId: ctx.user?.userId ?? '0',
       departmentId: ctx.user?.departmentId ?? null,
       role: ctx.role?.code ?? '',
       today: localDate(ctx.now),
-      origin: 'user'
-    },
-    document: { entity: view.master.entity, master: master.row, details },
-    changed,
-    data: {}
+      origin: 'user' as const
+    }
   };
 }
 

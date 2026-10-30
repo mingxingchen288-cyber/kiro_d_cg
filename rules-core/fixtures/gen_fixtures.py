@@ -22,8 +22,9 @@ def write(path: Path, data: Any) -> None:
 
 
 def request(entity: str, master: dict[str, Any], details: dict[str, list[dict[str, Any]]], *, phase: str = "preview",
-            operation: str | None = None, changed: list[dict[str, Any]] | None = None, data: dict[str, Any] | None = None) -> dict[str, Any]:
-    return {"purpose": "operation", "operation": operation or f"{entity}.save", "page": entity, "phase": phase, "context": CTX,
+            operation: str | None = None, changed: list[dict[str, Any]] | None = None, data: dict[str, Any] | None = None,
+            purpose: str = "operation") -> dict[str, Any]:
+    return {"purpose": purpose, "operation": operation or f"{entity}.save", "page": entity, "phase": phase, "context": CTX,
             "document": {"entity": entity, "master": master, "details": details}, "changed": changed or [], "data": data or {}}
 
 
@@ -194,9 +195,8 @@ def cost_2919(phase: str) -> dict[str, Any]:
     mat = [row(dtl("100713", "2919", "4726", "比沙可啶", "原料", None, None, "2489.725"), key="100713"),
            row(dtl("100714", "2919", "311", "一水乳糖（200目）", "辅料", None, None, "-1"), key="100714", old={"PRICE": "26"})]
     changed = [{"entity": "COST_MATERIAL", "rowKey": "100714", "op": "modify", "fields": ["PRICE"]}]
-    # 校验规则按 order 执行，每条规则逐行检查：先两行的每片含量，再一水乳糖的单价
-    effects = [effect("reject", "R_MAT_PER_HL_GT0", PER_HL_MESSAGE, "COST_MATERIAL", "100713", "PER_HL"),
-               effect("reject", "R_MAT_PER_HL_GT0", PER_HL_MESSAGE, "COST_MATERIAL", "100714", "PER_HL"),
+    # 校验规则按 order 执行，只检查本次修改的一水乳糖（C07 v5）：先每片含量，再单价；比沙可啶没有修改，不检查
+    effects = [effect("reject", "R_MAT_PER_HL_GT0", PER_HL_MESSAGE, "COST_MATERIAL", "100714", "PER_HL"),
                effect("reject", "R_MAT_PRICE_GE0", PRICE_MESSAGE, "COST_MATERIAL", "100714", "PRICE")]
     # 整行红底是页面规则，只在 preview 执行（C07 第 2 节）
     style = {"backgroundColor": "#ffcccc"} if phase == "preview" else None
@@ -205,6 +205,105 @@ def cost_2919(phase: str) -> dict[str, Any]:
                         "d_cg 单据 2919 的真实主表和原辅料（PER_HL 为空），单价改成 -1 为假设的修改",
                         cost_master("2919", **M2919), {"COST_MATERIAL": mat, "COST_PACKAGE": []}, phase=phase, changed=changed,
                         effects=effects, master_style=style)
+
+
+# d_cg 单据 2757 的真实主表、9 行原辅料和 4 行包材（.reports/batch2-20261030/g1-rules-ui/01-单据2757.out.txt）：
+# 30%过氧化氢溶液（207577）的每片含量为 0、单价为空，其余 8 行每片含量都大于 0。
+# 校验只检查本次新增、修改的行（C07 v5，旧系统 useWorkingSetStore.ts 保存时只校验有修改、没有删除的行）：
+# 改硬脂酸镁的单价（54 → 55）能保存；改过氧化氢溶液的单价（空 → 12）被拒绝"每片含量必填且必须大于0"。两个新单价都是假设的修改。
+M2757 = dict(GOODSNAME="60mg单硝酸异山梨酯缓释片", MEMO=None, APEX_PL="1600000", P_PERPACK="98", S_PERBACK="126", X_PERBACK="16",
+             M_PERPACK=None, OUT_PRICE_F="31.02", FMRATE="1", YIELD="94", COST_PERQP=None, ANNUAL_QTY="12000000")
+MAT2757 = [("207576", "3763", "乙醇", "辅料", "0.68125", "18.3333333333", "1.09", "19.983333333297"),
+           ("207577", "4268", "30%过氧化氢溶液", "辅料", "0", None, "0", "0"),
+           ("207578", "4338", "胶态二氧化硅", "辅料", "0.0375", "160", "0.06", "9.6"),
+           ("207579", "4339", "薄膜包衣预混剂（胃溶型）", "辅料", "0.15", "357", "0.24", "85.68"),
+           ("207580", "5388", "单硝酸异山梨酯", "原料", "0.78125", "1932.486", "1.25", "2415.6075"),
+           ("207581", "5452", "硅酸铝钠", "辅料", "0.39375", "500", "0.63", "315"),
+           ("207582", "6549", "石蜡", "辅料", "1.9625", "180.147", "3.14", "565.66158"),
+           ("207583", "7695", "羟丙纤维素", "辅料", "0.4875", "540", "0.78", "421.2"),
+           ("207584", "8289", "硬脂酸镁", "辅料", "0.3", "54", "0.48", "25.92")]
+PKG2757 = [("207572", "4419", "60mg单硝酸异山梨酯缓释片（挪威、丹麦、冰岛）药品包装用铝箔", "印字包材", None, "62", "0", "0"),
+           ("207573", "6041", "聚氯乙烯固体药用硬片", "非印字包材", None, "12.5", "0", "0"),
+           ("207574", "7102", "药品包装小盒（非印字）", "非印字包材", None, "0.24", "16326.530612244898", "3918.3673469387754"),
+           ("207575", "7482", "大纸箱", "非印字包材", None, "4.5", "130", "585")]
+
+
+def cost_2757(edited: str, price: str, phase: str) -> dict[str, Any]:
+    """成本单 2757 只改 `edited` 这一行原辅料的单价，其余行照数据库原样。"""
+    def build(spec: list[tuple]) -> list[dict[str, Any]]:
+        out = []
+        for dtlid, gid, name, flag, per_hl, old_price, q, c in spec:
+            values = dtl(dtlid, "2757", gid, name, flag, per_hl, None, old_price, q, c)
+            if dtlid != edited:
+                out.append(row(values, key=dtlid))
+                continue
+            out.append(row({**values, "PRICE": price}, key=dtlid, old={"PRICE": old_price}))
+        return out
+    mat, pkg = build(MAT2757), build(PKG2757)
+    changed = [{"entity": "COST_MATERIAL", "rowKey": edited, "op": "modify", "fields": ["PRICE"]}]
+    bad = edited == "207577"
+    effects = [effect("reject", "R_MAT_PER_HL_GT0", PER_HL_MESSAGE, "COST_MATERIAL", "207577", "PER_HL")] if bad else []
+    what = "改每片含量为0那一行的单价" if bad else "改另一行的单价"
+    source = ("d_cg 单据 2757 的真实主表和明细（30%过氧化氢溶液的每片含量为 0）；校验只检查本次修改的行（C07 v5，旧系统 "
+              "useWorkingSetStore.ts）：" + ("改过氧化氢溶液的单价（空 → 12，假设的修改）被拒绝" if bad else
+                                            "改硬脂酸镁的单价（54 → 55，假设的修改），没有修改的过氧化氢溶液不检查，能保存"))
+    return cost_fixture(f"成本核算-单据2757-{what}-{phase}", source, cost_master("2757", **M2757),
+                        {"COST_MATERIAL": mat, "COST_PACKAGE": pkg}, phase=phase, changed=changed, effects=effects)
+
+
+# ---------------------------------------------------------------- 显示求值（C07 v6 第 3.1 节，purpose 为 display）
+
+# 旧系统 GRID_STYLE 在表格渲染行时按行数据算样式（usePageRules.ts 的 buildRowStyleCallback），加载即显示、不需要编辑。
+# 显示求值只执行界面规则：不计算（computed 为空，显示的仍是加载来的值），不校验（没有 reject、prompt）。
+
+RED = {"backgroundColor": "#ffcccc"}
+
+
+def display_2919(with_details: bool) -> dict[str, Any]:
+    """d_cg 单据 2919（MEMO 为 ERP未搭建BOM，两行原辅料的每片含量为空）：主表列表中只有主表行；选中后带明细。"""
+    master = row(cost_master("2919", **M2919), key="2919")
+    mat = [row(dtl("100713", "2919", "4726", "比沙可啶", "原料", None, None, "2489.725"), key="100713"),
+           row(dtl("100714", "2919", "311", "一水乳糖（200目）", "辅料", None, None, "26"), key="100714")]
+    details = {"COST_MATERIAL": mat, "COST_PACKAGE": []} if with_details else {}
+    rows = [result_row("COST_PINGGU", master, {}, style_row=RED)]
+    rows += [result_row("COST_MATERIAL", r, {}) for r in (mat if with_details else [])]
+    req = request("COST_PINGGU", master, details, purpose="display")
+    name = "显示求值-成本核算单据2919-" + ("带明细" if with_details else "主表列表")
+    source = ("旧系统 GRID_STYLE 加载即显示：d_cg 单据 2919 的 MEMO 为 ERP未搭建BOM，不编辑就整行红底；不计算（主表计算字段照请求原样，"
+              "computed 为空）" + ("；两行原辅料每片含量为空，显示求值不校验，没有拒绝" if with_details else "；主表列表没有加载明细"))
+    return fixture(name, source, "packs/cost-pinggu.json", req, ok(rows))
+
+
+def display_demo(name: str, source: str, master_values: dict[str, Any], dtl_rows: list[dict[str, Any]] | None,
+                 master_fields: dict[str, Any], master_style: dict[str, Any] | None,
+                 dtl_results: dict[str, tuple[dict[str, Any], dict[str, Any]]]) -> dict[str, Any]:
+    """`dtl_rows` 为 None 时请求不给明细（主表列表）；`dtl_results`：明细行 → （fields、cells）。"""
+    master = row(master_values, key=master_values["ID"])
+    details = {} if dtl_rows is None else {"DISP_DTL": dtl_rows}
+    rows = [result_row("DISP_DEMO", master, {}, fields=master_fields, style_row=master_style)]
+    for r in dtl_rows or []:
+        fields, cells = dtl_results.get(r["rowKey"], ({}, {}))
+        rows.append(result_row("DISP_DTL", r, {}, fields=fields, cells=cells))
+    req = request("DISP_DEMO", master, details, purpose="display")
+    return fixture(name, source, "packs/display-demo.json", req, ok(rows))
+
+
+def display_demos() -> list[dict[str, Any]]:
+    locked = {f: {"editable": False} for f in sorted(gen_packs.DISP_FIELDS["DISP_DEMO"])}
+    grey = {"color": "#999999"}
+    return [
+        display_demo("显示求值-主表列表不给明细", "C07 第 3.1 节：停用的单据整行不可编辑、字体变灰；请求没有给出明细，"
+                     "引用明细的'没有明细时黄底'不出结论；合计 150 超过 100 也不校验，TOTAL 不重算（假设的规则和数据）",
+                     {"ID": "1", "STATUS": "停用", "TOTAL": "150"}, None, locked, grey, {}),
+        display_demo("显示求值-单据带明细", "C07 第 3.1 节：明细数量 -1 的一行数量必填、标红，不给'数量必须大于0'的拒绝；"
+                     "主表 TOTAL 照请求原样（不汇总成 4）（假设的规则和数据）",
+                     {"ID": "2", "STATUS": "启用", "TOTAL": "0"},
+                     [row({"DTLID": "21", "QTY": "-1"}, key="21"), row({"DTLID": "22", "QTY": "5"}, key="22")],
+                     {}, None, {"21": ({"QTY": {"required": True}}, {"QTY": {"color": "#d03050"}})}),
+        display_demo("显示求值-明细为空", "C07 第 3.1 节：请求给出了明细、但没有行，'没有明细时黄底'出结论，与'停用变灰'按顺序合并"
+                     "（假设的规则和数据）", {"ID": "3", "STATUS": "停用", "TOTAL": "0"}, [], locked,
+                     {"color": "#999999", "backgroundColor": "#fff3cd"}, {}),
+    ]
 
 
 # ---------------------------------------------------------------- 单表演示
@@ -257,7 +356,9 @@ def numeric() -> dict[str, Any]:
     effects = [{"kind": "prompt", "rule": "R_BAD", "message": BAD_MESSAGE, "entity": "NUM_DEMO", "rowKey": "1", "field": "BAD"},
                {"kind": "prompt", "rule": "R_V_COND", "message": "名称含胶囊", "entity": "NUM_DEMO", "rowKey": "1", "field": "NAME"}]
     rows = [result_row("NUM_DEMO", master, computed)] + [result_row("NUM_DTL", r, {}) for r in dtl_rows]
-    req = request("NUM_DEMO", master, {"NUM_DTL": dtl_rows, "NUM_EMPTY": []})
+    # 校验只检查本次修改的行（C07 v5）：主表行标为修改，R_V_COND 才执行
+    changed = [{"entity": "NUM_DEMO", "rowKey": "1", "op": "modify", "fields": ["NAME"]}]
+    req = request("NUM_DEMO", master, {"NUM_DTL": dtl_rows, "NUM_EMPTY": []}, changed=changed)
     item = fixture("T-RC-3-数值处理规则表", "模块说明第 8 节每一行一条规则：空值和缺失字段按 0、除以 0 和 0/0 为 0、溢出为 0、"
                    "求值出错为 0 并提示、条件出错按成立（计算和校验）、汇总时空值按 0、没有行时汇总为 0、分支都不匹配保持原值、不舍入",
                    "packs/numeric.json", req, ok(rows, effects))
@@ -275,6 +376,7 @@ def main() -> None:
     write(HERE / "packs" / "demo-order.json", gen_packs.demo_pack())
     write(HERE / "packs" / "cycle.json", gen_packs.cycle_pack())
     write(HERE / "packs" / "numeric.json", gen_packs.numeric_pack())
+    write(HERE / "packs" / "display-demo.json", gen_packs.display_pack())
     t1 = "T-RC-1 样例"
     items = [
         expr_fixture("T-RC-1-0.1加0.2", t1 + "：十进制得 0.3（旧系统浮点为 0.30000000000000004）", "0.1", "0.2", "0.3", "0.5"),
@@ -297,6 +399,10 @@ def main() -> None:
                          {"ok": False, "error": {"code": "INPUT_INVALID"}}, match="errorCode"))
     # T-RC-2 的校验、界面规则和 T-RC-3（接在后面，前面的编号不变）
     items += [cost_2919("preview"), cost_2919("commit"), demo_ui(), numeric()]
+    # C07 v5：校验只检查本次新增、修改的行（d_cg 单据 2757）
+    items += [cost_2757(edited, price, phase) for edited, price in (("207584", "55"), ("207577", "12")) for phase in ("preview", "commit")]
+    # C07 v6：显示求值只执行界面规则
+    items += [display_2919(False), display_2919(True), *display_demos()]
     for i, item in enumerate(items, 1):
         write(HERE / "cases" / f"{i:02d}-{item['name']}.json", item)
     write(HERE / "cases" / "90-依赖成环.json", {"kind": "packInvalid", "name": "依赖成环", "source": "RC-09：跨实体成环，load_pack 返回 PACK_INVALID",

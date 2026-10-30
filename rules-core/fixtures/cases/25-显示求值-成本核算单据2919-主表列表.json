@@ -1,0 +1,75 @@
+{
+  "kind": "evaluate",
+  "name": "显示求值-成本核算单据2919-主表列表",
+  "source": "旧系统 GRID_STYLE 加载即显示：d_cg 单据 2919 的 MEMO 为 ERP未搭建BOM，不编辑就整行红底；不计算（主表计算字段照请求原样，computed 为空）；主表列表没有加载明细",
+  "pack": "packs/cost-pinggu.json",
+  "match": "full",
+  "request": {
+    "purpose": "display",
+    "operation": "COST_PINGGU.save",
+    "page": "COST_PINGGU",
+    "phase": "preview",
+    "context": {
+      "userId": "1",
+      "departmentId": "10",
+      "role": "COST_ACCOUNTANT",
+      "today": "2026-10-28",
+      "origin": "user"
+    },
+    "document": {
+      "entity": "COST_PINGGU",
+      "master": {
+        "rowKey": "2919",
+        "values": {
+          "DOCID": "2919",
+          "GOODSNAME": "比沙可啶肠溶片",
+          "MEMO": "ERP未搭建BOM",
+          "APEX_PL": "850000",
+          "P_PERPACK": "30",
+          "S_PERBACK": "352",
+          "X_PERBACK": "12",
+          "M_PERPACK": null,
+          "OUT_PRICE_F": "3.432",
+          "FMRATE": "8.1845",
+          "YIELD": "90",
+          "COST_PERQP": "18",
+          "ANNUAL_QTY": "6000000",
+          "TOTAL_YL": "0",
+          "TOTAL_FL": "0",
+          "TOTAL_BC": "0",
+          "TOTAL_COST": "0",
+          "OUT_PRICE_RMB": "0",
+          "SALEMONEY": "0",
+          "JGF_BATCH": "0",
+          "COST_PERBOX": "0",
+          "JGF_PERQP": "0",
+          "ML_PERQP": "0",
+          "Y_JG_RE": "0",
+          "Y_ML": "0",
+          "Y_SALE": "0"
+        }
+      },
+      "details": {}
+    },
+    "changed": [],
+    "data": {}
+  },
+  "expected": {
+    "ok": true,
+    "rows": [
+      {
+        "entity": "COST_PINGGU",
+        "rowKey": "2919",
+        "computed": {},
+        "fields": {},
+        "style": {
+          "row": {
+            "backgroundColor": "#ffcccc"
+          },
+          "cells": {}
+        }
+      }
+    ],
+    "effects": []
+  }
+}
