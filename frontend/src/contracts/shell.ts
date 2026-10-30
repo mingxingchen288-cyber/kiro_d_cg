@@ -15,6 +15,15 @@ export interface HttpRequestOptions {
 }
 
 /**
+ * 返回文件的接口的响应（C11 v2）：文件内容，以及响应头 `Content-Disposition` 的原文（没有这个头时为 null）。
+ * 下载用的文件名由调用方从这个头中取（frontend-page 的 FP-19）。
+ */
+export interface DownloadedFile {
+  blob: Blob;
+  contentDisposition: string | null;
+}
+
+/**
  * 按 C09 实现的 HTTP 客户端：带会话 Cookie；写请求带 `X-CSRF-Token`；失败时抛 `PlatformError`（C03，错误体经
  * `parseErrorResponse` 严格检查）。路径以 `/api/` 开头，不含服务地址。
  */
@@ -23,8 +32,8 @@ export interface HttpClient {
   post<T>(path: string, body?: unknown, options?: HttpRequestOptions): Promise<T>;
   put<T>(path: string, body: unknown, options?: HttpRequestOptions): Promise<T>;
   delete<T>(path: string, options?: HttpRequestOptions): Promise<T>;
-  /** 返回文件的接口（导出 xlsx）：POST 请求体，响应为文件内容 */
-  download(path: string, body: unknown, options?: HttpRequestOptions): Promise<Blob>;
+  /** 返回文件的接口（导出 xlsx）：POST 请求体，响应为文件内容和 `Content-Disposition` 响应头 */
+  download(path: string, body: unknown, options?: HttpRequestOptions): Promise<DownloadedFile>;
 }
 
 export interface ShellApi {

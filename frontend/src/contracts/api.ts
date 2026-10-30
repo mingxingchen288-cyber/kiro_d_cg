@@ -97,7 +97,8 @@ export function createPlatformApi(http: HttpClient) {
     personal: (pageCode: string) => http.get<PersonalConfig>(`/api/pages/${e(pageCode)}/personal`),
     savePersonal: (pageCode: string, body: PersonalConfig) =>
       http.put<PersonalConfig>(`/api/pages/${e(pageCode)}/personal`, body),
-    exports: (pageCode: string) => http.get<ExportList>(`/api/pages/${e(pageCode)}/exports`),
+    exports: (pageCode: string, background?: boolean) =>
+      http.get<ExportList>(`/api/pages/${e(pageCode)}/exports`, bg(background)),
     exportFile: (pageCode: string, body: ExportRequest) => http.download(`/api/pages/${e(pageCode)}/export`, body),
 
     // ---- 5. 命令

@@ -192,20 +192,26 @@ describe('C09 每个接口的模拟实现', () => {
     expect(`${last.method} ${last.path}`).toBe(route);
   });
 
-  it('导出返回文件', async () => {
+  it('导出返回文件和 Content-Disposition 响应头', async () => {
     const file = await api.exportFile('COST_PINGGU', {
       mode: 'page',
       request: s.listRequestSample,
       columns: ['DOCID']
     });
-    expect(file).toBeInstanceOf(Blob);
-    expect(http.calls.at(-1)!.path).toBe('/api/pages/COST_PINGGU/export');
+    expect(file.blob).toBeInstanceOf(Blob);
+    expect(file.contentDisposition).toBe("attachment; filename*=UTF-8''export.xlsx");
+    expect(http.calls.at(-1)).toMatchObject({
+      method: 'POST',
+      path: '/api/pages/COST_PINGGU/export',
+      params: { pageCode: 'COST_PINGGU' }
+    });
   });
 
-  it('配置变更后重新读取的页面视图和规则包是后台请求', async () => {
+  it('配置变更后重新读取的页面视图、规则包和导出配置是后台请求', async () => {
     await api.pageView('COST_PINGGU', true);
     await api.rulesPack('COST_PINGGU', 7, true);
-    expect(http.calls.slice(-2).map(c => c.options?.background)).toEqual([true, true]);
+    await api.exports('COST_PINGGU', true);
+    expect(http.calls.slice(-3).map(c => c.options?.background)).toEqual([true, true, true]);
   });
 
   it('可以预设返回值和错误，错误次数用完后恢复样例', async () => {

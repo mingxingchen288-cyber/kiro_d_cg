@@ -11,6 +11,7 @@ import { AgGridVue } from 'ag-grid-vue3';
 import type {
   CellDoubleClickedEvent,
   ColDef,
+  DefaultMenuItem,
   GetContextMenuItemsParams,
   GetRowIdParams,
   GridApi,
@@ -24,6 +25,7 @@ import type {
 } from 'ag-grid-community';
 import type { JsonValue } from '../../../contracts/schema';
 import type { PersonalColumn } from '../../../contracts/http';
+import { EXPORT_MENU } from '../export';
 import { fieldOf } from '../fields';
 import type { GridPort, GridRow, PageRuntime } from '../page-runtime';
 import { messageOf } from '../page-runtime';
@@ -284,17 +286,33 @@ function onPasteEnd() {
   runtime.endBatch();
 }
 
-/** 右键菜单：与工具栏相同的区域按钮（FP-14）；右键的行先被选中 */
-function getContextMenuItems(params: GetContextMenuItemsParams<GridRow>): MenuItemDef[] {
+/**
+ * 右键菜单：与工具栏相同的区域按钮（FP-14）；右键的行先被选中。
+ * 主表在这些按钮之后加分隔线和"自定义导出"子菜单（FP-19，旧系统 useGridContextMenu.ts 第 390–406 行）；
+ * 没有可用的导出配置时不加，明细不加。
+ */
+function getContextMenuItems(params: GetContextMenuItemsParams<GridRow>): Array<MenuItemDef | DefaultMenuItem> {
   const current = region.value;
   if (!current) return [];
   if (params.node?.data && !params.node.isSelected() && params.node.data.__id !== SUMMARY_ROW_ID)
     params.node.setSelected(true, true);
-  return runtime.regionButtons(current).map(button => ({
+  const items: Array<MenuItemDef | DefaultMenuItem> = runtime.regionButtons(current).map(button => ({
     name: button.label,
     disabled: !runtime.buttonEnabled(current, button),
     action: () => void runtime.clickButton(current, button)
   }));
+  const exports = props.master ? runtime.exportMenu() : [];
+  if (exports.length) {
+    if (items.length) items.push('separator');
+    items.push({
+      name: EXPORT_MENU,
+      subMenu: exports.map(item => ({
+        name: item.label,
+        action: () => void runtime.exportFile(item.exportCode, item.scope)
+      }))
+    });
+  }
+  return items;
 }
 </script>
 
