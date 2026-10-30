@@ -128,3 +128,52 @@ def liquid_row(engine: Engine, dtlid: str) -> dict[str, Any]:
 def freezes(engine: Engine, approval_id: str) -> set[tuple[str, str]]:
     return {(r["root_table"], r["record_key"]) for r in rows(engine, "SELECT root_table, record_key FROM pf_approval_freeze "
                                                                      "WHERE approval_id = :a", a=int(approval_id))}
+
+
+# ---------------------------------------------------------------- 浏览器用例（frontend/tests/e2e/sample-two.spec.ts）调用
+
+def main() -> None:
+    """浏览器用例建、删平台写不了的测试数据（ERP 物料、液体成本单），输出 JSON。成本单由浏览器用例经接口建、删。
+
+    用法（backend 目录）：
+      uv run python -m tests.e2e.sample_two goods --price 10
+      uv run python -m tests.e2e.sample_two liquid --goods <物料> --price 10
+      uv run python -m tests.e2e.sample_two show --goods <物料> --lq-dtl <液体明细>
+      uv run python -m tests.e2e.sample_two drop --goods <物料,…> --lq <液体成本单,…> --docs <成本单,…>
+    """
+    import argparse
+    import json
+
+    from .dcg import oracle_engine
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("action", choices=["goods", "liquid", "show", "drop"])
+    parser.add_argument("--price", default="10")
+    parser.add_argument("--goods", default="")
+    parser.add_argument("--lq", default="")
+    parser.add_argument("--lq-dtl", default="")
+    parser.add_argument("--docs", default="")
+    args = parser.parse_args()
+    data = CreatedData(oracle_engine())
+    if args.action == "goods":
+        print(json.dumps({"goodsid": data.add_erp_goods(args.price)}))
+    elif args.action == "liquid":
+        docid, dtlid = data.add_liquid(args.goods, per_hl="5", price=args.price, batch_qty="5", cost_batch=str(D(args.price) * 5))
+        print(json.dumps({"docid": docid, "dtlid": dtlid}))
+    elif args.action == "show":
+        goods = goods_row(data.engine, args.goods)
+        found: dict[str, Any] = {"zxPrice": None if goods["zx_price"] is None else str(goods["zx_price"])}
+        if args.lq_dtl:
+            lq = liquid_row(data.engine, args.lq_dtl)
+            found |= {"lqPrice": str(lq["price"]), "lqCostBatch": str(lq["cost_batch"])}
+        print(json.dumps(found))
+    else:
+        data.docids = [d for d in args.docs.split(",") if d]
+        data.goodsids = [g for g in args.goods.split(",") if g]
+        data.lq_docids = [d for d in args.lq.split(",") if d]
+        data.drop_all()
+        print(json.dumps({"dropped": {"docs": data.docids, "goods": data.goodsids, "lq": data.lq_docids}}))
+
+
+if __name__ == "__main__":
+    main()
