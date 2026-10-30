@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 describe('站内通知（FS-04）', () => {
-  it('打开时读取一次未读通知（后台请求）：铃铛显示 2', async () => {
+  it('打开时读取一次未读通知（后台请求）：未读 2（铃铛角标是待我审批数，见 todo-count.test.ts）', async () => {
     const { http, inbox } = setup();
 
     await inbox.start();

@@ -135,6 +135,20 @@ class ApprovalStore:
         """某人发起的全部审批，按编号倒序。"""
         return self._list(uow, pf_approval.c.applicant_id == user_id)
 
+    def everything(self, uow: UnitOfWork) -> list[ApprovalRecord]:
+        """全部审批，按编号倒序（"全部审批"页签按审批人筛选）。"""
+        return self._list(uow, sa.true())
+
+    def by_source(self, uow: UnitOfWork, entity: str, record_key: str) -> list[ApprovalRecord]:
+        """来源为这张单据（实体、主键）的全部审批，按编号倒序。"""
+        return self._list(uow, sa.and_(pf_approval.c.source_entity == entity, pf_approval.c.source_key == record_key))
+
+    def by_ids(self, uow: UnitOfWork, approval_ids: Sequence[str]) -> list[ApprovalRecord]:
+        """这些编号的审批，按编号倒序。"""
+        if not approval_ids:
+            return []
+        return self._list(uow, pf_approval.c.approval_id.in_([_id(i) for i in dict.fromkeys(approval_ids)]))
+
     # ---------------------------------------------------------------- 受影响单据的行
 
     def affected(self, uow: UnitOfWork, approval_id: str) -> list[AffectedRow]:

@@ -55,7 +55,7 @@ from .model import AffectedRow, ApprovalRecord
 from .patch import bill_key, values_of
 from .store import ApprovalStore
 from .tables import pf_approval
-from .view import Evaluator, _columns, cell
+from .view import Evaluator, _columns, _widths, cell
 
 # 只读的其他模块的表：write-pipeline 的命令记录、config 的配置项
 _command = sa.table("pf_command", sa.column("operation", sa.String), sa.column("result", sa.Text),
@@ -213,7 +213,8 @@ class _SourceRows:
         columns = _columns(master_blocks)
         first = master_blocks[0]
         row = Evaluator._source_row(columns, entity, before, after, op, self.flows_of.get((code, bill), []))
-        return ViewMasterTable(key=first.key, title=first.title, columns=[c.label for c in columns], rows=[row])
+        return ViewMasterTable(key=first.key, title=first.title, columns=[c.label for c in columns], rows=[row],
+                               widths=_widths(columns))
 
     def details(self, blocks: Sequence[DisplayBlock]) -> list[ViewDetailTable] | None:
         record = self.record
@@ -236,7 +237,8 @@ class _SourceRows:
                 after = None if change.op == "delete" else self._row(self.commands.after, code, key, frozen=False)
                 rows.append(Evaluator._source_row(columns, entity, before, after, change.op, self.flows_of.get((code, key), [])))
             lead = group[0]
-            tables.append(ViewDetailTable(key=lead.key, title=lead.title, columns=[c.label for c in columns], rows=rows))
+            tables.append(ViewDetailTable(key=lead.key, title=lead.title, columns=[c.label for c in columns], rows=rows,
+                                          widths=_widths(columns)))
         return tables
 
 
@@ -278,7 +280,8 @@ def _affected(record: ApprovalRecord, flow: str, block: DisplayBlock, affected: 
         view_rows.append(ViewRow(op=op, cells=cells, ref=RowRef(key=row.key or ""), checked=chosen))  # type: ignore[arg-type]
     title = f"{block.title}（{record.flow(flow).name}）" if len(record.flows) > 1 else block.title
     return ViewAffectedTable(flow=flow, key=block.key, title=title, selection=selection,  # type: ignore[arg-type]
-                             editable=False, columns=[c.label for c in block.columns], rows=view_rows)
+                             editable=False, columns=[c.label for c in block.columns], rows=view_rows,
+                             widths=_widths(block.columns))
 
 
 __all__ = ["restore_final_views", "restore_view"]

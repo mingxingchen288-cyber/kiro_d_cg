@@ -51,6 +51,14 @@ import type { HttpClient, HttpRequestOptions } from './shell';
 
 const e = encodeURIComponent;
 
+/**
+ * `GET /api/approvals` 的查询参数（C09 第 6 节）：`todo` 待审批、`mine` 我的发起、`all` 全部审批（v14），
+ * `record` 为 `page` 页面中主键为 `recordKey` 的单据的审批（v14）
+ */
+export type ApprovalListQuery =
+  | { box: 'todo' | 'mine' | 'all'; startRow: number; endRow: number }
+  | { box: 'record'; page: string; recordKey: string; startRow: number; endRow: number };
+
 /** 后台请求（C09 第 1 节）：配置变更后重新读取页面视图和规则包、读取未读数等 */
 const BACKGROUND: HttpRequestOptions = { background: true };
 
@@ -105,8 +113,12 @@ export function createPlatformApi(http: HttpClient) {
     runCommand: (command: Command) => http.post<CommandResult>('/api/commands', command),
 
     // ---- 6. approval
-    approvals: (query: { box: 'todo' | 'mine'; startRow: number; endRow: number }) =>
-      http.get<ApprovalList>('/api/approvals', { query }),
+    /**
+     * C09 v14：`box` 增加 `all`（全部审批）和 `record`（一张单据的审批，带 `page`、`recordKey`）；
+     * 外壳读铃铛角标（`box=todo` 的条数）时为后台请求
+     */
+    approvals: (query: ApprovalListQuery, background?: boolean) =>
+      http.get<ApprovalList>('/api/approvals', { query, background }),
     approvalDetail: (approvalId: string) => http.get<ApprovalDetail>(`/api/approvals/${e(approvalId)}`),
     approvalPreview: (approvalId: string, body: PreviewRequest) =>
       http.post<PreviewResponse>(`/api/approvals/${e(approvalId)}/preview`, body),

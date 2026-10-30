@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
- * 顶栏的站内通知（FS-04）：铃铛上显示未读数，点击打开右侧抽屉"消息中心"（位置、铃铛、徽标、抽屉宽度沿用旧系统
+ * 顶栏的站内通知（FS-04）：点击铃铛打开右侧抽屉"消息中心"（位置、铃铛、徽标、抽屉宽度沿用旧系统
  * approval-notification-center.vue）。旧抽屉里的"待审批""我的发起"属于审批，新系统由 frontend-approval 的"待办"提供，
  * 这里只列 `/api/inbox` 的通知；点击通知标为已读并按链接跳转。
- * 未读数在登录后读取一次，之后按 `notification` 事件更新，不轮询（modules/shell/inbox.ts）。
+ * 铃铛上的数字（FS-06）同旧系统，是待我审批的审批数（modules/shell/todo-count.ts，C11 v3 `ShellApi.bell`），不是未读通知数；
+ * 未读数显示在抽屉里（modules/shell/inbox.ts）。
  */
 import { computed, ref } from 'vue';
 import { shellRuntime } from '@/modules/shell/app';
@@ -13,9 +14,15 @@ defineOptions({
   name: 'InboxBell'
 });
 
-const { inbox } = shellRuntime();
+const { inbox, todo } = shellRuntime();
 
 const drawerVisible = ref(false);
+
+/** 点开铃铛：同旧系统 openDrawer 时重新读条数 */
+function openDrawer() {
+  drawerVisible.value = true;
+  void todo.refresh();
+}
 const showAll = ref(false);
 
 const list = computed(() => (showAll.value ? (inbox.all.value ?? []) : inbox.items.value));
@@ -46,8 +53,8 @@ function formatTime(value: string) {
 </script>
 
 <template>
-  <ButtonIcon tooltip-content="消息中心" @click="drawerVisible = true">
-    <NBadge :value="inbox.unread.value" :show="inbox.unread.value > 0" type="error" :max="99">
+  <ButtonIcon tooltip-content="消息中心" @click="openDrawer">
+    <NBadge :value="todo.count.value" :show="todo.count.value > 0" type="error" :max="99">
       <SvgIcon icon="ph:bell" class="text-icon-large" />
     </NBadge>
   </ButtonIcon>

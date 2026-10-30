@@ -43,7 +43,7 @@
 - FP-16：用户修改被审批锁定的单据时，直接弹窗显示锁定它的审批进度，不进入编辑：
   - 行带 `frozen` 时（C09 的 `DataRow`、C02 的 `rows[].frozen`），双击单元格、在表单中修改、粘贴、删除行、给这张单据新增明细，都不改编辑缓冲，直接弹出 `frozen.approvalId` 的审批进度。
   - 保存或按钮操作返回 409 FROZEN_BY_APPROVAL 时（例如页面加载后单据才被锁定，或改到了审批详情中不显示的锁定单据），按错误明细的 `approvalId` 弹出审批进度，有几个审批就分别列出；编辑缓冲按 FP-06 保留。明细中没有 `approvalId` 时（同一次保存中的两张单据要锁定同一张单据，approval AP-06），照常显示错误提示。
-  - 进度经 `GET /api/approvals/{approvalId}` 读取（C09 第 6 节，任何已登录的用户都能查看）。弹窗显示来源页面、来源单据号、提交人、提交时间、当前级别和各级入口的处理情况（`steps`），不显示修改内容，也不能在这里通过或驳回。
+  - 进度经 `GET /api/approvals/{approvalId}` 读取（C09 第 6 节，任何已登录的用户都能查看）。弹窗显示来源页面、来源单据号、提交人、提交时间、状态和当前级别、各级入口的处理情况（`steps`），不显示修改内容，也不能在这里通过或驳回；每个审批有"查看审批详情"（FP-21）。
 - FP-17：汇总行（C06 第 3 节 `aggregate`，对应旧系统列配置的"求和"）：区域中有 `aggregate` 为 `sum` 的可见字段时，表格底部固定一行汇总，这些列显示和，格式同这一列（小数位），其他列为空（布尔列不画复选框）；汇总行不能编辑、不能选中，没有表单按钮。
   - 主表区：列表接口的 `aggregates`（全部满足查询条件的行，queries-export 的 QE-04）加上还没保存的修改：改过的单据加上主表行修改后与正式数据的差（计算字段取预览的值），新增的单据计入，标为删除的单据减去。保存、业务按钮成功后，按最近一次列表请求的条件重新取一次汇总（`startRow` 等于 `endRow`，C09 第 4 节）。
   - 明细区：当前单据这个明细的全部行求和（含新增行，不含标为删除的行）。
@@ -62,6 +62,16 @@
   - 导出当前：`POST /api/pages/{pageCode}/export`，`{"mode": "config", "exportCode", "scope": "current", "request"}`，`request` 带主表当前列表请求（服务端行模型最近一次取数）的筛选、高级查询和排序。导出所有：`scope` 为 `all`，`request` 不带筛选、高级查询和排序：后端在 `all` 时也按 `sortModel` 排序，旧系统导出所有不带排序。导出不分页，`startRow`、`endRow` 为 0。
   - 开始时提示"导出已开始"；文件交给浏览器下载（a 标签 + object URL），文件名取响应头 `Content-Disposition` 的 `filename*=UTF-8''…` 并解码（C11 v2 的 `DownloadedFile`，正则同旧系统 `parseFileName`），取不到时为 export.xlsx；失败时提示后端给的信息，没有时为"导出失败"。
   - 与旧系统的差别：旧系统开始时用 info 提示"导出已开始"，文件下载后再用 success 提示一次同样的文字；`ShellApi.message` 没有 info，这里只在开始时提示一次。旧系统的导出当前只取表格的筛选和排序（`getFilterModel`、`getSortModel`），高级查询的条件存在别处、不带；这里的导出当前同时带高级查询，导出的行与主表列表的行相同。
+- FP-20：按地址定位单据（C11 v3 的 `/page/{pageCode}?record={主键}`，审批待办的"原单据"，frontend-approval FA-14）。依据：旧系统通知中心"原单据"带 `focusId`（`approval-notification-center.vue` 第 141–158 行），页面查询加主键条件（`useWorkingSetStore.ts` 第 255–262 行），定位后选中这一行、滚到中间、加载明细，再清掉条件、当前显示不刷新，用户之后查询时不再只看这张（`MasterDetailLayoutV3.vue` 第 428–460 行）。用户 2026-10-30 回复"其它无异议"同意按旧系统补。代码在 `renderers/PageRoute.vue`、`page-runtime.ts`（`focus`、`clearFocus`）、`grid-adapter/PageGrid.vue`。
+  - 页面打开（或已打开的页面收到带 `record` 的跳转）后，主表的第一次查询改为按主键取行（C09 第 4 节 `rows/by-keys`），只显示这一张单据（还没保存的新增主表行照常放在最前面），表格选中它，明细显示这张单据；汇总行为这一行的值。工具栏写"只显示单据 2550"和"显示全部"。
+  - 用户排序、筛选、高级查询，或点"显示全部"后，照常从第一页查询全部。
+  - 地址中的 `record` 用过就去掉（重新打开 `/page/{pageCode}`，外壳把页签的地址换成不带 `record` 的），切回这个页签时不再定位；同一张单据再点一次"原单据"会再定位一次。
+  - 单据不存在或不在当前角色的行权限内时主表为空，提示"没有找到单据 2550（已删除，或不在当前角色的数据范围内）"。
+  - 与旧系统的差别：旧系统用查询条件定位，新平台按主键取行（结果相同，都只有这一行）；旧系统还带 `approvalId`，页面上没有用到，新平台不带。
+- FP-21：查看审批进度。依据：旧系统主表工具栏"送审"下拉中的"查看审批进度"（`v3/components/approval/ApprovalActionGroup.vue` 第 16 行，按钮权限 `approval.progress` 授给全部业务角色，见 `.reports/inventory-20261030/乙03-角色按钮.out.txt`），对选中的单据不论是否被冻结都能看；后端按来源单据找审批，进行中的优先，其次最新（`ApprovalRuntimeService.progress` 第 106–170 行）。用户 2026-10-30 回复"其它无异议"同意按旧系统补。
+  - 工具栏"高级查询"之后固定有"查看审批进度"，每个页面都有（旧系统授给全部业务角色，平台没有这个按钮的权限项；新平台不做"送审""撤销送审"，只放这一项，不做成下拉）。没选中主表行时提示"请先选择一条单据"；选中多行时取最后选中的一行。
+  - 按 `GET /api/approvals?box=record&page={pageCode}&recordKey={主键}`（C09 v14，approval AP-24）取这张单据的审批：这张单据作为来源发起的，以及冻结着它的。显示其中进行中的审批，没有进行中的显示最近的一个，各自经 `GET /api/approvals/{approvalId}` 读进度，弹窗同 FP-16，标题为"单据 2550 的审批进度"；一个都没有时显示"暂无审批记录"（旧系统 `statusText` 没有状态时的文字）。
+  - 审批进度弹窗（FP-16 和这里）每个审批有"查看审批详情"，打开审批详情页签 `/approval/{approvalId}`（frontend-approval 的路由），关闭弹窗。旧系统的进度和修改内容在同一个审批详情对话框里（`ApprovalActionGroup.vue` 第 23 行 `ApprovalDetailDialog.open(payload, 'progress')`）；新平台的审批详情是页面，从弹窗进入。
 
 ## 4. 依赖
 

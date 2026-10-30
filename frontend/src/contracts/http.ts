@@ -331,17 +331,24 @@ export const ViewRow = object('ViewRow', {
   checked: optional(nullable(bool)),
   missing: optional(nullable(literal(true)))
 });
+/**
+ * C09 v14：各列的宽度，与 `columns` 一一对应；没配宽度的为 null（前端按 170 显示）。
+ * v14 之前结束时存下的修改内容没有这一项。
+ */
+const viewWidths = optional(nullable(array(nullable(int))));
 export const ViewMasterTable = object('ViewMasterTable', {
   key: code,
   title: str,
   columns: array(str),
-  rows: array(ViewRow)
+  rows: array(ViewRow),
+  widths: viewWidths
 });
 export const ViewDetailTable = object('ViewDetailTable', {
   key: code,
   title: str,
   columns: array(str),
-  rows: array(ViewRow)
+  rows: array(ViewRow),
+  widths: viewWidths
 });
 export const ViewAffectedTable = object('ViewAffectedTable', {
   flow: code,
@@ -350,7 +357,8 @@ export const ViewAffectedTable = object('ViewAffectedTable', {
   selection: literal('checked', 'all'),
   editable: bool,
   columns: array(str),
-  rows: array(ViewRow)
+  rows: array(ViewRow),
+  widths: viewWidths
 });
 export const ApprovalView = object('ApprovalView', {
   master: ViewMasterTable,
@@ -368,6 +376,15 @@ export const FlowParam = object('FlowParam', {
   level: optional(nullable(int)),
   value: optional(json)
 });
+/** C09 v14：审批记录的一条（提交、通过、驳回、撤回），`comment` 为意见、驳回原因或撤回原因 */
+export const ApprovalHistoryItem = object('ApprovalHistoryItem', {
+  action: literal('submit', 'pass', 'reject', 'withdraw'),
+  level: int,
+  by: UserBrief,
+  at: dateTimeText,
+  comment: nullable(str)
+});
+export type ApprovalHistoryItem = Infer<typeof ApprovalHistoryItem>;
 export const ApprovalDetail = object('ApprovalDetail', {
   approvalId: decimalText,
   status: ApprovalStatus,
@@ -384,6 +401,8 @@ export const ApprovalDetail = object('ApprovalDetail', {
   fingerprint: str,
   params: array(FlowParam),
   actions: ApprovalActions,
+  /** C09 v14：审批记录，按时间先后 */
+  history: array(ApprovalHistoryItem),
   /** 已结束的审批没有保存结束那一刻的修改内容时为 true，`view` 的各表为空（C06 7.6） */
   viewUnsaved: optional(nullable(literal(true)))
 });

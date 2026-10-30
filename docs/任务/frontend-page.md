@@ -162,3 +162,12 @@
   - 模拟验证：`frontend/tests/page/export.test.ts` 7 个通过（`vitest-export.txt`）；`tests/contracts/fakes.test.ts` 的导出用例改为核对文件和响应头。`pnpm test` 37 个文件 545 个通过（`pnpm-test.txt`），`pnpm typecheck`、`pnpm lint:deps` 通过（`lint-deps.txt`）。
   - 浏览器（`pnpm build:test` 后由后端 8091 托管，d_cg）：`export-menu.spec.ts` 跑两次，每次 setup 3 个加本用例共 4 个通过（`e2e-1.txt`、`e2e-2.txt`，用例 8.6s）：导出请求为 `scope: current`、`filterModel.DOCID` 为 2550，提示"导出已开始"，下载文件名"物料成本核算表导出.xlsx"，工作表"物料成本核算""明细_2550"。只读，不改数据。
   - 与旧系统的两处差别（FP-19 末项）：提示"导出已开始"只出现一次（旧系统开始 info、下载后 success 各一次）；导出当前同时带高级查询（旧系统只带表格的筛选和排序）。
+
+### T-FP-15 按地址定位单据；查看审批进度、进度弹窗到审批详情
+- 归属与目标：FP-20、FP-21（FP-16 的弹窗加"查看审批详情"），C11 v3、C09 v14。盘点（`.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B2、B3，`乙-旧系统功能对照.md` 第 2.8、2.9 节），用户 2026-10-30 回复"其它无异议"同意按旧系统补。来源：旧系统 `approval-notification-center.vue` 第 141–158 行（`focusId`）、`useWorkingSetStore.ts` 第 255–262 行、`MasterDetailLayoutV3.vue` 第 428–460 行和第 816 行、`ApprovalActionGroup.vue` 第 16、23 行。
+- 前置输入：C09 第 4 节 `rows/by-keys`；approval T-AP-9 的 `box=record`；frontend-shell T-FS-3 的 `tabs.open` 带查询参数。
+- 负责范围：`renderers/PageRoute.vue`（读 `record`）、`GenericPage.vue`（工具栏"查看审批进度"、"只显示单据 X / 显示全部"）、`ApprovalProgressDialog.vue`（标题、状态、"查看审批详情"）、`page-runtime.ts`（`focus`、`clearFocus`、`fetchFocused`、`showRecordApprovals`、`openApprovalDetail`，`FrozenState.title`）、`approval-progress.ts`（审批状态文字）、`grid-adapter/PageGrid.vue`（选中定位的行）。没有改 `fields.ts`、`grid-adapter/columns.ts`、`LookupGrid.vue`、`AdvancedSearchDialog.vue`。
+- 交付物：`/page/{pageCode}?record={主键}` 打开后只显示、选中这张单据并显示明细；工具栏"查看审批进度"；审批进度弹窗每个审批有"查看审批详情"。
+- 验收标准：模拟验证（`tests/page/approval-progress.test.ts`）：定位时主表按主键取一行、返回要选中的行、去掉地址中的 `record`，再查询照常、"显示全部"从第一页查；查看审批进度按单据查、显示进行中的、没有进行中的显示最近一个、没有时"暂无审批记录"、没选中时提示；"查看审批详情"打开审批详情页签并关闭弹窗；冻结时的弹窗标题不变。业务例子：见 frontend-approval T-FA-2 的 `batch7-approval.spec.ts`（第 1、5、6 步）。
+- 状态与证据：模拟验证和浏览器业务例子通过，待独立复核（2026-10-31，AP 组，`batch7/approval-history`，本卡所在的提交；原始输出在 `.reports/batch7-20261030/ap-approval/`，`pnpm-test.txt`、`e2e-2.txt`）。
+  - 与旧系统的差别：定位用按主键取行（旧系统加查询条件）；"查看审批进度"是工具栏上一个按钮，不做成"送审"下拉（新平台不做送审、撤销送审），每个页面都有（旧系统授给全部业务角色）；进度弹窗不显示修改内容，从"查看审批详情"进审批详情页（旧系统是同一个对话框）。

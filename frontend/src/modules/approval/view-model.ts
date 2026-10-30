@@ -194,6 +194,56 @@ export function stepRows(steps: readonly ApprovalStep[]): StepRow[] {
   });
 }
 
+// ---------------------------------------------------------------- 审批记录（FA-12，C09 v14 的 `history`）
+
+export type HistoryItem = ApprovalDetail['history'][number];
+
+/** "动作"列：旧系统直接显示 WF_APPROVAL_LOG.ACTION_TYPE（APPLY、APPROVE、REJECT、CANCEL），这里写成中文 */
+export const HISTORY_ACTION: Record<HistoryItem['action'], string> = {
+  submit: '提交',
+  pass: '通过',
+  reject: '驳回',
+  withdraw: '撤回'
+};
+
+/** 审批记录表格的一行：动作、操作人、处理时间、意见、说明（列同旧系统 `ApprovalDetailDialog.vue` 第 200–208 行） */
+export interface HistoryRow {
+  action: string;
+  by: string;
+  at: string;
+  comment: string;
+  note: string;
+}
+
+/**
+ * 说明列：这一次处理的结果。旧系统是 WF_APPROVAL_LOG.DETAIL_MESSAGE（"Configured level=1""审批驳回""审批已撤销"），
+ * 并另记一条"结束"（FINISH）；这里不另记，最后一次通过使审批通过时写"审批通过"。
+ */
+function historyNote(item: HistoryItem, last: boolean, status: ApprovalDetail['status']) {
+  if (item.action === 'submit') return '提交审批，进入第 1 级';
+  if (item.action === 'pass') return `第 ${item.level} 级通过${last && status === 'approved' ? '，审批通过' : ''}`;
+  if (item.action === 'reject') return `第 ${item.level} 级驳回，审批结束`;
+  return '发起人撤回，审批结束';
+}
+
+export function historyRows(detail: Pick<ApprovalDetail, 'history' | 'status'>): HistoryRow[] {
+  const lastPass = detail.history.map(item => item.action).lastIndexOf('pass');
+  return detail.history.map((item, index) => ({
+    action: HISTORY_ACTION[item.action] ?? item.action,
+    by: item.by.displayName,
+    at: formatTime(item.at),
+    comment: item.comment || EMPTY,
+    note: historyNote(item, index === lastPass, detail.status)
+  }));
+}
+
+/** 修改内容各列的宽度（FA-13）：按 `widths`，没配的 170（旧系统 `ApprovalPresentationGrid.vue` 第 188 行） */
+export const DEFAULT_COLUMN_WIDTH = 170;
+
+export function columnWidth(widths: ReadonlyArray<number | null> | null | undefined, index: number) {
+  return widths?.[index] ?? null;
+}
+
 /** 错误提示：PlatformError 的消息和明细（同旧系统 approvalErrorMessage，保留后端给出的业务错误） */
 export function errorText(error: unknown) {
   if (error && typeof error === 'object' && 'message' in error) {

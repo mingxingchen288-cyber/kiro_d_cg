@@ -3,8 +3,10 @@
  * 通用页面：按页面编码打开，列、明细、按钮、规则都来自页面视图（C05），不为单个页面写专门的组件。
  * 单表页只有主表区；主从页在主表区下面显示明细区，明细按 Tab 或堆叠显示，分隔线可以拖动（FP-01，旧系统为 NSplit，默认各一半）。
  * 页面行为都在 page-runtime 中，这里只负责布局和把操作交给它。
+ * 工具栏在"高级查询"之后有"查看审批进度"（FP-21，旧系统主表工具栏"送审"下拉中的同名项，授给全部业务角色，所以每个页面
+ * 都有；新平台不做"送审"，只放这一项）；从审批"原单据"打开时，工具栏写明只显示这张单据，可以点"显示全部"（FP-20）。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ViewButton, ViewRegion } from '../../../contracts/page-view';
 import { createPlatformApi } from '../../../contracts/api';
 import type { ShellApi } from '../../../contracts/shell';
@@ -18,7 +20,12 @@ import RecordForm from './RecordForm.vue';
 
 defineOptions({ name: 'GenericPage' });
 
-const props = defineProps<{ pageCode: string; shell: ShellApi }>();
+const props = defineProps<{
+  pageCode: string;
+  shell: ShellApi;
+  /** 要定位的单据（FP-20，地址中的 `?record=`）；`seq` 变了就定位一次 */
+  focus?: { record: string; seq: number } | null;
+}>();
 
 const path = `/page/${props.pageCode}`;
 const runtime = new PageRuntime(props.pageCode, {
@@ -86,6 +93,14 @@ function onBeforeUnload(event: BeforeUnloadEvent) {
   event.returnValue = '';
 }
 
+watch(
+  () => props.focus?.seq,
+  () => {
+    if (props.focus) runtime.focus(props.focus.record);
+  },
+  { immediate: true }
+);
+
 onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload);
   void runtime.load();
@@ -117,6 +132,7 @@ onBeforeUnmount(() => {
           <NButton v-if="canAdvanced" size="small" :disabled="state.saving" @click="showAdvanced = true">
             高级查询
           </NButton>
+          <NButton size="small" @click="runtime.showRecordApprovals()">查看审批进度</NButton>
           <NButton
             v-for="button in buttons(view.master)"
             :key="button.key"
@@ -131,6 +147,10 @@ onBeforeUnmount(() => {
         <span v-if="state.saving" class="text-12px text-#999">保存中…</span>
         <span v-else-if="state.dirtyCount > 0" class="text-12px text-#999">{{ state.dirtyCount }} 行未保存</span>
         <span v-if="runtime.ui.advanced.value" class="text-12px text-primary">已按高级查询筛选</span>
+        <span v-if="state.focused" class="generic-page__focused text-12px text-primary">
+          只显示单据 {{ state.focused }}
+          <NButton text size="tiny" type="primary" @click="runtime.clearFocus()">显示全部</NButton>
+        </span>
         <span v-if="state.previewError" class="text-12px text-warning">{{ state.previewError }}</span>
         <span v-if="state.error" class="text-12px text-error">{{ state.error }}</span>
       </div>

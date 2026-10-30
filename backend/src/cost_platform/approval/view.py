@@ -167,6 +167,12 @@ def _columns(blocks: Iterable[DisplayBlock]) -> list[DisplayColumn]:
     return list(found.values())
 
 
+def _widths(columns: Sequence[DisplayColumn]) -> list[int | None]:
+    """各列配置的宽度（C06 7.5 `columns[].width`），没配的为 None，前端按 170 显示（C09 v14，旧系统
+    `ApprovalPresentationGrid.vue` 第 188 行 `column.width || 170`）。"""
+    return [c.width for c in columns]
+
+
 class Evaluator:
     def __init__(self, deps: ApprovalDeps) -> None:
         self.deps = deps
@@ -437,7 +443,7 @@ class Evaluator:
             if master_blocks and show:
                 rows.append(self._source_row(columns, master_entity, before_master, after_master, master_op, flows))
             master = ViewMasterTable(key=first.key if first else "master", title=first.title if first else record.page_title,
-                                     columns=[c.label for c in columns], rows=rows)
+                                     columns=[c.label for c in columns], rows=rows, widths=_widths(columns))
             details = []
             for code, blocks in detail_blocks.items():
                 entity = ctx.config.entity(code)
@@ -445,7 +451,8 @@ class Evaluator:
                 lead = blocks[0]
                 rows = [self._source_row(columns, entity, before, after, op, flows_of.get((code, key), []))
                         for key, op, before, after in self._detail_rows(uow, ctx, record, source, code, lead)]
-                details.append(ViewDetailTable(key=lead.key, title=lead.title, columns=[c.label for c in columns], rows=rows))
+                details.append(ViewDetailTable(key=lead.key, title=lead.title, columns=[c.label for c in columns], rows=rows,
+                                               widths=_widths(columns)))
             return master, details
 
         # 没有配置 master、detail 块：主表显示有变化的字段，每个明细表一个 Tab，显示有变化的行和字段（C06 7.6）
@@ -454,7 +461,8 @@ class Evaluator:
                    != cell(after_master.values.get(f.name) if after_master else None)]
         columns = [DisplayColumn(field=n, label=next(f.label for f in master_entity.fields if f.name == n)) for n in changed]
         master = ViewMasterTable(key="master", title=record.page_title, columns=[c.label for c in columns],
-                                 rows=[self._source_row(columns, master_entity, before_master, after_master, master_op, flows)])
+                                 rows=[self._source_row(columns, master_entity, before_master, after_master, master_op, flows)],
+                                 widths=_widths(columns))
         details = []
         for link in master_entity.details:
             entity = ctx.config.entity(link.entity)
@@ -470,7 +478,7 @@ class Evaluator:
             title = next((d.title for d in ctx.config.page_view(record.page).details if d.entity == link.entity), link.entity)
             details.append(ViewDetailTable(key=link.entity, title=title, columns=[c.label for c in columns], rows=[
                 self._source_row(columns, entity, before, after, op, flows_of.get((link.entity, key), []))
-                for key, op, before, after in rows_data]))
+                for key, op, before, after in rows_data], widths=_widths(columns)))
         return master, details
 
     def _row_scope(self, ctx: ExecutionContext, record: ApprovalRecord, source: SourceState, entity: str, key: str,
@@ -596,7 +604,7 @@ class Evaluator:
         title = f"{block.title}（{flow.name}）" if with_flow_name else block.title
         return ViewAffectedTable(flow=flow.code, key=block.key, title=title, selection=selection,  # type: ignore[arg-type]
                                  editable=user_can_edit and selection == "checked", columns=[c.label for c in block.columns],
-                                 rows=view_rows)
+                                 rows=view_rows, widths=_widths(block.columns))
 
     def _affected_cell(self, column: DisplayColumn, data: Mapping[str, Any], owner: Owner | None, before_doc: DocumentData | None,
                        after_doc: DocumentData | None, checked: bool, updates: Mapping[str, Value], target_columns: set[str],

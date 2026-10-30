@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
- * 待办列表（FA-06），沿用旧系统审批通知中心（`approval-notification-center.vue`）：上方两个条数（待审批、我的发起），
- * "待审批 / 我的发起"两个页签；每个审批一行，列为来源页面和操作、来源单据号、提交人、提交时间、状态和当前级别；
- * 每行有"原单据"和"处理"（我的发起为"查看"）按钮，双击行也打开审批详情（`/approval/{approvalId}`）。
- * 旧系统是顶栏的抽屉，这里是路由 `/approval` 的页面；旧系统的"查看全部"（审批历史）在 C09 中没有接口，没有做。
+ * 待办列表（FA-06、FA-11），沿用旧系统审批通知中心（`approval-notification-center.vue`）：上方的条数和
+ * "待审批 / 我的发起 / 全部审批"三个页签；每个审批一行，列为来源页面和操作、来源单据号、提交人、提交时间、状态和当前级别；
+ * 每行有"原单据"（打开来源页面并选中这张单据，FA-14）和"处理"（我的发起、全部审批为"查看"）按钮，双击行也打开审批详情
+ * （`/approval/{approvalId}`）。旧系统是顶栏的抽屉，点"查看全部"把"待审批"换成"全部审批"（提示"当前显示全部审批历史"）；
+ * 这里是路由 `/approval` 的页面，"全部审批"做成第三个页签，提示文字同旧系统。
  */
 import { computed, onBeforeUnmount, onMounted } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
@@ -11,7 +12,7 @@ import type { ColDef, ICellRendererParams, RowDoubleClickedEvent } from 'ag-grid
 import type { ApprovalSummary } from '../../../contracts/http';
 import type { ShellApi } from '../../../contracts/shell';
 import { createPlatformApi } from '../../../contracts/api';
-import { ApprovalTodoRuntime, BOX_LABEL, type Box, PAGE_SIZE, summaryTexts } from '../todo-runtime';
+import { ApprovalTodoRuntime, BOXES, BOX_LABEL, type Box, PAGE_SIZE, summaryTexts } from '../todo-runtime';
 import { HEADER_HEIGHT, ROW_HEIGHT, simpleTheme } from './grid-theme';
 
 defineOptions({ name: 'ApprovalTodoPage' });
@@ -93,20 +94,16 @@ onBeforeUnmount(() => stop?.());
 <template>
   <div class="approval-todo-page">
     <div class="notice-summary">
-      <div>
-        <span class="summary-value">{{ state.counts.todo }}</span>
-        <span class="summary-label">{{ BOX_LABEL.todo }}</span>
-      </div>
-      <div>
-        <span class="summary-value">{{ state.counts.mine }}</span>
-        <span class="summary-label">{{ BOX_LABEL.mine }}</span>
+      <div v-for="box in BOXES" :key="box">
+        <span class="summary-value">{{ state.counts[box] }}</span>
+        <span class="summary-label">{{ BOX_LABEL[box] }}</span>
       </div>
     </div>
 
     <NTabs :value="state.box" type="line" animated @update:value="(box: Box) => runtime.switchBox(box)">
-      <NTabPane name="todo" :tab="BOX_LABEL.todo" />
-      <NTabPane name="mine" :tab="BOX_LABEL.mine" />
+      <NTabPane v-for="box in BOXES" :key="box" :name="box" :tab="BOX_LABEL[box]" />
     </NTabs>
+    <div v-if="state.box === 'all'" class="todo-scope-hint">当前显示全部审批历史</div>
 
     <NAlert v-if="state.error" type="error" :bordered="false" class="mb-8px">
       {{ state.error }}
@@ -150,9 +147,14 @@ onBeforeUnmount(() => stop?.());
   background: #fff;
   font-size: 12px;
 }
+.todo-scope-hint {
+  margin-bottom: 4px;
+  color: #667085;
+  font-size: 12px;
+}
 .notice-summary {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 260px));
+  grid-template-columns: repeat(3, minmax(0, 260px));
   gap: 8px;
   margin-bottom: 12px;
 }

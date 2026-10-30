@@ -7,6 +7,7 @@
  * - 编辑、新增、删除、撤销重做经编辑缓冲（FP-04）；编辑后在 Worker 中预览（FP-05）。
  * - 保存（FP-06、FP-07）、按钮（FP-14）、冻结时弹出审批进度（FP-16）、复制（FP-13）、Lookup 和默认值（FP-15）、
  *   个人列配置（FP-11）、高级查询、自定义导出（FP-19）。
+ * - 按地址中的 `record` 定位单据（FP-20，C11 v3）；"查看审批进度"和进度弹窗到审批详情（FP-21，C09 v14）。
  */
 import { reactive, shallowRef } from 'vue';
 import type { Ref } from 'vue';
@@ -110,13 +111,21 @@ export interface CopyState {
 }
 
 export interface FrozenState {
+  /** 弹窗标题：修改被冻结的单据时为"单据在审批中，不能修改"，点"查看审批进度"时为"单据 2550 的审批进度"（FP-21） */
+  title: string;
   loading: boolean;
   items: ApprovalDetail[];
-  /** 错误明细中没有 approvalId 时的提示 */
+  /** 没有要显示的审批时的提示（例如"暂无审批记录"） */
   message: string;
 }
 
+/** 修改被冻结的单据时弹出的审批进度的标题（FP-16） */
+export const FROZEN_TITLE = '单据在审批中，不能修改';
+
 export const BUILTIN_ACTIONS = ['addRow', 'deleteRow', 'copyRow', 'saveGridConfig'] as const;
+
+/** "查看审批进度"一次最多读这张单据的几个审批（进行中的排在前面，C09 v14 `box=record`） */
+const RECORD_APPROVALS = 20;
 
 /**
  * 主表一块数据、一张单据的明细交给表格前，最多等显示求值这么久（毫秒）：通常几十毫秒内就有结果，行一出来就带样式；
@@ -161,7 +170,9 @@ export class PageRuntime {
     /** 字典加载后加一，下拉和显示随之重算 */
     dictVersion: 0,
     /** 数据（编辑缓冲、正式数据、预览）变了就加一：原地表单等不经表格显示的地方据此重算 */
-    revision: 0
+    revision: 0,
+    /** 主表只显示从审批"原单据"定位的这张单据（FP-20）；用户再查询、排序、筛选或点"显示全部"后为 null */
+    focused: null as string | null
   });
 
   /** 结构较深的界面状态用 shallowRef，整体替换 */
@@ -208,6 +219,9 @@ export class PageRuntime {
 
   /** 最近一次主表列表请求（排序、筛选、高级查询），保存后重新取汇总、自定义导出的"导出当前"时用 */
   private lastQuery: ListRequest | null = null;
+
+  /** 要定位的单据（FP-20）：下一次从第一行开始的主表查询只取这一张 */
+  private focusKey: string | null = null;
 
   private get api() {
     return this.deps.api;
@@ -354,8 +368,19 @@ export class PageRuntime {
     return this.model.detailIds(entity, recordId).map(id => this.model.gridId(id));
   }
 
-  /** 主表的服务端行模型数据源（C09 第 4 节列表）；第一页最前面放还没保存的新增主表行 */
-  async fetchMasterRows(request: Pick<ListRequest, 'startRow' | 'endRow' | 'sortModel' | 'filterModel'>) {
+  /**
+   * 主表的服务端行模型数据源（C09 第 4 节列表）；第一页最前面放还没保存的新增主表行。
+   * 要定位单据时（FP-20）这一次只取这张单据，返回的 `focus` 为它的表格行标识，由表格选中。
+   */
+  async fetchMasterRows(
+    request: Pick<ListRequest, 'startRow' | 'endRow' | 'sortModel' | 'filterModel'>
+  ): Promise<{ rows: GridRow[]; total: number; focus?: string }> {
+    if (request.startRow === 0 && this.focusKey !== null) {
+      const key = this.focusKey;
+      this.focusKey = null;
+      return this.fetchFocused(key);
+    }
+    this.state.focused = null;
     const body: ListRequest = { ...request };
     if (this.ui.advanced.value) body.advanced = this.ui.advanced.value;
     this.lastQuery = body;
@@ -369,6 +394,50 @@ export class PageRuntime {
     const master = this.model.master;
     const rows = [...added, ...response.rows.map(r => this.model.gridId(r.rowKey))].map(id => this.gridRow(master, id));
     return { rows, total: response.total + added.length };
+  }
+
+  // ================================================================ 定位单据（FP-20）
+
+  /**
+   * 定位到一张单据（路由 `/page/{pageCode}?record={recordKey}`，C11 v3；审批待办的"原单据"）：主表只显示这张单据、选中它、
+   * 显示它的明细；用户再查询、排序、筛选或点"显示全部"后照常显示全部。同旧系统 `focusId`：查询加主键条件（`useWorkingSetStore`
+   * 第 255–262 行），定位后清掉条件、当前显示不刷新（`MasterDetailLayoutV3.vue` 第 428–460 行）。
+   * 地址中的 `record` 用过就去掉（重新打开 `/page/{pageCode}`），切回这个页签时不再定位一次。
+   */
+  focus(recordKey: string) {
+    this.focusKey = recordKey;
+    const view = this.view.value;
+    // 页面还在加载：加载完后第一次查询主表时定位，load 末尾会打开不带 record 的地址
+    if (!view) return;
+    this.deps.tabs?.open(this.deps.path ?? `/page/${this.pageCode}`, view.title);
+    this.port(view.master.entity)?.reload(true);
+  }
+
+  /** "显示全部"：不再只显示定位的单据，从第一页重新查询 */
+  clearFocus() {
+    this.focusKey = null;
+    this.state.focused = null;
+    const view = this.view.value;
+    if (view) this.port(view.master.entity)?.reload(true);
+  }
+
+  /** 只取这张单据（C09 第 4 节按主键取行）：汇总行为这一行的值；还没保存的新增主表行照常放在最前面 */
+  private async fetchFocused(recordKey: string) {
+    const view = this.view.value!;
+    const master = this.model.master;
+    const response = await this.api.rowsByKeys(this.pageCode, { entity: master, rowKeys: [recordKey] });
+    this.model.registerMasterRows(response.rows);
+    this.lastQuery = null;
+    this.state.focused = recordKey;
+    this.state.total = response.rows.length;
+    const found = response.rows[0];
+    this.ui.aggregates.value = Object.fromEntries(sumFields(view.master).map(f => [f, found?.values[f] ?? null]));
+    if (!found) this.deps.message.warning(`没有找到单据 ${recordKey}（已删除，或不在当前角色的数据范围内）`);
+    await within(this.display(response.rows.map(r => r.rowKey)), DISPLAY_WAIT);
+    const added = this.model.newMasterRows().map(r => this.model.gridId(r.id));
+    const focus = found ? this.model.gridId(found.rowKey) : undefined;
+    const rows = [...added, ...(focus ? [focus] : [])].map(id => this.gridRow(master, id));
+    return { rows, total: rows.length, focus };
   }
 
   /**
@@ -1094,17 +1163,66 @@ export class PageRuntime {
   // ================================================================ 审批进度（FP-16）
 
   /** 弹出这些审批的进度（GET /api/approvals/{approvalId}）；有几个审批就分别列出 */
-  async showApprovals(approvalIds: string[]) {
-    this.ui.frozen.value = { loading: true, items: [], message: '' };
+  async showApprovals(approvalIds: string[], title = FROZEN_TITLE) {
+    const state: FrozenState = { title, loading: true, items: [], message: '' };
+    this.ui.frozen.value = state;
     const items: ApprovalDetail[] = [];
     for (const id of approvalIds) {
       try {
+        // eslint-disable-next-line no-await-in-loop -- 按审批的先后依次读取
         items.push(await this.api.approvalDetail(id));
       } catch (error) {
         this.deps.message.error(`审批 ${id} 的进度读取失败：${messageOf(error)}`);
       }
     }
-    if (this.ui.frozen.value) this.ui.frozen.value = { loading: false, items, message: '' };
+    if (this.ui.frozen.value === state) this.ui.frozen.value = { ...state, loading: false, items };
+  }
+
+  /**
+   * "查看审批进度"（FP-21）：选中的主表单据的审批，不论单据是否被冻结。同旧系统页面"送审"下拉中的"查看审批进度"
+   * （`ApprovalActionGroup.vue`，授给全部业务角色）：没选中时提示"请先选择一条单据"；显示进行中的审批，没有进行中的显示
+   * 最近一个（旧系统 `ApprovalRuntimeService.progress` 进行中的优先、其次最新）；都没有时显示"暂无审批记录"。
+   * 审批来自 `GET /api/approvals?box=record`（C09 v14）：这张单据作为来源发起的审批和冻结着它的审批。
+   */
+  async showRecordApprovals() {
+    const view = this.view.value;
+    if (!view) return;
+    const recordId = this.selectedRows(view.master.entity).at(-1);
+    if (!recordId) {
+      this.deps.message.warning('请先选择一条单据');
+      return;
+    }
+    const title = `单据 ${recordId} 的审批进度`;
+    const state: FrozenState = { title, loading: true, items: [], message: '' };
+    this.ui.frozen.value = state;
+    let ids: string[] = [];
+    try {
+      const list = await this.api.approvals({
+        box: 'record',
+        page: this.pageCode,
+        recordKey: recordId,
+        startRow: 0,
+        endRow: RECORD_APPROVALS
+      });
+      const pending = list.rows.filter(row => row.status === 'pending');
+      ids = (pending.length ? pending : list.rows.slice(0, 1)).map(row => row.approvalId);
+    } catch (error) {
+      if (this.ui.frozen.value === state)
+        this.ui.frozen.value = { ...state, loading: false, message: `审批进度读取失败：${messageOf(error)}` };
+      return;
+    }
+    if (this.ui.frozen.value !== state) return;
+    if (!ids.length) {
+      this.ui.frozen.value = { ...state, loading: false, message: '暂无审批记录' };
+      return;
+    }
+    await this.showApprovals(ids, title);
+  }
+
+  /** 审批进度弹窗中的"查看审批详情"（FP-21）：打开审批详情页签（frontend-approval 的路由），关闭弹窗 */
+  openApprovalDetail(approvalId: string) {
+    this.deps.tabs?.open(`/approval/${encodeURIComponent(approvalId)}`, `审批详情 ${approvalId}`);
+    this.closeApprovals();
   }
 
   closeApprovals() {

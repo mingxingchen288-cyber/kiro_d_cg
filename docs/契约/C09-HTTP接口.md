@@ -1,6 +1,6 @@
 # C09 HTTP 接口
 
-版本：v13。维护：contracts。状态：v10 已确认；v11 待用户审核；v12 为用户 2026-10-30 同意"下一批直接做"的一项；v13 由用户 2026-10-30 确认（"平台导出把数值写成数值单元格（旧系统是数值，Excel 里能直接求和；现在是文本）"，用户回复"其它无异议"）。v13 随 C06 v21：第 4 节 `POST /api/pages/{pageCode}/export` 的 xlsx 中数值写成数值单元格、日期时间写成文本，与旧系统 `CustomExportService.normalizeCellValue` 相同。v12 由旧系统或签通过后的进度推出（`PKG_WF_APPROVAL` 或签通过时把同级其余还在 PENDING 的审批记录改为 SKIPPED，`docs/approval-refactor-20261026-ordinary-install.sql` 第 911 行、第 1601–1607 行；`ApprovalDetailDialog.vue` 第 302–315 行 `statusText` 显示"已跳过"）：第 6 节 `members[].status` 增加 `skipped`，或签节点有人通过后同一节点其余还没处理的审批人为 `skipped`，不再是 `pending`。v11 由旧系统审批撤回、驳回后的进度推出（`PKG_WF_APPROVAL` 的 `DO_CANCEL_APPROVAL`、`DO_REJECT_DETAIL` 把本轮还没处理的审批记录改为 CANCELED，`cost-web/src/components/approval/ApprovalDetailDialog.vue` 的 `statusText` 显示"已撤回"）：第 6 节 `steps[].status`、`members[].status` 增加 `withdrawn`，审批撤回或被驳回时还没处理的节点和审批人为 `withdrawn`，不再是 `pending`。v10 随 C06 v18（由旧系统 SUMMARY_CONFIG 功能推出）：写明列表 `aggregates` 的内容（第 4 节）。第 6 节写明 `members[].name` 按角色配置时为角色名称、`cells` 的数值按小数位补零，样例随之改为"75.00"等，由 C06 7.6 和本节原样例的"系统管理员"推出。v9 随 C06 v17（用户 2026-10-28 确认《审批流配置定稿》）：审批人改了勾选后详情重新计算，增加 `preview`；受影响单据按修改表的主键勾选（`checkedRows[].key`、`ref.key`）；`steps` 按审批流的 `order` 排列，`entry` 改名为 `node`；`view.master` 带块的 `key`、`title`；记录已不存在的行改为 `missing: true` 并给出查到的值。`preview` 的请求响应格式、字段改名属于实现细节，由实施者决定（架构第 5 节）。v8 按用户 2026-10-28 的纠正，通过请求提交勾选的行（`checkedRows`）。v7 随 C06 v15 把审批详情的候选单据改为影响对象、按行勾选（用户 2026-10-28 确认审批流合并展示与动作）。
+版本：v14。维护：contracts。状态：v10 已确认；v11 待用户审核；v12 为用户 2026-10-30 同意"下一批直接做"的一项；v13 由用户 2026-10-30 确认（"平台导出把数值写成数值单元格（旧系统是数值，Excel 里能直接求和；现在是文本）"，用户回复"其它无异议"）；v14 为盘点（`.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B1～B5、第五节 U1）列出的旧系统在用、新平台没有的审批功能，用户 2026-10-30 回复"其它无异议"同意按旧系统补。v14 只改第 6 节：`GET /api/approvals` 的 `box` 增加 `all`（全部审批，旧系统 `approval-notification-center.vue` 第 47、105–108、243–245 行的"查看全部"，后端 `ApprovalNotificationService.approvalItems` scope=all）和 `record`（一张单据的审批，旧系统 `v3/components/approval/ApprovalActionGroup.vue` 第 16 行的"查看审批进度"，后端 `ApprovalRuntimeService.progress` 第 106–170 行），`box=todo` 的 `total` 也是顶栏铃铛的角标（旧系统 `ApprovalNotificationService.summary` 第 49 行 `unreadCount = approvalCount`）；`ApprovalDetail` 增加 `history`（审批记录，旧系统 `ApprovalDetailDialog.vue` 第 200–208、779–791 行，`WF_APPROVAL_LOG`）；`view` 的各表增加 `widths`（列宽，旧系统 `ApprovalPresentationGrid.vue` 第 188 行）。v13 随 C06 v21：第 4 节 `POST /api/pages/{pageCode}/export` 的 xlsx 中数值写成数值单元格、日期时间写成文本，与旧系统 `CustomExportService.normalizeCellValue` 相同。v12 由旧系统或签通过后的进度推出（`PKG_WF_APPROVAL` 或签通过时把同级其余还在 PENDING 的审批记录改为 SKIPPED，`docs/approval-refactor-20261026-ordinary-install.sql` 第 911 行、第 1601–1607 行；`ApprovalDetailDialog.vue` 第 302–315 行 `statusText` 显示"已跳过"）：第 6 节 `members[].status` 增加 `skipped`，或签节点有人通过后同一节点其余还没处理的审批人为 `skipped`，不再是 `pending`。v11 由旧系统审批撤回、驳回后的进度推出（`PKG_WF_APPROVAL` 的 `DO_CANCEL_APPROVAL`、`DO_REJECT_DETAIL` 把本轮还没处理的审批记录改为 CANCELED，`cost-web/src/components/approval/ApprovalDetailDialog.vue` 的 `statusText` 显示"已撤回"）：第 6 节 `steps[].status`、`members[].status` 增加 `withdrawn`，审批撤回或被驳回时还没处理的节点和审批人为 `withdrawn`，不再是 `pending`。v10 随 C06 v18（由旧系统 SUMMARY_CONFIG 功能推出）：写明列表 `aggregates` 的内容（第 4 节）。第 6 节写明 `members[].name` 按角色配置时为角色名称、`cells` 的数值按小数位补零，样例随之改为"75.00"等，由 C06 7.6 和本节原样例的"系统管理员"推出。v9 随 C06 v17（用户 2026-10-28 确认《审批流配置定稿》）：审批人改了勾选后详情重新计算，增加 `preview`；受影响单据按修改表的主键勾选（`checkedRows[].key`、`ref.key`）；`steps` 按审批流的 `order` 排列，`entry` 改名为 `node`；`view.master` 带块的 `key`、`title`；记录已不存在的行改为 `missing: true` 并给出查到的值。`preview` 的请求响应格式、字段改名属于实现细节，由实施者决定（架构第 5 节）。v8 按用户 2026-10-28 的纠正，通过请求提交勾选的行（`checkedRows`）。v7 随 C06 v15 把审批详情的候选单据改为影响对象、按行勾选（用户 2026-10-28 确认审批流合并展示与动作）。
 
 ## 1. 通用规则
 
@@ -102,7 +102,7 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
 
 | 方法 | 路径 | 请求 | 响应 |
 |---|---|---|---|
-| GET | `/api/approvals` | `?box=todo` 或 `?box=mine`，以及 `startRow`、`endRow` | `{"rows": [ApprovalSummary], "total": 7}` |
+| GET | `/api/approvals` | `?box=todo`、`?box=mine`、`?box=all`，或 `?box=record&page=COST_PINGGU&recordKey=2550`（v14），以及 `startRow`、`endRow` | `{"rows": [ApprovalSummary], "total": 7}`；`box=record` 时页面不存在返回 404、当前角色不能访问返回 403，没给 `page` 或 `recordKey` 返回 400 INVALID_REQUEST |
 | GET | `/api/approvals/{approvalId}` | 无 | `ApprovalDetail`；只读，不加锁 |
 | POST | `/api/approvals/{approvalId}/preview` | `{"checkedRows": [{"flow": "GOODS_TO_COST", "block": "costMaterial", "key": "206323"}]}`，写法同通过请求 | `{"view": {…}, "fingerprint": "sha256:…"}`：按这些勾选重新计算的 `view` 和指纹，格式同 `ApprovalDetail`；只读，不加锁 |
 | POST | `/api/approvals/{approvalId}/pass` | `{"requestKey": "…", "fingerprint": "sha256:…", "checkedRows": [{"flow": "GOODS_TO_COST", "block": "costMaterial", "key": "206323"}], "comment": "价格已核对", "params": {"effectiveDate": "2026-11-01"}}`，`checkedRows` 为这次勾选的受影响单据的行，`key` 为修改表的主键值（C06 7.5）；`params` 为本次通过要填写的人工参数（C06 7.1） | 命令结果（C02），`outcome` 为 `approvalProcessed`；必填的人工参数没有填写时返回 422 |
@@ -135,7 +135,8 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
   ],
   "view": {
     "master": {"key": "goods", "title": "物料清单", "columns": ["物料ID", "物料名称", "参考价格", "单价"],
-      "rows": [{"op": "modify", "flows": ["GOODS_TO_COST", "GOODS_PRICE_AUDIT"], "cells": [{"before": "25", "after": "25"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75.00", "after": "75.00"}, {"before": "75.00", "after": "80.00"}]}]},
+      "rows": [{"op": "modify", "flows": ["GOODS_TO_COST", "GOODS_PRICE_AUDIT"], "cells": [{"before": "25", "after": "25"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75.00", "after": "75.00"}, {"before": "75.00", "after": "80.00"}]}],
+      "widths": [null, null, null, null]},
     "details": [],
     "affected": [{"flow": "GOODS_TO_COST", "key": "costMaterial", "title": "成本核算（原辅料）", "selection": "checked", "editable": true,
       "columns": ["单据号", "产品", "物料", "单价", "金额", "每盒成本", "千片加工费"],
@@ -143,19 +144,29 @@ type DataRow = { rowKey: string; values: Record<string, string | boolean | null>
         {"op": "modify", "ref": {"key": "206323"}, "checked": true, "cells": [{"before": "2550", "after": "2550"}, {"before": "250mg乙酰唑胺片", "after": "250mg乙酰唑胺片"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75.00", "after": "80.00"}, {"before": "750.00", "after": "800.00"}, {"before": "13.0065", "after": "13.0507"}, {"before": "94.73", "after": "94.29"}]},
         {"op": "none", "ref": {"key": "103681"}, "checked": false, "cells": [{"before": "2556", "after": "2556"}, {"before": "10mg氯丙嗪片", "after": "10mg氯丙嗪片"}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75.00", "after": "75.00"}, {"before": "23.25", "after": "23.25"}, {"before": "1.1566", "after": "1.1566"}, {"before": "689.03", "after": "689.03"}]},
         {"op": "none", "missing": true, "cells": [{"before": "2601", "after": "2601"}, {"before": null, "after": null}, {"before": "聚维酮K30", "after": "聚维酮K30"}, {"before": "75.00", "after": "75.00"}, {"before": "150.00", "after": "150.00"}, {"before": null, "after": null}, {"before": null, "after": null}]}
-      ]}]
+      ],
+      "widths": [120, 200, null, null, null, null, null]}]
   },
   "fingerprint": "sha256:5b1e0c6d9a3f47e28b1c6d0e9f3a2b4c5d6e7f8091a2b3c4d5e6f708192a3b4c",
   "params": [],
-  "actions": {"canPass": true, "canReject": true, "canWithdraw": false}
+  "actions": {"canPass": true, "canReject": true, "canWithdraw": false},
+  "history": [{"action": "submit", "level": 1, "by": {"userId": "112", "displayName": "杨娜"}, "at": "2026-10-24T09:30:00", "comment": null}]
 }
 ```
 
 - 每个审批对应一张单据：主从页为一行主表及其明细，单表页为一行；一张单据命中多个审批流时合成一个审批（[approval](../模块/approval.md) AP-01、AP-09）。样例中的页面、物料、成本单和角色取自 d_cg 的真实数据：聚维酮K30（物料 25）参考价格 75，成本单 2550、2556 中它的明细为 206323、103681。执行价改成 80、每盒成本和千片加工费的修改后、第三行"记录已不存在"，以及第二个审批流 `GOODS_PRICE_AUDIT`，都是为说明假设的；`GOODS_PRICE_AUDIT` 在 C06 中没有定义。
-- 待办列表每个审批一行（`ApprovalSummary`）。详情分主表和从表：
+- 待办列表每个审批一行（`ApprovalSummary`），`box` 决定列哪些审批（v14 增加 `all`、`record`）：
+  - `todo`：当前用户是本级尚未处理的审批人的审批。`total` 也是顶栏铃铛的角标"待我审批数"（v14，旧系统 `ApprovalNotificationService.summary` 的 `unreadCount = approvalCount`）：外壳用 `startRow=0&endRow=0` 只取条数（C11 v3 `ShellApi.bell`）。
+  - `mine`：当前用户发起的审批，含已结束的。
+  - `all`（v14，旧系统消息中心"查看全部"后的"全部审批"）：当前用户是已进入的某个节点的审批人（直接列出，或属于节点所配的角色），或者处理过某个节点的审批，不论状态，含待处理、已处理和已结束的。例如 admin 通过了成本单 2550 的审批后，它从 `todo` 中消失，仍在 `all` 中。旧系统还会列出入口条件不满足、跳过的节点；新平台进度中只有已进入的节点，没进入的节点不算。
+  - `record`（v14，旧系统页面"送审"下拉中的"查看审批进度"）：`page` 页面中主键为 `recordKey` 的单据的审批：这张单据（页面主表实体、主键）作为来源发起的审批，以及冻结着它的审批（例如物料 25 的改价审批冻结了成本单 2550，查成本核算的 2550 时列出它）。待审的排在前面，其余按审批编号倒序。旧系统只显示一个（进行中的优先，其次最新），前端按这个先后挑选显示（frontend-page FP-21）。
+  - `todo`、`mine`、`all` 按审批编号倒序。
+- 详情分主表和从表：
   - 主表：来自页面（`pageTitle`、`operationLabel`）、提交时间（`submittedAt`）、提交人（`applicant`）、来源单据号（`source.recordKey`）。新增的单据在提交审批时已取得主键（approval AP-02），来源单据号总是有值。
   - 从表：`steps`，每个节点一项，按级别、再按审批流的 `order` 排列；`flow`、`flowName` 标出节点来自哪个审批流，`node` 为节点名称。只列已进入的节点，以及按当前数据推算后面会进入的节点（approval AP-08）。`status` 取 `passed`、`pending`（本级待处理）、`rejected`、`upcoming`（还没到，按当前数据推算会进入）、`withdrawn`（v11：审批撤回或被驳回时还没处理的节点，前端显示"已撤回"）。`members[].name` 按账号配置时为账号的显示名，按角色配置时为角色名称（例如 ADMIN 为"系统管理员"），`id` 为用户编号或角色编码。`members[].status` 取 `pending`、`passed`、`rejected`、`withdrawn`（v11：审批撤回或被驳回时还没处理的审批人）、`skipped`（v12：或签节点有人通过后，同一节点其余还没处理的审批人，前端显示"已跳过"；节点没有这个状态，这时节点为 `passed`）。例如一个或签节点配了两个人，一人通过后节点为 `passed`，通过的人为 `passed`，另一人为 `skipped`；会签节点不跳过。在 v12 之前通过的或签节点，接口返回时同样换算，不改存下的进度。审批撤回后，所有还没处理的节点和审批人都是 `withdrawn`；驳回后，驳回的节点为 `rejected`，其中没处理的审批人和其余还没处理的节点为 `withdrawn`；已通过的节点不变。已结束的审批详情里不会再有 `pending`（v11 之前撤回、驳回的审批，进度中还记着待处理的，接口返回时同样换算）。例如成本单 2757 的审批 29 撤回后，第 1 级"管理员审批"的 `status` 和成员"系统管理员"的 `status` 都是 `withdrawn`。`processedBy` 为实际处理的账号（`{"userId", "displayName"}`），按角色配置的成员由该角色的某个账号处理。
 - `view` 是按 C06 7.5 的 `display` 生成的"修改内容"：`master` 为来源单据主表的块（`key`、`title`），`details` 为来源单据的明细，每块一项，`affected` 为受影响单据，每块一项，`selection` 为 `hidden` 的块不返回。`columns` 为列标题，`rows[].cells` 与列一一对应，每格给出 `before` 和 `after`，两者不同时前端显示为"A→B"，相同时只显示当前值（C06 7.6）。数值按这一列的小数位四舍五入并补足位数（C06 7.6：取 `precision`，没写时取页面视图的 `scale`），例如单价 `precision` 为 2 时 75 给出"75.00"；都没有时按原值，去掉末尾的零。`op` 取 `modify`、`add`（`before` 为 null）、`delete`（`after` 为 null）、`none`（没有改动的行、取消勾选的行，以及记录已不存在的行）。来源单据的行总带 `flows`：这一行触发的审批流编码列表，为空数组表示没有触发、随审批等待；受影响单据的行没有这个值，按 C01 第 1 节省略。一张单据命中多个审批流时，来源单据只返回一份，受影响单据每个审批流各自的块，带 `flow`。
+- `widths`（v14）：`master`、`details[]`、`affected[]` 各表的列宽，与 `columns` 一一对应，取 C06 7.5 `display[].columns[].width`；没配宽度的列为 null，前端按 170 显示、可以随表格伸展（旧系统 `ApprovalPresentationGrid.vue` 第 188 行 `width: column.width || 170`）。没有配置 `master`、`detail` 块、按有变化的字段显示的表，各列都为 null。v14 之前结束时存下的修改内容没有这一项，省略（C01 第 1 节），前端各列按 170 显示。样例中受影响单据"单据号"120、"产品"200 是为说明假设的。
+- `history`（v14）：审批记录，旧系统审批详情底部折叠的"审批记录（N）"（`WF_APPROVAL_LOG`）。每次提交、通过、驳回、撤回一项，按时间先后：`action` 取 `submit`、`pass`、`reject`、`withdraw`；`level` 为提交时的第 1 级，或处理时所在的级别；`by` 为提交人或处理人；`at` 为时间；`comment` 为审批意见、驳回原因或撤回原因（撤回原因同旧系统记在意见中，没填为 null），提交为 null。旧系统另记的"结束"（FINISH）和"跳过"（SKIP）不单列：审批结束看 `status`，跳过的审批人在 `steps` 中为 `skipped`。
 - 受影响单据按修改表的主键分勾选框：`ref.key` 为这一行修改表的主键值，主键相同的几行只有第一行带 `ref` 和 `checked`，其余行省略（C06 7.5）。`checked` 为当前是否勾选：打开详情时默认为 true，上一级取消的为 false。`editable` 为 true 时当前用户这次通过可以改勾选：块的 `selection` 为 `checked`，且当前用户是该审批流本级节点的待处理审批人；上一级取消的行不能再勾回。样例为取消勾选 2556 之后 `preview` 返回的结果：这一行 `op` 为 `none`，修改后等于修改前。
 - 审批人改了勾选，前端用 `preview` 提交当前的勾选，后台按"当前数据 + 已勾选行要写的值"和各页面的计算规则重新计算，返回新的 `view` 和指纹（approval AP-08）；`preview` 不保存勾选，通过时以 `pass` 提交的勾选为准。
 - 受影响单据中记录已不存在的行（`keyColumn` 为空，approval AP-21）排在这一块最后：`missing` 为 true，`op` 为 `none`，`cells` 为查到的值；没有 `ref` 和 `checked`，不能勾选。前端整行红底，显示"记录已不存在"（frontend-approval FA-09）。

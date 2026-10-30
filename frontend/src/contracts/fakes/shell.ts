@@ -1,5 +1,5 @@
 /**
- * ShellApi 的模拟实现（C11）：http、calc、realtime 用本目录的模拟实现，页签和提示记录调用。
+ * ShellApi 的模拟实现（C11）：http、calc、realtime 用本目录的模拟实现，页签、提示和铃铛刷新（v3）记录调用。
  * 当前用户、角色默认取 C09 `/api/me` 的样例（杨娜、成本会计），可以在创建时替换。
  */
 import { ref } from 'vue';
@@ -24,6 +24,8 @@ export function createFakeShell(options: FakeShellOptions = {}) {
   const opened: Array<{ path: string; title: string }> = [];
   const closed: string[] = [];
   const dirty = new Map<string, boolean>();
+  /** `bell.refresh` 的调用次数（C11 v3） */
+  const bell = { refreshed: 0 };
   const shell = {
     http,
     calc,
@@ -42,7 +44,12 @@ export function createFakeShell(options: FakeShellOptions = {}) {
       success: (text: string) => messages.push({ kind: 'success', text }),
       warning: (text: string) => messages.push({ kind: 'warning', text }),
       error: (text: string) => messages.push({ kind: 'error', text })
+    },
+    bell: {
+      refresh: () => {
+        bell.refreshed += 1;
+      }
     }
   } satisfies ShellApi;
-  return { shell: shell as ShellApi, http, calc, realtime, messages, opened, closed, dirty };
+  return { shell: shell as ShellApi, http, calc, realtime, messages, opened, closed, dirty, bell };
 }
