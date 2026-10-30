@@ -52,6 +52,11 @@ pub fn numbers_consistent(a: &str, b: &str) -> Result<bool, String> {
     Ok(key(a)? == key(b)?)
 }
 
+/// C01 第 3 节：两个数值是否一致（按格式化后的十进制文本判定，与 `numbers_consistent` 相同）。
+pub fn consistent(a: Decimal, b: Decimal) -> bool {
+    numbers_consistent(&format(a), &format(b)).unwrap_or(false)
+}
+
 /// 正负号、整数部分（去掉前导零）、截断（不舍入）到 15 位的小数部分；截断后为零的数不区分正负。
 fn key(text: &str) -> Result<(bool, String, String), String> {
     let (negative, integer, fraction) =

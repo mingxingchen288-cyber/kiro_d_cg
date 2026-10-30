@@ -35,7 +35,7 @@ C07 的 `rules[]` 没有作用字段，rules-core 从 JDM 中取：
 
 校验和界面规则在全部计算规则之后执行，用计算后的最终值（C06 第 5 节执行顺序 3），按 `order`、规则编码排序；preview 执行三层，commit 只执行实体和操作规则。结果（C07 第 3 节）：
 
-- 校验成立时在 `effects` 中给出 `{"kind": "reject" 或 "prompt", "rule", "message", "entity", "rowKey" 或 "clientRowId", "field"}`，规则没有作用字段时不写 `field`。校验只检查请求 `changed` 中新增、修改的行（C07 v5，RC-10），每条规则对这些行各检查一次，按规则顺序、行在请求中的顺序排列。
+- 校验成立时在 `effects` 中给出 `{"kind": "reject" 或 "prompt", "rule", "message", "entity", "rowKey" 或 "clientRowId", "field"}`，规则没有作用字段时不写 `field`。校验只检查有修改的行（C07 v7，RC-10）：请求 `changed` 中新增、修改的行，加上计算后有计算字段的值与 `old` 不同的行（数值按 C01 第 3 节判定一致即视为没有变化；删除的行不检查），主表行也一样。每条规则对这些行各检查一次，按规则顺序、行在请求中的顺序排列。
 - 界面规则成立时写到这一行：`editable`、`required` 在 `fields[字段]`，`rowStyle` 在 `style.row`，`cellStyle` 在 `style.cells[字段]`。`field` 为空时 `fields` 和 `cellStyle` 给到这个实体的每个字段。多条规则命中同一处时按执行顺序合并，后面的覆盖前面的同名属性。界面规则检查全部行。
 - 显示求值（`purpose` 为 `display`，C07 v6 第 3.1 节，RC-11）：不执行计算和校验，只执行 preview 会选中的界面规则，值按请求原样；`computed` 为空、`effects` 为空。主表界面规则的条件引用了请求 `document.details` 中没有的明细实体时不出结论（`load_pack` 时记下引用的明细）。
 

@@ -173,17 +173,13 @@ pub fn evaluate(pack: &Pack, request_text: &str) -> Result<Value, Failure> {
         .filter(|c| c.op == RowOp::Delete)
         .filter_map(|c| row_id(c.row_key.clone(), c.client_row_id.clone()).ok().map(|id| (c.entity.clone(), id)))
         .collect();
-    // 本次新增、修改的行：校验规则只检查这些行，主表行也一样（C07 第 2 节；旧系统 useWorkingSetStore.ts 保存时只校验
-    // 有修改、没有删除的行）。界面规则和计算规则照常对所有行执行。
+    // 请求 changed 中本次新增、修改的行。校验规则检查这些行和计算带出变化的行（见下方 dirty）
     let touched: HashSet<(String, RowId)> = request
         .changed
         .iter()
         .filter(|c| c.op != RowOp::Delete)
         .filter_map(|c| row_id(c.row_key.clone(), c.client_row_id.clone()).ok().map(|id| (c.entity.clone(), id)))
         .collect();
-    let checked = |rule: &CheckRule, row: &Row| {
-        !matches!(rule.kind, CheckKind::Validate { .. }) || touched.contains(&(row.entity.clone(), row.id.clone()))
-    };
 
     // 显示求值（C07 v6 第 3.1 节）：只用于前端显示，phase 必须是 preview；不计算、不校验，只执行界面规则
     let display = request.purpose == Purpose::Display;
@@ -242,7 +238,22 @@ pub fn evaluate(pack: &Pack, request_text: &str) -> Result<Value, Failure> {
         }
     }
 
-    // 校验和界面规则用计算后的最终值（C06 第 5 节执行顺序 3）；校验只检查本次新增、修改的行（checked）；
+    // 有修改的行（C07 v7，由旧系统推出）：changed 中新增、修改的行，加上本次计算后有计算字段的值与 old 不同的行；
+    // 删除的行不算。旧系统 useCalcBroadcast.ts 把计算带出的变化也用 markFieldChange(…, 'calc') 记成修改，
+    // useWorkingSetStore.ts 的 markFieldChange 在新值等于原值时去掉这一列、行没有列了就不算修改，保存时校验有修改、没有删除的
+    // 主表行和明细行。例如改了主表批量，每批数量因此变化的原辅料行都要校验；改了明细单价，主表汇总变了，主表也要校验。
+    let mut dirty = touched;
+    for row in std::iter::once(&master).chain(details.iter().flat_map(|(_, rows)| rows.iter())) {
+        if calc_changed(row) {
+            dirty.insert((row.entity.clone(), row.id.clone()));
+        }
+    }
+    let checked = |rule: &CheckRule, row: &Row| {
+        let key = (row.entity.clone(), row.id.clone());
+        !matches!(rule.kind, CheckKind::Validate { .. }) || (dirty.contains(&key) && !deleted.contains(&key))
+    };
+
+    // 校验和界面规则用计算后的最终值（C06 第 5 节执行顺序 3）；校验只检查有修改的行（checked）；
     // 显示求值只执行能出结论的界面规则（concluded）
     for rule in pack.checks.iter().filter(|r| concluded(r) && picked(r.layer, &r.operation, &r.page, r.server_only)) {
         if rule.is_master {
@@ -417,6 +428,23 @@ fn old_variable(row: &Row) -> Variable {
         map.insert_str(name, val.to_variable());
     }
     Variable::from_object(map)
+}
+
+/// 本次计算是否带出了这一行的变化：有计算字段算出的值与 `old`（本命令开始前的值，新增行为空）不同（C07 v7）。
+fn calc_changed(row: &Row) -> bool {
+    row.computed.iter().any(|(field, value)| !same_value(value, row.old.get(field).unwrap_or(&Val::Null)))
+}
+
+/// 两个值是否相同：数值按 C01 第 3 节判定一致（old 多是旧系统按浮点算出写入的值，第 16 位以后的差异不算变化）；
+/// 一方为空、另一方为数值时不同；其余必须完全相同。
+fn same_value(a: &Val, b: &Val) -> bool {
+    match (a, b) {
+        (Val::Num(x), Val::Num(y)) => decimal::consistent(*x, *y),
+        (Val::Null, Val::Null) => true,
+        (Val::Str(x), Val::Str(y)) => x == y,
+        (Val::Bool(x), Val::Bool(y)) => x == y,
+        _ => false,
+    }
 }
 
 fn context_variable(c: &Context) -> Variable {

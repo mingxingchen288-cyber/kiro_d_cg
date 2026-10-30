@@ -32,11 +32,12 @@ from cost_rules_core import RulesEngine  # noqa: E402
 ENGINE = RulesEngine()
 
 
-@pytest.mark.parametrize("prefix", ["09-", "17-", "18-", "21-", "22-", "23-", "24-"])
+@pytest.mark.parametrize("prefix", ["09-", "17-", "18-", "21-", "22-", "23-", "24-", "30-", "31-", "32-", "33-"])
 def test_seed_cost_rules_compile_and_compute_case(prefix: str) -> None:
     """backend/seed/config 的成本核算配置（17 条计算规则、两条校验、整行红底）生成的规则包能 load_pack，与样例集的规则包
     算出相同结果：样例 09（cmx 单据 200726）；17、18（d_cg 单据 2919 的两条校验拒绝和整行红底，preview 和 commit）；
-    21–24（d_cg 单据 2757：校验只检查本次修改的行，改另一行的单价不拒绝，改每片含量为 0 那一行的单价拒绝，C07 v5）。"""
+    21–24（d_cg 单据 2757：校验只检查本次修改的行，改另一行的单价不拒绝，改每片含量为 0 那一行的单价拒绝，C07 v5）；
+    30–33（改主表批量，计算带出变化的行也校验，C07 v7：2712 胶囊每片含量假设为 0 被拒绝，2757 能保存）。"""
     item = _case(prefix)
     pack = build_pack(Catalog({}).merged(seed_drafts()), "COST_PINGGU", 1, ENGINE.core_version())
     handle = ENGINE.load_pack(pack_bytes(pack))

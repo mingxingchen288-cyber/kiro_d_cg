@@ -93,10 +93,10 @@ def dtl(dtlid: str, docid: str, goodsid: str, name: str, flag: str, per_hl: str 
 def cost_fixture(name: str, source: str, master_values: dict[str, Any], details: dict[str, list[dict[str, Any]]], *,
                  phase: str = "preview", changed: list[dict[str, Any]] | None = None, deleted: set[str] = frozenset(),
                  check: dict[tuple[str, int], dict[str, str]] | None = None, effects: list[dict[str, Any]] | None = None,
-                 master_style: dict[str, Any] | None = None) -> dict[str, Any]:
+                 master_style: dict[str, Any] | None = None, master_old: dict[str, Any] | None = None) -> dict[str, Any]:
     """details 中的每行为 row(...)；deleted 为标为删除的 rowKey，不进入汇总和结果。check：与业务例子或 cmx 核对的值。
-    effects：校验规则给出的效果；master_style：界面规则给主表行的样式。"""
-    master = row(master_values, key=master_values["DOCID"])
+    effects：校验规则给出的效果；master_style：界面规则给主表行的样式；master_old：主表改过的字段在修改前的值。"""
+    master = row(master_values, key=master_values["DOCID"], old=master_old)
     live = {e: [r for r in rs if r.get("rowKey") not in deleted] for e, rs in details.items()}
     calc = oracle.cost_document(master_values, {e: [r["values"] for r in rs] for e, rs in live.items()})
     for (entity, i), want in (check or {}).items():
@@ -251,6 +251,64 @@ def cost_2757(edited: str, price: str, phase: str) -> dict[str, Any]:
                         {"COST_MATERIAL": mat, "COST_PACKAGE": pkg}, phase=phase, changed=changed, effects=effects)
 
 
+# ---------------------------------------------------------------- C07 v7：计算带出变化的行也校验
+
+# 旧系统 useCalcBroadcast.ts 把计算带出的变化用 markFieldChange(…, 'calc') 记成修改（第 382、418、466、548、565 行），
+# useWorkingSetStore.ts 新值等于原值时去掉这一列（第 178–196 行），保存时校验有修改、没有删除的行（第 886–934 行）：
+# 改主表批量后，每批数量因此变化的原辅料行都要校验。
+
+def batch_changed(docid: str, master_values: dict[str, Any], old_batch: str, new_batch: str, mat_spec: list[tuple],
+                  pkg_spec: list[tuple], phase: str, name: str, source: str, effects: list[dict[str, Any]],
+                  check: dict[tuple[str, int], dict[str, str]] | None = None) -> dict[str, Any]:
+    """成本单 `docid` 只改主表批量（APEX_PL：old_batch → new_batch），明细照数据库原样。"""
+    def build(spec: list[tuple]) -> list[dict[str, Any]]:
+        return [row(dtl(dtlid, docid, gid, gname, flag, per_hl, None, price, q, c), key=dtlid)
+                for dtlid, gid, gname, flag, per_hl, price, q, c in spec]
+    changed = [{"entity": "COST_PINGGU", "rowKey": docid, "op": "modify", "fields": ["APEX_PL"]}]
+    return cost_fixture(name, source, cost_master(docid, **{**master_values, "APEX_PL": new_batch}),
+                        {"COST_MATERIAL": build(mat_spec), "COST_PACKAGE": build(pkg_spec)}, phase=phase, changed=changed,
+                        effects=effects, master_old={"APEX_PL": old_batch}, check=check)
+
+
+# d_cg 单据 2712 的真实主表、6 行原辅料和 6 行包材（.reports/batch3-20261030/h1-rules-dirty/04-候选单据.out.txt）。
+# d_cg 中名称含"胶囊"的原辅料（46 行）每片含量都大于 0（01-胶囊行.out.txt），没有能直接用的单据：
+# 这里把明胶空心胶囊（104679）的每片含量从 100 改成 0 是假设的数据，批量 20000 → 30000 是假设的修改。
+M2712 = dict(GOODSNAME="100mg消旋卡多曲胶囊", MEMO=None, APEX_PL="20000", P_PERPACK="20", S_PERBACK="300", X_PERBACK="12",
+             M_PERPACK=None, OUT_PRICE_F="6.5564", FMRATE="8.1845", YIELD="95", COST_PERQP="18.88010222985348", ANNUAL_QTY=None)
+MAT2712 = [("104670", "115", "硬脂酸镁", "辅料", "40", "63", "0.8", "50.4"),
+           ("104671", "311", "一水乳糖（200目）", "辅料", "410", "26", "8.2", "213.2"),
+           ("104672", "59", "无水硅胶", "辅料", "50", "200", "1", "200"),
+           ("104673", "398", "预胶化淀粉（starch 1500型）", "辅料", "750", "89.361078", "15", "1340.41617"),
+           ("104676", "6475", "消旋卡多曲", "原料", "1030", "2022.579", "20.6", "41665.1274"),
+           ("104679", "4835", "明胶空心胶囊", "辅料", "0", "150", "2", "300")]
+PKG2712 = [("100384", "200320", "托盘1", "非印字包材", None, "137.48", "1", "137.48"),
+           ("104674", "4029", "大纸箱", "非印字包材", None, "5.88", "4", "23.52"),
+           ("104675", "4352", "聚氯乙烯/聚偏二氯乙烯固体药用复合硬片", "非印字包材", "7203", "36", "144.06", "5186.16"),
+           ("104677", "5065", "100mg消旋卡多曲胶囊药品包装用铝箔", "印字包材", "760", "48", "15.2", "729.6"),
+           ("104678", "5191", "100mg消旋卡多曲胶囊药品包装小盒", "印字包材", None, "0.179", "1000", "179"),
+           ("104680", "12013", "100mg消旋卡多曲胶囊说明书", "印字包材", None, "0.0683", "1000", "68.3")]
+
+
+def cost_2712_batch(phase: str) -> dict[str, Any]:
+    """改批量：胶囊的每批数量按批量算、不看每片含量（R_MAT_BATCH_QTY 第一个分支），2 → 3，这一行有修改，
+    每片含量为 0 被拒绝"每片含量必填且必须大于0"；其余 5 行每批数量也变了，每片含量都大于 0，通过。"""
+    effects = [effect("reject", "R_MAT_PER_HL_GT0", PER_HL_MESSAGE, "COST_MATERIAL", "104679", "PER_HL")]
+    source = ("d_cg 单据 2712（100mg消旋卡多曲胶囊）的真实主表和明细，明胶空心胶囊的每片含量假设为 0（d_cg 中是 100，d_cg 没有每片含量 ≤0 的胶囊行）；"
+              "批量 20000 → 30000（假设的修改）后胶囊的每批数量 2 → 3，计算带出变化的行也校验（C07 v7，旧系统 useCalcBroadcast.ts、"
+              "useWorkingSetStore.ts），被拒绝")
+    return batch_changed("2712", M2712, "20000", "30000", MAT2712, PKG2712, phase, f"成本核算-单据2712-改批量-胶囊每片含量为0-{phase}",
+                         source, effects, check={("COST_MATERIAL", 5): {"BATCH_QTY": "3"}})
+
+
+def cost_2757_batch(phase: str) -> dict[str, Any]:
+    """改批量：30%过氧化氢溶液（207577）每片含量为 0，每批数量 = 0 × 批量，仍是 0、每批成本仍是 0，这一行没有变化、不检查；
+    其余 8 行每批数量变了，每片含量都大于 0，通过。能保存。"""
+    source = ("d_cg 单据 2757 的真实主表和明细；批量 1600000 → 1700000（假设的修改）后，每片含量为 0 的 30%过氧化氢溶液每批数量仍是 0，"
+              "没有计算带出的变化、不检查；每批数量变了的 8 行原辅料都校验并通过（C07 v7），能保存")
+    return batch_changed("2757", M2757, "1600000", "1700000", MAT2757, PKG2757, phase, f"成本核算-单据2757-改批量-{phase}", source, [],
+                         check={("COST_MATERIAL", 1): {"BATCH_QTY": "0", "COST_BATCH": "0"}, ("COST_MATERIAL", 8): {"BATCH_QTY": "0.51"}})
+
+
 # ---------------------------------------------------------------- 显示求值（C07 v6 第 3.1 节，purpose 为 display）
 
 # 旧系统 GRID_STYLE 在表格渲染行时按行数据算样式（usePageRules.ts 的 buildRowStyleCallback），加载即显示、不需要编辑。
@@ -403,6 +461,8 @@ def main() -> None:
     items += [cost_2757(edited, price, phase) for edited, price in (("207584", "55"), ("207577", "12")) for phase in ("preview", "commit")]
     # C07 v6：显示求值只执行界面规则
     items += [display_2919(False), display_2919(True), *display_demos()]
+    # C07 v7：计算带出变化的行也校验（改主表批量）
+    items += [cost_2712_batch("preview"), cost_2712_batch("commit"), cost_2757_batch("preview"), cost_2757_batch("commit")]
     for i, item in enumerate(items, 1):
         write(HERE / "cases" / f"{i:02d}-{item['name']}.json", item)
     write(HERE / "cases" / "90-依赖成环.json", {"kind": "packInvalid", "name": "依赖成环", "source": "RC-09：跨实体成环，load_pack 返回 PACK_INVALID",
