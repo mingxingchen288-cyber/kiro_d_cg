@@ -178,6 +178,10 @@ export type ActionStep =
           };
       fieldMapping: Array<{ from: string; to: string }>;
     }
+  /** C06 v18：替换选中单据的一个明细，SQL 的每一行新增为一行，列名就是字段名；binds 只引用主表字段 */
+  | { action: 'replaceDetails'; entity: string; sql: string; binds?: Record<string, string> }
+  /** C06 v18：不看选中行，SQL 执行一次，每一行是一条要改的记录和新值 */
+  | { action: 'updateRows'; entity: string; sql: string; recordKeyColumn: string; rowKeyColumns?: string[] }
   | { action: 'escapeHatch'; operation: string };
 
 export interface OperationContent {
