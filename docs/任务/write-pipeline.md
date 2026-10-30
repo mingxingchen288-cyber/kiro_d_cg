@@ -87,7 +87,7 @@
 - 负责范围：`pipeline/stages.py` 的 `calc_changed_rows`、`required_rows`，`pipeline/calc.py` 的 `check_required`。
 - 交付物：计算带出变化的行由变更计划推出：修改的行中含计算字段的（Patch 和动作都不能写计算字段，计划中的计算字段只来自计算）。按钮操作、审批处理不带 Patch，不检查必填（旧系统按钮由后端执行，不经前端保存的校验），与原来相同。
 - 验收标准（业务例子）：d_cg 单据 2555（4mg马来酸氯苯那敏片）原料"马来酸氯苯那敏"（102126）每片含量 4、单价为空，页面配了原辅料单价必填；只改批量 3500000 → 4000000，它的每批数量 14 → 16，保存返回 422 VALIDATION_FAILED，只指出这一行的"单价 不能为空"，不写库。单据 2757 改批量能保存：每批数量变了的原辅料单价、每片含量都有，单价为空的 207577（每片含量 0）每批数量仍是 0，不检查。
-- 状态与证据：模拟验证通过（2026-10-30，P 组，`batch4/pipeline-fixes`）。`tests/pipeline/test_validate_changed_rows.py` 的 `test_2555_change_batch_price_required_rejected`（数据 `tests/pipeline/data/doc-2555.json`，取自 d_cg 只读查询 `.reports/batch4-20261030/p-pipeline-fixes/q02-单据2555.sql`，真实 rules-core 和 seed 规则）、`test_2757_change_batch_saves`、`test_2757_change_batch_checks_changed_rows_required`；`test_flow.py` 的 `test_required_checked_on_rows_changed_by_calculation`（原 `test_required_not_checked_on_rows_changed_only_by_calculation` 按新规则改写）。
+- 状态与证据：模拟验证和浏览器拒绝的一半通过（2026-10-30，P 组，`batch4/pipeline-fixes`）。浏览器（后端 8084 + d_cg，`.reports/batch4-20261030/p-pipeline-fixes/e2e/p1.out.json`、`p1-rejected.png`）：2555 批量改 4000000 保存，422 VALIDATION_FAILED，提示"有必填字段没有填写：单价 不能为空（原料/辅料 马来酸氯苯那敏）"，刷新后批量仍是 3500000；能保存的一半只有后端测试（真实单据保存批量会让每批数量变化的原辅料逐行判断 COST_TO_GOODS，可能提交审批，没有在浏览器做）。`tests/pipeline/test_validate_changed_rows.py` 的 `test_2555_change_batch_price_required_rejected`（数据 `tests/pipeline/data/doc-2555.json`，取自 d_cg 只读查询 `.reports/batch4-20261030/p-pipeline-fixes/q02-单据2555.sql`，真实 rules-core 和 seed 规则）、`test_2757_change_batch_saves`、`test_2757_change_batch_checks_changed_rows_required`；`test_flow.py` 的 `test_required_checked_on_rows_changed_by_calculation`（原 `test_required_not_checked_on_rows_changed_only_by_calculation` 按新规则改写）。
 
 ### T-WP-8 写入修改人
 
@@ -95,7 +95,7 @@
 - 前置输入：T-WP-2；contracts 的 `EntityConfig.updated_by_column`；config 的保存校验（列在表中、不是实体字段的列）。
 - 负责范围：`pipeline/writer.py` 的 `_stamped`、`_write_stamped`（写入时在实体和变更计划的副本上加修改人字段，不改 `document_store.py`）；seed 的 `entity.COST_GOODS_PRICE.json` 配 `"updatedByColumn": "UPDATE_BY"`。成本核算的表在 d_cg 没有 UPDATE_BY 列（DB-03），不配。
 - 验收标准：模拟验证：改本地物料、新增物料时同一条语句写修改人，命令结果中没有它，没配的实体不写，来源为审批时写审批人的登录名。真实验证（业务例子）：测试自己建一个 ERP 物料（ISERP = 1、UPDATE_BY = `ERP_SYNC`），admin 在物料清单页改它的单价，提交审批 GOODS_TO_COST，admin 通过后 T_COST_GOODS 的 UPDATE_BY 为 admin、单价写入，视图 T_COST_GOODS_PRICE_V 的 ROW_CLASS_FLAG 为 `erp-updated`（黄底）；测试结束删掉这个物料、审批和命令记录。
-- 状态与证据：见 `.reports/batch4-20261030/p-pipeline-fixes/`（2026-10-30，P 组，`batch4/pipeline-fixes`）。模拟验证 `tests/pipeline/test_updated_by.py`；真实验证 `tests/pipeline/test_oracle_updated_by.py`（标 oracle，测试的内存配置取 seed）。d_cg 的配置在合并后由主代理经配置接口写入。
+- 状态与证据：模拟验证和真实验证通过（2026-10-30，P 组，`batch4/pipeline-fixes`）。模拟验证 `tests/pipeline/test_updated_by.py` 4 个；真实验证 `tests/pipeline/test_oracle_updated_by.py` 1 个（d_cg，进程内接真实的权限、写入管道、审批阶段和审批服务，测试的内存配置取 seed）：ERP 物料改单价 12 提交 GOODS_TO_COST，admin 通过后 UPDATE_BY = admin、ZX_PRICE = 12、ROW_CLASS_FLAG = erp-updated；物料、审批、命令记录已删（`.reports/batch4-20261030/p-pipeline-fixes/q03-修改人测试清理核对.out.txt`）。`tests/config/test_oracle.py::test_seed_config_validates_against_d_cg` 通过（只校验不写）。浏览器部分（物料清单页黄底）要等 d_cg 写入新配置后由主代理做。
 
 ### T-WP-9 复制出的行写入复制的全部字段
 
@@ -103,4 +103,5 @@
 - 前置输入：T-WP-2；contracts 的 `MasterAdd.copy_of`、`DetailAdd.copy_of`。
 - 负责范围：`pipeline/copies.py`（`OracleCopySources`：按主键读源行，每个实体一条，不加锁，带行权限）；`pipeline/merge.py` 中 `_Rows.new_values` 的 `source`、`_copied_values` 和 `DocumentMerger` 的接线（小改动，IntentMerger 没动）；`pipeline/stages.py` 的 `MergePatchesStage`、`plugin.py`。
 - 验收标准：模拟验证：复制成本单时不可写的产品名称、创建人取源行的值（命令中的伪造值不用），计算字段不写，没复制的字段不补默认值；没有 `copyOf` 的新增行照旧拒绝不可写字段；源行超出行权限时 409 ROW_NOT_FOUND；明细复制只在视图中的物料名称、计算字段不写。业务例子（浏览器）：复制 200721 只复制主表，保存后新单据的币种为"人民币"、项目号与源单据相同（源为空则为空），产品等字段照旧；之后删掉这张单据。
-- 状态与证据：模拟验证通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/pipeline/test_copy.py` 4 个；前端 `tests/page/copy-lookup.test.ts`、`product-lookup.test.ts` 的命令带 `copyOf` 和不可编辑的复制字段。浏览器核对见 `.reports/batch4-20261030/p-pipeline-fixes/`。
+- 状态与证据：模拟验证和浏览器业务例子通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/pipeline/test_copy.py` 4 个；前端 `tests/page/copy-lookup.test.ts`、`product-lookup.test.ts` 的命令带 `copyOf` 和不可编辑的复制字段。浏览器（后端 8084 + d_cg，`.reports/batch4-20261030/p-pipeline-fixes/e2e/p2.out.json`）：复制 200721 只复制主表，命令带 `copyOf: 200721` 和币种"人民币"，保存后新单据 200834 的币种"人民币"、项目号为空（与源相同）、产品ID 392，随后删掉。
+  - 没做：复制出的行提交审批后，审批通过按原来的 Patch 重放（approval `patch.py` 的 `patch_intents` 不看 `copyOf`），不可写的复制字段按命令中的值写；只有复制带明细且触发审批时走到，在 approval 的文件里。

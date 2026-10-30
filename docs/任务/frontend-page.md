@@ -125,7 +125,7 @@
 - 前置输入：contracts 的 `MasterAdd`、`DetailAdd` 加 `copyOf`；write-pipeline 的 T-WP-9。
 - 负责范围：page 的 `copy.ts`（`originOf`）、`edit-buffer.ts`（`PendingRow.origin`、`copyOrigin`、命令中的 `copyOf` 和不可写的复制字段）、`fields.ts`（`fieldCopyable`）、`view-model.ts`（`createBuffer` 的 `copyable`）。
 - 验收标准：模拟验证：E09 复制 2550 时命令带 `copyOf` 和不可编辑的创建人、明细的物料名称，不带计算字段和产品名称（没有 `erpRow` 的实体的 ERP 列）；复制 200721 只复制主表时命令带 `copyOf: 200721` 和项目号。业务例子（浏览器、d_cg）：复制 200721 只复制主表，保存后新单据的币种是"人民币"、项目号与源单据相同（源为空则为空），产品等字段照旧；删掉这张单据。
-- 状态与证据：模拟验证通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/page/copy-lookup.test.ts`、`tests/page/product-lookup.test.ts`。浏览器核对见 `.reports/batch4-20261030/p-pipeline-fixes/`。
+- 状态与证据：模拟验证和浏览器业务例子通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/page/copy-lookup.test.ts`、`tests/page/product-lookup.test.ts`。浏览器（后端 8084 + d_cg、前端 9532，`.reports/batch4-20261030/p-pipeline-fixes/e2e/p2.out.json`、`p2-saved.png`）：复制 200721 只复制主表并保存，新单据 200834 的币种"人民币"、项目号为空（源为空）、产品ID 392、产品名称与源相同，页面与单据读取接口一致；随后删掉（之后读取为 404）。
 
 ### T-FP-12 保存、按钮之后显示重新读到的值
 
@@ -134,4 +134,5 @@
 - 负责范围：page 的 `page-runtime.ts`（`applySaveResult` 把结果中写入的行并入补查，`runOperation` 的 `rereadResultRows`）。
 - 交付物：命令成功后，结果中写入的行（被冻结的、删除的除外）按实体各一个 `rows/by-keys` 请求重读，读到的值登记为正式数据再显示。不在命令事务里，命令的 SQL 条数不变（WP-10）。用 `rows/by-keys` 而不是单据加载接口：两者经同一个视图、同样的字段读取；按主键只读命令写到的行，每个实体一个请求，一次保存几张单据也不多请求，明细的显示顺序（新增行保存后留在原位，FP-06）不被单据加载的排序打乱。
 - 验收标准：模拟验证：保存新单据后按新主键重读主表行，库里的默认值显示出来；按钮新增的明细按主键重读，显示视图中的物料名称。业务例子（浏览器、d_cg）：新建一张产品 392 的成本单（产品 Lookup 选 392）保存后币种马上显示"人民币"；点"由BOM生成明细"后客户指定为未勾选、额外投料量为空、包材参考采购价显示 0.10、0.07 等；最后删掉这张单据。
-- 状态与证据：模拟验证通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/page/save.test.ts` 的"保存成功后按主键重读结果中写入的行""按钮成功后按主键重读结果中写到的行再显示"。浏览器核对见 `.reports/batch4-20261030/p-pipeline-fixes/`。
+- 状态与证据：模拟验证和浏览器业务例子通过（2026-10-30，P 组，`batch4/pipeline-fixes`）：`tests/page/save.test.ts` 的"保存成功后按主键重读结果中写入的行""按钮成功后按主键重读结果中写到的行再显示"。浏览器（后端 8084 + d_cg、前端 9532，`.reports/batch4-20261030/p-pipeline-fixes/e2e/p3.out.json` 和 `p3-*.png`）：新建产品 392 的成本单 200835，命令结果中币种为空，保存后重读，页面马上显示"人民币"；"由BOM生成明细"后按实体重读原辅料 5 行、主表、包材 6 行，客户指定都是未勾选（不再是不确定状态），包材参考采购价 0.10、0.07、0.17、4.16、0.48，最后采购数量也显示，与重新打开后逐格相同；随后删掉。
+  - 与任务描述不同的一处：额外投料量在按钮之后和重新打开后都是 0.00，不是"为空"。库里写的就是 0：写入管道对按钮新增的行也按 WP-16 把没配默认值的数值字段补 0；旧 P_COST_BOM_INSERT 不写这一列（为空）。要改在 `merge.IntentMerger`（审批通过的待审新增行也走这里，要按来源区分），没改，见 P 组汇报。
