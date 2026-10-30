@@ -7,6 +7,7 @@
 | fastapi | 0.143.2 | MIT | HTTP 接口 |
 | pydantic | 2.14.1 | MIT | 数据模型与校验 |
 | uvicorn | 0.54.0 | BSD-3-Clause | ASGI 服务器 |
+| websockets | 17.3 | BSD-3-Clause | uvicorn 的 WebSocket 支持（`/ws`）；没有它 uvicorn 对 `/ws` 的握手返回 404 |
 | SQLAlchemy | 2.0.54 | MIT | 数据库访问（Core） |
 | python-oracledb | 26.0.1 | Apache-2.0 或 UPL-1.0 | Oracle 驱动 |
 | Alembic | 1.20.0 | MIT | 平台表迁移 |

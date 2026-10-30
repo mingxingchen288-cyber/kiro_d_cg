@@ -8,6 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 BACKEND = ROOT / "backend"
+FRONTEND_DIST = ROOT / "frontend" / "dist"
+"""前端构建产物（`pnpm build`）。生产环境由后端以静态文件提供，与 `/api`、`/ws` 同源（T-AS-7）；目录不存在时不提供。"""
 
 
 def _read_env(path: Path) -> dict[str, str]:

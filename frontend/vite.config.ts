@@ -50,7 +50,7 @@ export default defineConfig(configEnv => {
       port: 9527,
       open: true,
       proxy: createViteProxy(viteEnv, enableProxy),
-      // rules-core 的 WASM 要求页面跨源隔离（AS-06）；生产环境由后端提供前端静态文件时加同样的头（T-AS-7，还没做）
+      // rules-core 的 WASM 要求页面跨源隔离（AS-06）；生产环境由后端提供前端静态文件，加同样的头（T-AS-7，assembly/app.py 的 FrontendFiles）
       headers: {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp'
