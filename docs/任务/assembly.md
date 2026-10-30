@@ -22,7 +22,16 @@
 - 交付物：`create_app(settings)`；请求中间件；请求体和响应的统一处理（请求体经 contracts 的 `parse_wire` 解析，响应经 `dump_wire` 输出，满足 C01 第 1 节；路由不直接用契约类型声明请求体和 `response_model`）；阶段注册；启动初始化和后台任务的调度；命令行入口 `platform`；系统时钟和编号生成；`GET /health`。
 - 接入责任：本任务只用 contracts 的替代实现组装；各模块的真实实现在 T-AS-4–T-AS-6 中接入。
 - 验收标准（模拟验证，内存组合：`backend/tests/assembly` 用 `build_app` 组装 contracts 的替代实现；2026-10-29 起不再用 `PLATFORM_BACKEND`）：没有会话的请求返回 401；写请求缺 CSRF 令牌返回 403；跨站 Origin 返回 ORIGIN_REJECTED；每个响应带 `X-Config-Version`；带 `X-Background-Request: 1` 的请求以 `touch=False` 认证；阶段按架构第 7 节的顺序调用；`platform --help` 只列出 `db` 和 `migrate`；用 snake_case 字段名或字符串形式的整数提交命令被拒绝，响应中可选字段没有值时不出现；预热完成前 `/health` 返回 503、业务请求返回 CONFIG_UNAVAILABLE，完成后 `/health` 返回 200；系统时钟和编号生成通过 `Clock`、`IdGenerator` 的契约测试（C08 第 14 节）。
-- 状态与证据：未开始。
+- 状态与证据：完成（模拟验证通过；各模块的真实实现已在 T-AS-4～T-AS-6 接入；待独立复核）。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：状态由"未开始"改为"完成"。代码在 `backend/src/cost_platform/assembly/`（`app.py`、`cli.py`、`plugins.py`、`settings.py`），验收标准逐条对应的模拟验证都通过（第 7 批合并后模拟全量 1309 passed，`.reports/batch7-20261030/merge/pytest-1.txt`）：
+    - 没有会话 401、缺 CSRF 令牌 403、跨站 Origin 被拒：`tests/assembly/test_app.py` 的 `test_request_without_session_is_401`、`test_write_without_csrf_is_403`、`test_cross_site_origin_is_rejected`。
+    - 每个响应带 `X-Config-Version`：`test_command_and_business_request`；`X-Background-Request: 1` 以 `touch=False` 认证：`test_background_request_does_not_touch_session`。
+    - 阶段按架构第 7 节的顺序调用：`tests/orchestration/test_runner.py::test_page_save_runs_each_position_once_in_order`。
+    - `platform --help` 只列 `db`、`migrate`：`test_platform_help_lists_only_db_and_migrate`。
+    - snake_case 字段名被拒：`test_snake_case_command_is_rejected`；字符串形式的整数被拒：`tests/contracts/test_samples.py` 的"列表起始行写成字符串"；可选字段没有值时不出现：`tests/contracts/test_samples.py::test_constructed_values_dump_in_sample_shape`。
+    - 预热完成前 `/health` 503、业务请求 CONFIG_UNAVAILABLE，完成后 200：`test_requests_wait_for_warm_up`。
+    - `Clock`、`IdGenerator` 的契约测试：`tests/assembly/test_system.py` 的 `TestSystemClock`、`TestUuidGenerator`。
+    - `.reports/review/` 中没有本卡的复核记录，状态里补写"待独立复核"；按用户规则（`.kiro/steering/测试范围.md`）不阻断完成。
 
 ### T-AS-3 前端组装
 
@@ -35,12 +44,17 @@
   3. 删除 `frontend/` 下的三个环境文件。`.gitignore` 中 `frontend/.env*` 的三条例外改为根目录的 `.env.test`、`.env.prod`；`.env.example` 保留 `VITE_AG_GRID_LICENSE_KEY`。
 - 接入责任：前端各模块经 `ShellApi` 使用这些客户端；T-AS-7 与真实后端联调。
 - 验收标准：用模拟实现时外壳和四个模块都能注册和打开；`ShellApi.calc` 能用 rules-core 的产物完成一次求值；一个前端模块导入另一个前端模块时 dependency-cruiser 报错。环境文件迁移前后分别按 `--mode test` 和 `--mode prod` 构建，两次产物中 `VITE_` 变量的取值相同，只有 `VITE_AG_GRID_LICENSE_KEY` 不同（迁移后取根目录 `.env` 中的值）。产物中没有 `PLATFORM_` 开头的变量名，也没有根目录 `.env` 中数据库、Redis 连接信息的值；检查脚本只输出是否命中，不输出这些值。根目录 `.env` 填了授权时，产物调用了 `setLicenseKey`。
-- 状态与证据：进行中（AS-09、AS-07 的前端部分已完成；AS-06 没有在本任务中改动，见下文）。证据目录 `.reports/batch1-20261029/frontend-env/`（过程见 task_plan.md、progress.md、findings.md）。
+- 状态与证据：完成（AS-09、AS-07 的前端部分已完成；AS-06 的客户端由外壳创建并在用，见 2026-10-31 核对；待独立复核）。证据目录 `.reports/batch1-20261029/frontend-env/`（过程见 task_plan.md、progress.md、findings.md）。
   - AS-09（提交 9628f7b，2026-10-30）：`frontend/.env`、`.env.test`、`.env.prod` 中有使用方的 15 个变量迁到根目录 `.env.test`、`.env.prod`，取值不变；没有使用方的 7 个不迁移（每个变量的去向见 findings.md）。`vite.config.ts` 的 `envDir` 和 `loadEnv()` 都指向仓库根目录，`vitest.config.ts` 的 `envDir` 也指向根目录，`envPrefix` 不变；`frontend/` 下的三个环境文件已删除；`.gitignore` 放行根目录 `.env.test`、`.env.prod`。迁移前后按 `--mode test`、`--mode prod` 各构建一次（`dist-before-*`、`dist-after-*`），`check-dist.cjs` 去掉哈希和构建时间后比较：两种模式下 36 个文件中 35 个相同，唯一不同是入口 chunk 中授权由 `void 0` 变为根目录 `.env` 的值并调用 `setLicenseKey`；产物中没有 `PLATFORM_`，也没有数据库、Redis 连接信息的值（`check-dist.txt`，只输出是否命中）。
   - AS-07 前端（提交 034a446）：dependency-cruiser 18.7.0，配置 `frontend/.dependency-cruiser.cjs`，`pnpm lint:deps` 检查，`pnpm build`、`pnpm build:test` 先检查再构建。规则：前端模块之间不互相导入（类型导入也算）；page、config、approval、admin 在 src 中只导入本模块和 contracts；外壳代码不导入这四个模块；contracts 不依赖任何模块；只用 `rules-core/dist/web`，只有 assembly 和过渡的 `src/service/calc.ts` 导入它。7 个探针（admin 导入 page、page 导入 shell 的类型、config 导入外壳的 store、contracts 导入 approval、layouts 导入 admin、page 导入 rules-core 产物、导入 rules-core 源码）都让 `pnpm lint:deps` 失败（`probe-deps.txt`）；放入 admin 导入 page 的探针后 `pnpm build:test` 退出码 1（`probe-build.txt`）。已知违反 2 条，记在 `frontend/.dependency-cruiser-known-violations.json`，`--ignore-known` 跳过并在输出中给出条数：frontend-shell 的过渡视图 `src/views/page/[pageCode].vue` 导入 frontend-page 的 `src/modules/page/index.ts` 和 `src/modules/page/renderers/PageRoute.vue`（`lint-deps.txt` 中 `--no-ignore-known` 的输出）。外壳启动时已注册 frontend-page，按 `store/modules/route/index.ts` 的 `initAuthRoute`，同名的 elegant 路由被模块的路由代替，这个视图运行时不再使用（按代码判断，没有单独在浏览器中核对）；删除它要改 elegant 路由的生成和类型，属于 frontend-shell；删除后从豁免文件中去掉。模块发现用 `import.meta.glob`（`modules/shell/discover.ts`），不在检查范围内。
   - 结果（2026-10-30）：`pnpm typecheck` 退出码 0（`typecheck-2.txt`）；`pnpm test` 29 个文件 495 个通过（`vitest-2.txt`）；`pnpm lint:deps` 通过（`lint-deps.txt`）。
   - FS-05 授权的浏览器核对：开发服务器（9529，代理到后端 8081）和后端提供的构建产物（8081）上用本机 Chrome 打开成本核算页（`open-cost-page.cjs`；`ag-grid-dev-9529.json`、`ag-grid-dev-9529.png`，`static-8081.json`、`static-8081.png`）：表格的 3 个水印元素都带 `ag-hidden`，没有显示；控制台每个表格打印一次 AG Grid 授权错误 "Trial Period Expired. Your trial only license for AG Grid and AG Charts Enterprise expired on 30 May 2026."。授权已从根目录 `.env` 读到并传给 `setLicenseKey`，但这个授权是试用授权、已过期，要换成有效的授权，代码改不了。
   - 没做：AS-06 的客户端现在由外壳的 `src/modules/shell/app.ts` 创建、`discover.ts` 发现并注册模块，没有放进 `main.ts`、`src/assembly/`；"用模拟实现时外壳和四个模块都能注册和打开"没有在本任务中核对；独立复核。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：状态由"进行中"改为"完成"。
+    - "用模拟实现时外壳和四个模块都能注册和打开"：四个模块都已在真实浏览器中打开过，page（`frontend/tests/e2e/e01.spec.ts:16`、`cost-detail.spec.ts:27`）、config（`basic-1029.spec.ts:104` 场景 1、`:328` 场景 3、`:575` 场景 4a）、approval（`batch-d.spec.ts:306`）、admin（`admin.spec.ts:17`），第 7 批合并后端到端 42 passed，`.reports/batch7-20261030/merge/e2e-6.txt`。
+    - AS-06 的客户端放在外壳的 `src/modules/shell/app.ts`、没有放进 `main.ts`、`src/assembly/`：代码放在哪里属纯技术实现（`.kiro/steering/提问方式.md`："你只需要保证，你实现的功能没问题就行了"）；HTTP 客户端（CSRF、后台请求）、实时客户端（4401 不重连）、计算 Worker 都在用，不再搬。
+    - dependency-cruiser 的 2 条已知违反（`views/page/[pageCode].vue`）：运行时不用这个视图，属内部清理，不影响用户，不在本卡做。
+    - `.reports/review/` 中没有本卡的复核记录，状态里补写"待独立复核"；按用户规则（`.kiro/steering/测试范围.md`）不阻断完成。
 
 ### T-AS-4 批次 A 联调
 
@@ -58,6 +72,7 @@
   - 停用账号：chengben01 分别在 A、B 登录并连 `/ws`；admin 在 A 停用它，两个连接都先收到 `session.revoked`（`accountDisabled`），再以 4401 关闭；chengben01 在 A、B 上的 `/api/me` 都返回 401 SESSION_REQUIRED。恢复启用后 chengben01 能在 B 重新登录，账号的姓名、部门、角色与改前相同。
   - 恢复核对（只读，`q03-as4-恢复核对.out.txt`）：page.COST_PINGGU 版本 5→7、内容长度 2259 与改前相同、不含 MEMO；chengben01 enabled=1、部门 14、角色 COST_ACCOUNTANT。没有改代码。
   - 复跑（2026-10-30，T-AS-5 把两个后端进程移到 `tests/e2e/conftest.py`、整个测试会话共用之后）：`test_batch_a.py`、`test_batch_b.py`、`test_batch_c.py` 一起运行 13 passed（`e2e-backend-all-1.txt`）；`uv run --refresh-package cost-rules-core --with <wheel> pytest -q -p no:cacheprovider -m "not oracle and not redis"` 1188 passed（`pytest-unit-1.txt`），`uv run lint-imports --no-cache` 5 kept（`lint-imports-1.txt`）。最终只读核对见 `q12-最终核对.out.txt`。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：剩下的只有独立复核，"待独立复核"按用户规则（`.kiro/steering/测试范围.md`）不阻断完成，保持原样，没有改成已复核。
 
 ### T-AS-5 批次 B 联调
 
@@ -67,7 +82,7 @@
 - 交付物：接线代码；联调用例和结果记录。
 - 接入责任：同 T-AS-4。
 - 验收标准（真实联调）：成本核算页面的保存（改一格、新增和删除明细、删除主表）结果正确；SQL 条数与 WP-10 一致；规则拒绝时整笔回滚；通知在提交后送达，发送失败不影响业务；列表和导出符合行权限。
-- 状态与证据：真实联调通过，其中 SQL 条数有一项待用户决定（见下），待独立复核（2026-10-30，G5）。证据目录 `.reports/batch2-20261030/g5-acceptance/`。
+- 状态与证据：真实联调通过，其中 SQL 条数的一项用户 2026-10-30 已接受（见 2026-10-31 核对），待独立复核（2026-10-30，G5）。证据目录 `.reports/batch2-20261030/g5-acceptance/`。
   - 用例 `backend/tests/e2e/test_batch_b.py`（6 个，标 oracle、redis），后端为 `tests/e2e/conftest.py` 启动的两个 uvicorn 进程（同 T-AS-4）；"发送失败"一条在测试进程内用 `create_app` 组装。测试产生的审批、投递、站内通知、命令记录由 `tests/e2e/dcg.py` 的 `Cleanup` 在结束时删掉，业务数据改了再改回或自己建、自己删。
   - 命令：同 T-AS-4，换成 `tests/e2e/test_batch_b.py`，加 `-rP` 输出语句：6 passed（`as5-pytest-4.txt`，含三次保存的全部 SQL）。第一次运行 5 passed、1 failed（`as5-pytest-1.txt`）：SQL 条数比预期多 1 条读取列定义（见下）；这次失败在第一步之后，2550 的主表备注留成"G5 联调备注"，已用 `restore_memo.py` 经平台改回原值并删掉那次的命令记录，用例加了失败时改回的 fixture `restore_2550`。
   - 改一格（成本单 2550）：主表 MEMO 改了再改回，其余列和明细不变；原辅料 206324 预胶化淀粉每片含量 15→16，每批数量 16、每批成本 200，主表 TOTAL_FL 等于辅料合计 ÷1.13（有原料时）按 8 位小数四舍五入，TOTAL_COST 等于 TOTAL_YL+TOTAL_FL+TOTAL_BC，其他明细行不变，命令结果的值与数据库相同；改回 15 后主表、明细全部列与改前相同。
@@ -79,6 +94,7 @@
   - 发送失败（模拟）：测试进程内把 `DeliveryStore.write_inbox` 换成对本测试的投递抛错，chengben01 提交审批照常返回 approvalSubmitted，审批 pending、冻结 2550 和物料清单 25 都已提交；投递记录为 failed、发送 1 次、last_error 为模拟的错误、有下次重试时间，没有站内通知。
   - 行权限：COST_ACCOUNTANT 临时加 `rows: "DOCID IN (2550, 2556)"`，chengben01 的列表 total 2（2550、2556），按主键取 2550、200680 只返回 2550，加载 200680 返回 404，默认导出（mode page）的 xlsx 只有这两行；admin 的列表仍是全部 700 行。改回后角色内容与改前相同，chengben01 又能看到全部。
   - 恢复核对（只读，`q05-as5-恢复核对.out.txt`）：审批只有 13、14，冻结记录 0，投递 4 条、站内通知 4 条（与改前相同）；T_COST_PINGGU 700 行；2550 主表和 14 行明细与改前相同；role.COST_ACCOUNTANT 版本 1→7、内容与改前相同；11:00 以后的 PF_COMMAND 为 0。没有改代码。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：开头的"SQL 条数有一项待用户决定"改为"用户已接受"：改原辅料、包材的行时 COST_TO_GOODS 的入口条件逐行 1 条，用户 2026-10-30 接受，记在 `docs/模块/write-pipeline.md` 第 42 行。剩下的只有独立复核，"待独立复核"按用户规则（`.kiro/steering/测试范围.md`）不阻断完成，保持原样，没有改成已复核。
 
 ### T-AS-6 批次 C 联调
 
@@ -108,6 +124,9 @@
     - 7.10（只更新勾选的成本单）：新 ERP 物料（参考价格 10、执行价空），admin 新建成本单 D1、D2 各一行（每片含量 10、单价 10），液体明细一行。jishu01 在物料清单把单价 10→12：approvalSubmitted（GOODS_TO_COST；ISERP=1 的 ZX_PRICE 必须审批，单据进入了审批且从 GOODS_PRICE_MANAGE 保存，强制审批检查放行），冻结物料清单这一行、D1、D2 整张和液体明细这一行，业务表不变；详情物料清单单价 10.00→12.00，受影响单据四块，成本核算（原辅料）D1、D2 都勾选、单价 10.00→12.00、金额 100.00→120.00，液体（原辅料）一行。取消 D2 后预览 D2 单价、每盒成本回到修改前，D1 每盒成本 0.0112→0.0134；用预览的指纹通过：物料清单执行价 12、其他列不变，D1 单价 12、金额 120、主表 TOTAL_FL 120，D2 主表和明细与改前完全相同，液体明细单价 12、金额仍为 50，PF_APPROVAL_AFFECTED 中 D2 那一行 checked 为 0，冻结解除。
     - 恢复核对（只读，`q11-as6-恢复核对.out.txt`）：本测试的审批、冻结、命令记录都已删掉；T_COST_GOODS 14419 行、T_COST_PINGGU 700、明细 7926、液体 493/5148，与开始时相同，没有测试数据；2550、物料 25、68、115、310 不变。
   - 恢复核对（只读，`q06-as6-恢复核对.out.txt`）：本测试的审批都已删掉，冻结记录 0；账号只有 admin、chengben01；2550 主表、206323、206324 与改前相同，物料清单 25 为 75/75、68 为 12.5/12.5。核对时另有审批 23（成本单 200742，admin 11:32 提交、11:35 撤回）和它的 1 条投递、2 条命令记录，不是本测试产生的（`q07-审批23.out.txt`），没有动。没有改代码。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：
+    - 物料 25 修改人的恢复语句"待人工审核"：第 6 批只读核对 `.reports/batch6-20261030/q04-合并测试后核对.out.txt` 中物料 25、68 的 UPDATE_BY 都已是 ERP_SYNC，不用再恢复（是谁恢复的没有核对）。
+    - 独立复核："待独立复核"按用户规则（`.kiro/steering/测试范围.md`）不阻断完成，保持原样，没有改成已复核。
 
 ### T-AS-7 批次 D 联调
 
@@ -139,6 +158,12 @@
     - 审批（样例一）：chengben01 把 206323 单价 75→90，预览每批成本 900，保存提示"已提交审批"，单价仍显示 75.00；双击单价弹出审批进度（审批编号为本次的审批），不进入编辑。admin 的页面经 WebSocket 收到链接为 `/approval/<编号>` 的通知，消息中心最上面一条是"…业务单据为2550的审批"；从菜单"待办"找到这一行点"处理"，详情中有 75.00 和 90.00，点"通过"提示"本级审批已提交"、状态"已通过"；chengben01 的页面收到"…已通过"的通知；单据中单价 90、每批成本 900。最后经接口把单价改回 75（再走一次审批），单据与改前相同。
     - 恢复核对（只读，`q11-as7-恢复核对.out.txt`）：本次运行没有留下审批、冻结、投递和命令记录（表中另有别组的审批 23、29 和 11:32–11:57 的命令记录）；2550、206323、206324、物料清单 25 与改前相同；page.COST_PINGGU 版本 15、内容长度 2259 与改前相同；COST_ACCOUNTANT 未变；chengben01 已启用；T_COST_PINGGU 仍为 700 行。
     - 修了代码：`frontend/build/config/proxy.ts`（缺陷 1）；`frontend/src/modules/page/edit-buffer.ts`、`copy.ts`（缺陷 2）。`pnpm typecheck` 通过；`pnpm test` 31 个文件 502 passed（`vitest-1.txt`）；`pnpm lint:deps` 通过（`lint-deps-1.txt`）。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：
+    - "没做"一项（两个审批场景、保存后不整页刷新、预览与后端一致、配置保存后生效、复制成本单、停用账号回登录页）：本条已注明 G5 已做；合并后 `frontend/tests/e2e/batch-d.spec.ts` 5 个（`:82`、`:157`、`:204`、`:280`、`:306`）、`sample-two.spec.ts` 2 个（`:44`、`:94`）、`basic-1029.spec.ts:718` 都通过（第 7 批合并后端到端 42 passed，`.reports/batch7-20261030/merge/e2e-6.txt`）。
+    - 样例二"回归"中 `cost-detail.spec.ts` 两个用例失败（个人配置为堆叠）：现在 `cost-detail.spec.ts:27`、`:51` 都通过（同上）。
+    - 后端求值的原始结果没有对外接口、没做"不处理的比较"：按 C01 先按 WP-15 处理再比较，14 个字段一致；这不是用户功能，不做。
+    - 审批详情的来源单据号显示"200766（评估中）"：`approval/trigger.py` 第 282 行取主表第一个非空文本字段，只在没填产品名称的测试单据上出现，物料清单显示"300866（H5联调辅料）"正常，不改。
+    - 独立复核："待独立复核"按用户规则（`.kiro/steering/测试范围.md`）不阻断完成，保持原样，没有改成已复核。
 
 ### T-AS-8 批次 E 联调
 
@@ -149,6 +174,7 @@
 - 接入责任：同 T-AS-4。
 - 验收标准（真实联调）：迁移后页面能打开、能保存；对账没有未解释的差异；切换和回退按手册演练通过。
 - 状态与证据：未开始。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：仍为"未开始"：迁移、对账、切换演练依赖 T-MG-1～T-MG-4 和"用户确认三份清单"，migration 暂停（`.kiro/steering/交付方式.md`"先有功能，才谈迁移"）。
 
 ### T-AS-9 最小真实链路（批次 0）
 
@@ -164,4 +190,5 @@
 - 交付物：E01 的端到端用例和原始输出。
 - 接入责任：本任务负责接线和联调；发现的问题按架构第 8 节交提供方修改。
 - 验收标准（真实联调）：E01 全部满足；保存后数据库回读的值与页面显示相同；把 MEMO 改回原值再保存，数据库恢复原值。E01 中"4 条 SQL"由 T-WP-4 用 SQL 追踪核对。
-- 状态与证据：进行中，正向流程已跑通，待独立复核。真实联调（d_cg）：`uv run pytest`（含 `tests/e2e/test_e01.py`）453 passed，`lint-imports` 3 kept；`pnpm exec playwright test`（`frontend/tests/e2e/e01.spec.ts`，本机 Chrome）1 passed；运行后只读查询 200680 的 MEMO 已恢复为空，PF_COMMAND 记有每次保存的审计差异。原始输出和过程在 `.reports/chain0/`（task_plan.md、progress.md）。手写配置由旧系统成本核算主表的列元数据生成（`.reports/chain0/gen_seed.py`），与旧系统不同的四处：MEMO 改为可编辑（用户 2026-10-28 确认，正式迁移同样处理，见 migration 的 MG-14）、页面开启审计、DOCID 固定在左侧、参与计算的 10 个输入字段（批量、包装规格、汇率等）暂时不可编辑。2026-10-28 起 d_cg 的 T_COST_PINGGU 按 DB-03 重建：只有页面显示的 43 列和 FORM 等 4 列，原 10 个虚拟列是普通列，计算接入（T-WP-2、T-AS-5）之前改这些输入会让计算列留着旧值，所以先不开放。2026-10-29 已按旧系统开放这 10 个字段（原辅料、包材的物料ID、每片含量、额外投料量、单价一并开放），17 条计算规则已配置（seed 的 `rule.R_*.json`，过程在 `.reports/editable-20261029/`）。独立复核通过（`.reports/review/T-AS-9.md`，没有必须修改的问题）。已知限制，交给对应任务：链路 0 没有接计算（T-WP-2、T-AS-5）；多行保存时每行单独加锁读取（T-WP-2）；连接池探活每个命令多一条 `SELECT 1 FROM DUAL`（T-WP-4 定计数口径）。链路 1（成本核算主从页的明细，2026-10-28，待独立复核）。真实联调（d_cg）：`.reports/chain0/run-tests.ps1 -n c1-1` 457 passed、`lint-imports` 3 kept（`.reports/chain0/pytest-all-c1-1.txt`、`lint-imports-c1-1.txt`），其中 `backend/tests/e2e/test_cost_detail.py` 4 个；`pnpm exec playwright test` 3 passed（E01 和 `frontend/tests/e2e/cost-detail.spec.ts` 2 个，`.reports/chain1/15-playwright-1.txt`）；`pnpm typecheck` 通过，eslint 0 个问题，`pnpm test` 72 passed。验收单据改用成本单 2550：200680 已不在 cmx 中、没有明细（`.reports/chain1/findings.md`）；改的是原辅料第一行 DTLID 206323 的备注和客户指定。运行后只读查询：200680 的主表 MEMO 为空，206323 的 MEMO 为空、CUSTOMER_SPECIFIED 为 0，明细表与 cmx 双向 MINUS 仍为 0，PF_COMMAND 记有每次保存的审计差异（`.reports/chain1/16-测试后核对.out.txt`）。过程记录在 `.reports/chain1/`。已知限制：明细的计算字段和新增、复制、删除没有开放；数值没有按 scale 显示（T-FP-2）。
+- 状态与证据：完成，正向流程已跑通，待独立复核。真实联调（d_cg）：`uv run pytest`（含 `tests/e2e/test_e01.py`）453 passed，`lint-imports` 3 kept；`pnpm exec playwright test`（`frontend/tests/e2e/e01.spec.ts`，本机 Chrome）1 passed；运行后只读查询 200680 的 MEMO 已恢复为空，PF_COMMAND 记有每次保存的审计差异。原始输出和过程在 `.reports/chain0/`（task_plan.md、progress.md）。手写配置由旧系统成本核算主表的列元数据生成（`.reports/chain0/gen_seed.py`），与旧系统不同的四处：MEMO 改为可编辑（用户 2026-10-28 确认，正式迁移同样处理，见 migration 的 MG-14）、页面开启审计、DOCID 固定在左侧、参与计算的 10 个输入字段（批量、包装规格、汇率等）暂时不可编辑。2026-10-28 起 d_cg 的 T_COST_PINGGU 按 DB-03 重建：只有页面显示的 43 列和 FORM 等 4 列，原 10 个虚拟列是普通列，计算接入（T-WP-2、T-AS-5）之前改这些输入会让计算列留着旧值，所以先不开放。2026-10-29 已按旧系统开放这 10 个字段（原辅料、包材的物料ID、每片含量、额外投料量、单价一并开放），17 条计算规则已配置（seed 的 `rule.R_*.json`，过程在 `.reports/editable-20261029/`）。独立复核通过（`.reports/review/T-AS-9.md`，没有必须修改的问题）。已知限制，交给对应任务：链路 0 没有接计算（T-WP-2、T-AS-5）；多行保存时每行单独加锁读取（T-WP-2）；连接池探活每个命令多一条 `SELECT 1 FROM DUAL`（T-WP-4 定计数口径）。链路 1（成本核算主从页的明细，2026-10-28，待独立复核）。真实联调（d_cg）：`.reports/chain0/run-tests.ps1 -n c1-1` 457 passed、`lint-imports` 3 kept（`.reports/chain0/pytest-all-c1-1.txt`、`lint-imports-c1-1.txt`），其中 `backend/tests/e2e/test_cost_detail.py` 4 个；`pnpm exec playwright test` 3 passed（E01 和 `frontend/tests/e2e/cost-detail.spec.ts` 2 个，`.reports/chain1/15-playwright-1.txt`）；`pnpm typecheck` 通过，eslint 0 个问题，`pnpm test` 72 passed。验收单据改用成本单 2550：200680 已不在 cmx 中、没有明细（`.reports/chain1/findings.md`）；改的是原辅料第一行 DTLID 206323 的备注和客户指定。运行后只读查询：200680 的主表 MEMO 为空，206323 的 MEMO 为空、CUSTOMER_SPECIFIED 为 0，明细表与 cmx 双向 MINUS 仍为 0，PF_COMMAND 记有每次保存的审计差异（`.reports/chain1/16-测试后核对.out.txt`）。过程记录在 `.reports/chain1/`。已知限制：明细的计算字段和新增、复制、删除没有开放；数值没有按 scale 显示（T-FP-2）。
+  - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：状态由"进行中"改为"完成"：链路 0 的独立复核已通过（本条后文，`.reports/review/T-AS-9.md`）；链路 1 的"待独立复核"按用户规则（`.kiro/steering/测试范围.md`）不阻断完成，保持原样；交出的已知限制中，接计算、一次锁多行已由 T-AS-5、T-WP-7 解决；E01、成本核算明细的浏览器用例 `frontend/tests/e2e/e01.spec.ts:16`、`cost-detail.spec.ts:27`、`:51` 通过（第 7 批合并后端到端 42 passed，`.reports/batch7-20261030/merge/e2e-6.txt`）。
