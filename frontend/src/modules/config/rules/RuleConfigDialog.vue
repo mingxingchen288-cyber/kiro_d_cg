@@ -63,7 +63,9 @@ function insertField(t: PageTable, field: string) {
 
 function helper(card: RuleCard, index = 0) {
   const key = `${card._id}-${index}`;
-  helpers.value[key] ??= { field: card.content.field, match: 'regex', value: '', rule: 'required' };
+  // 校验的"规则"只用来生成条件：新卡片默认"必填"（同旧系统新增一项校验）；已经写了条件的卡片为"自定义"，
+  // 条件就是写好的那一条，不显示成"必填"，免得被当成必填规则、误点"设为字段必填"把原规则换掉
+  helpers.value[key] ??= { field: card.content.field, match: 'regex', value: '', rule: card.content.when ? 'custom' : 'required' };
   return helpers.value[key];
 }
 
