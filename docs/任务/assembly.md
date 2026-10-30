@@ -50,7 +50,13 @@
 - 交付物：接线代码；联调用例和结果记录。
 - 接入责任：本任务负责接线和联调；发现的问题按架构第 8 节交提供方或使用方修改。
 - 验收标准（真实联调，经 HTTP）：admin / admin123.. 能登录；保存一个页面配置后，已连接的 WebSocket 收到 `config.changed`，`X-Config-Version` 变大；停用账号后其 WebSocket 被关闭，下一次请求返回 401；两个后端进程时事件也能送达。
-- 状态与证据：未开始。
+- 状态与证据：真实联调通过，待独立复核（2026-10-30，G5，分支 batch2/acceptance）。证据目录 `.reports/batch2-20261030/g5-acceptance/`（task_plan.md、progress.md、findings.md）。
+  - 用例 `backend/tests/e2e/test_batch_a.py`（3 个，标 oracle、redis）。`tests/e2e/servers.py` 按 `.env` 启动两个 uvicorn 进程（`create_app`，与生产启动相同；端口 `E2E_BACKEND_PORTS` 默认 8086、8087，共用 Redis 命名空间 `E2E_REDIS_NAMESPACE`，默认 `cost-platform-e2e`），用 httpx 和 websockets 经真实的 HTTP、WebSocket 访问，结束时停掉进程；环境变量只传给子进程。
+  - 命令：在 `backend` 目录、`E2E_REDIS_NAMESPACE=cost-platform-wt-acceptance`（只在这条命令里设）执行 `uv run --with <rules-core wheel> pytest -q -p no:cacheprovider -m oracle tests/e2e/test_batch_a.py`，3 passed（`as4-pytest-2.txt`）。第一次运行 3 个都在等 `/health` 时超时（`as4-pytest-1.txt`）：后端已就绪，但 httpx 读到本机注册表的系统代理，连 127.0.0.1 也走代理；改为 `trust_env=False`、websockets `proxy=None` 后通过。
+  - 登录：admin / admin123.. 在两个进程上都登录成功，自动选定 ADMIN，`/api/me` 有菜单。
+  - 配置保存：A（8086）上 `PUT /api/config/items/page/COST_PINGGU` 把主表 MEMO 列宽改为 321，A、B（8087）上订阅了 COST_PINGGU 的 WebSocket 收到同一条 `config.changed`（eventId 相同，version 为新代号），A、B 的 `X-Config-Version` 都大于改前，B 的页面视图中 MEMO 宽 321；再保存回原内容，两边都收到下一条 `config.changed`，B 的列宽恢复，配置项内容与改前相同。
+  - 停用账号：chengben01 分别在 A、B 登录并连 `/ws`；admin 在 A 停用它，两个连接都先收到 `session.revoked`（`accountDisabled`），再以 4401 关闭；chengben01 在 A、B 上的 `/api/me` 都返回 401 SESSION_REQUIRED。恢复启用后 chengben01 能在 B 重新登录，账号的姓名、部门、角色与改前相同。
+  - 恢复核对（只读，`q03-as4-恢复核对.out.txt`）：page.COST_PINGGU 版本 5→7、内容长度 2259 与改前相同、不含 MEMO；chengben01 enabled=1、部门 14、角色 COST_ACCOUNTANT。没有改代码。
 
 ### T-AS-5 批次 B 联调
 
