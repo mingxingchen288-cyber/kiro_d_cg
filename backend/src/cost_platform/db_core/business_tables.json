@@ -203,5 +203,12 @@
     "source": "CMX.V_COST_USER（成本核算主表商务人员 Lookup costUser 的数据源）：只留工号、姓名，不带 cmx 视图中的密码等列，加 DELETED = 0",
     "reason": "旧系统的人员在 d_cg 没有对应的表（平台账号是另一套），与产品 Lookup 一起直接读 cmx",
     "sql": "SELECT USERNAME, REAL_NAME FROM CMX.V_COST_USER WHERE DELETED = 0"
+  },
+  "T_COST_FORMONEY_V": {
+    "kind": "view",
+    "readsCmx": true,
+    "source": "CMX.T_COST_FORMONEY_V（成本核算主表币种 Lookup formoney 的数据源，旧 T_COST_LOOKUP_CONFIG 第 79 行）：列取旧 Lookup 的显示列 FMID、FMNAME、FMSIGN、FMRATE，加旧查询固定的 DELETED = 0",
+    "reason": "汇率 FMRATE 由 cmx 视图经 ERP 数据库链接 pub_formoney_v@hyerp 取出，cmx 表 T_COST_FORMONEY 的 FMRATE 全为空（2026-10-31 只读查询，.reports/batch7-20261030/cf-cost-config/02 号），d_cg 的表做不出来",
+    "sql": "SELECT FMID, FMNAME, FMSIGN, FMRATE FROM CMX.T_COST_FORMONEY_V WHERE DELETED = 0"
   }
 }

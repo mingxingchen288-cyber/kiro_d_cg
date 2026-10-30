@@ -7,7 +7,8 @@
 （旧向导的列标题取列注释，`SchemaInspector` 的 `column_comments` 读它；2026-10-29 加入，之前复制的表要 `--refresh` 才有）。
 视图（`"kind": "view"`）：清单中写的是 d_cg 版本的 SQL（去掉方案名、引用 d_cg 的表、去掉不复制的列和 DELETED 条件），
 按它建视图。例外是 `"readsCmx": true` 的视图：它们直接读 cmx 的同名视图（`reason` 写明为什么 d_cg 的表做不出来），
-例如成本核算主表的产品 Lookup：产品的"BOM状态"由 cmx 视图经 ERP 数据库链接算出（2026-10-30）。
+例如成本核算主表的产品 Lookup：产品的"BOM状态"由 cmx 视图经 ERP 数据库链接算出（2026-10-30）；币种 Lookup 的汇率
+同样经 ERP 数据库链接取出（T_COST_FORMONEY_V，2026-10-31）。
 已存在的表和视图不动；`refresh` 中的先删除（视图为替换）再建。cmx 只读。
 """
 

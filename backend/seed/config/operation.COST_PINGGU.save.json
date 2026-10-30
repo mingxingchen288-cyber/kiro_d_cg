@@ -29,6 +29,7 @@
         "CUSTOMNAME",
         "MEMO",
         "COUNTRY",
+        "FMNAME",
         "FMRATE",
         "TRANPOSID",
         "LIVERY",

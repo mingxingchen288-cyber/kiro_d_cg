@@ -96,27 +96,28 @@ COPY_DTL_TMP = "tmp-00000000-0000-4000-8000-0000000000b4"
 
 def test_copied_document_approved_with_values_resolved_at_submission() -> None:
     """复制成本单 2550 成新单据（主表 `copyOf` 2550，明细复制 206323 聚维酮K30、单价改成 80，和物料清单的 75 不同，进入
-    COST_TO_GOODS）。币种不可写（保存操作的可写字段里没有），取源行的值：前端复制时 2550 的币种是"人民币"，保存前被别人改成
-    "美元"，写入管道（这里由 Pipeline 替身按 WP-21 代替）在保存这一刻取到"美元"；审批期间 2550 又改成"欧元"。
-    待审修改存的是保存这一刻解出的值：币种"美元"，不含前端带来的只在视图中的物料名称和计算字段每批数量；详情中新增的
-    这一行物料名称按 Lookup 查出；通过后新单据的币种是"美元"（不在通过时再读源行），明细按存下的值插入。"""
+    COST_TO_GOODS）。项目号不可写（保存操作的可写字段里没有），取源行的值：前端复制时 2550 的项目号是"P-1"，保存前被别人改成
+    "P-2"，写入管道（这里由 Pipeline 替身按 WP-21 代替）在保存这一刻取到"P-2"；审批期间 2550 又改成"P-3"。
+    待审修改存的是保存这一刻解出的值：项目号"P-2"，不含前端带来的只在视图中的物料名称和计算字段每批数量；详情中新增的
+    这一行物料名称按 Lookup 查出；通过后新单据的项目号是"P-2"（不在通过时再读源行），明细按存下的值插入。
+    （2026-10-31 起币种 FMNAME 配了币种 Lookup、可写，这个用例改用仍不可写的项目号 PROJECTNO。）"""
     h = Harness(["COST_TO_GOODS"])
     source = h.world.tables["T_COST_PINGGU"]["2550"]
-    source["FMNAME"] = "人民币"
+    source["PROJECTNO"] = "P-1"
     master = {"op": "add", "clientRowId": COPY_TMP, "copyOf": "2550",
-              "values": {"GOODSNAME": "250mg乙酰唑胺片", "USESTATUS": "商业化", "MEMO": "复制", "FMNAME": "人民币"}}
+              "values": {"GOODSNAME": "250mg乙酰唑胺片", "USESTATUS": "商业化", "MEMO": "复制", "PROJECTNO": "P-1"}}
     detail = {"entity": "COST_MATERIAL", "op": "add", "clientRowId": COPY_DTL_TMP, "copyOf": "206323",
               "values": {"GOODSID": "25", "GOODSNAME": "聚维酮K30", "PRICE": "80", "BATCH_QTY": "10"}}
-    source["FMNAME"] = "美元"  # 复制之后、保存之前，别人改了 2550 的币种
+    source["PROJECTNO"] = "P-2"  # 复制之后、保存之前，别人改了 2550 的项目号
     run = h.save(YANGNA, "COST_PINGGU", [{"entity": "COST_PINGGU", "master": master, "details": [detail]}])
     [approval] = run.state.approvals
     record = h.record(approval.approval_id)
     assert record.patch.master.copy_of == "2550"
-    assert record.patch.master.values == {"GOODSNAME": "250mg乙酰唑胺片", "USESTATUS": "商业化", "MEMO": "复制", "FMNAME": "美元"}
+    assert record.patch.master.values == {"GOODSNAME": "250mg乙酰唑胺片", "USESTATUS": "商业化", "MEMO": "复制", "PROJECTNO": "P-2"}
     [stored] = record.patch.details
     assert (stored.copy_of, stored.values) == ("206323", {"GOODSID": "25", "PRICE": "80"})
 
-    source["FMNAME"] = "欧元"  # 审批期间 2550 又被改了
+    source["PROJECTNO"] = "P-3"  # 审批期间 2550 又被改了
     [material] = [d for d in h.detail(ADMIN, approval.approval_id).view.details if d.key == "material"]
     [row] = material.rows
     assert (row.op, cells(row)[:3]) == ("add", [(None, "25"), (None, "聚维酮K30"), (None, "80.00")])
@@ -125,6 +126,6 @@ def test_copied_document_approved_with_values_resolved_at_submission() -> None:
     assert result.outcome == "approvalProcessed"
     bill, dtl = record.key_map[COPY_TMP], record.key_map[COPY_DTL_TMP]
     written = h.world.row("T_COST_PINGGU", bill)
-    assert written is not None and (written["FMNAME"], written["GOODSNAME"], written["MEMO"]) == ("美元", "250mg乙酰唑胺片", "复制")
+    assert written is not None and (written["PROJECTNO"], written["GOODSNAME"], written["MEMO"]) == ("P-2", "250mg乙酰唑胺片", "复制")
     inserted = h.world.row("T_COST_PINGGU_DTL", dtl)
     assert inserted is not None and (inserted["DOCID"], inserted["GOODSID"], inserted["PRICE"]) == (int(bill), 25, 80)

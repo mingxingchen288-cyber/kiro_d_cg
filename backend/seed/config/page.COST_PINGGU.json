@@ -55,6 +55,18 @@
             "multiple": true
           }
         },
+        "FMNAME": {
+          "lookup": {
+            "code": "formoney",
+            "fill": {
+              "FMNAME": "FMNAME",
+              "FMRATE": "FMRATE"
+            }
+          }
+        },
+        "USESTATUS": {
+          "dictType": "COST_PINGGU.USESTATUS"
+        },
         "TOTAL_FL": {
           "aggregate": "sum"
         },
