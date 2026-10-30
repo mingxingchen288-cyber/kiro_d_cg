@@ -186,6 +186,37 @@ describe('编辑缓冲：例子', () => {
     expect(buffer.documents()).toEqual([]);
   });
 
+  it('撤销后再重做：命令中单据的先后与撤销前相同（同一批次改明细备注、删除主表行、改明细物料）', () => {
+    const buffer = newBuffer();
+    buffer.batch(() => {
+      buffer.set(DETAIL, '206323', 'MEMO', null); // 与原值相同，不算修改
+      buffer.deleteRow(MASTER, '2551');
+      buffer.set(DETAIL, '206323', 'GOODSID', null);
+    });
+    const commands = buffer.documents();
+    expect(commands.map(d => d.master)).toEqual([
+      { op: 'delete', rowKey: '2551' },
+      { op: 'none', rowKey: '2550' }
+    ]);
+    buffer.undo();
+    expect(buffer.documents()).toEqual([]);
+    buffer.redo();
+    expect(buffer.documents()).toEqual(commands);
+  });
+
+  it('撤销"删除新增行"：这一行回到原来的位置（同一行之后新增的多行按新增的先后）', () => {
+    const buffer = newBuffer();
+    const first = buffer.addRow(DETAIL, '2550', { GOODSID: '115', PRICE: '75' }, '206323');
+    const second = buffer.addRow(DETAIL, '2550', { GOODSID: '116', PRICE: '70' }, '206323');
+    buffer.deleteRow(DETAIL, first);
+    expect(buffer.newRows(DETAIL, '2550')).toEqual([{ id: second, after: '206323' }]);
+    buffer.undo();
+    expect(buffer.newRows(DETAIL, '2550')).toEqual([
+      { id: first, after: '206323' },
+      { id: second, after: '206323' }
+    ]);
+  });
+
   it('新的修改清空重做；保存成功后清空修改和历史', () => {
     const buffer = newBuffer();
     buffer.set(MASTER, '2550', 'MEMO', 'a');
@@ -280,6 +311,22 @@ function apply(buffer: EditBuffer, op: Op) {
   else buffer.set(op.entity, id, op.field, op.value);
 }
 
+/** 撤销若干步后再重做同样的步数：未保存的修改和生成的命令（含单据的先后）都回到撤销前 */
+const undoRedoProperty = fc.property(fc.array(anyOp, { maxLength: 30 }), fc.nat(30), (ops, steps) => {
+  const buffer = newBuffer();
+  ops.forEach(op => apply(buffer, op));
+  const before = buffer.snapshot();
+  const commands = buffer.documents();
+  let undone = 0;
+  while (undone < steps && buffer.canUndo) {
+    buffer.undo();
+    undone += 1;
+  }
+  for (let i = 0; i < undone; i += 1) buffer.redo();
+  expect(buffer.snapshot()).toEqual(before);
+  expect(buffer.documents()).toEqual(commands);
+});
+
 describe('编辑缓冲：基于属性的测试', () => {
   it('任意编辑序列全部撤销后回到初始状态', () => {
     fc.assert(
@@ -296,22 +343,11 @@ describe('编辑缓冲：基于属性的测试', () => {
   });
 
   it('撤销若干步后再重做同样的步数，回到撤销前', () => {
-    fc.assert(
-      fc.property(fc.array(anyOp, { maxLength: 30 }), fc.nat(30), (ops, steps) => {
-        const buffer = newBuffer();
-        ops.forEach(op => apply(buffer, op));
-        const before = buffer.snapshot();
-        const commands = buffer.documents();
-        let undone = 0;
-        while (undone < steps && buffer.canUndo) {
-          buffer.undo();
-          undone += 1;
-        }
-        for (let i = 0; i < undone; i += 1) buffer.redo();
-        expect(buffer.snapshot()).toEqual(before);
-        expect(buffer.documents()).toEqual(commands);
-      })
-    );
+    fc.assert(undoRedoProperty);
+  });
+
+  it('撤销重做：seed 1327463905 曾经失败（同一批次改明细备注、删主表行、改明细物料，撤销 1 步再重做 1 步），固定下来', () => {
+    fc.assert(undoRedoProperty, { seed: 1327463905 });
   });
 
   it('把改过的字段改回原值，修改和标记消失', () => {
