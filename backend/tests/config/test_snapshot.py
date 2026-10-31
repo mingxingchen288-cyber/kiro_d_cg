@@ -123,7 +123,7 @@ def test_interleaved_saves_and_reads_never_mix_versions(steps: list[str]) -> Non
     env = _saved()
     other = env.new_reader()
     role = next(d for d in seed_drafts() if d.type == "role").content
-    page = next(d for d in seed_drafts() if d.type == "page").content
+    page = next(d for d in seed_drafts() if d.type == "page" and d.key == "COST_PINGGU").content
     names = {env.generation(): (role["name"], page["title"])}
     current = dict(zip(("role", "title"), names[env.generation()], strict=True))
     taken = []

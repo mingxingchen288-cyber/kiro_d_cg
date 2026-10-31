@@ -155,7 +155,8 @@ export const PageView = object('PageView', {
   layout: literal('single', 'masterDetail'),
   detailMode: literal('tabs', 'stack'),
   audit: bool,
-  saveOperation: code,
+  /** C05 v13：只读页面（页面配置的 saveOperation 为 null，C06 v30 第 3 节）为 null，systemButtons 不含 save */
+  saveOperation: nullable(code),
   rulesPack: PackRef,
   master: ViewMaster,
   details: array(ViewDetail),

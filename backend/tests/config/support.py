@@ -101,12 +101,18 @@ TABLES: dict[str, tuple[str, list[ColumnInfo], str | None]] = {
     "V_COST_USER": ("view", _cols("USERNAME:V REAL_NAME:V"), None),
     # 成本核算主表的币种 Lookup（seed 的 formoney）：列同 business_tables.json 的 T_COST_FORMONEY_V
     "T_COST_FORMONEY_V": ("view", _cols("FMID:N FMNAME:V FMSIGN:V FMRATE:N"), None),
+    # 审计追踪（seed 的 entity.AUDIT_LOG，只读实体）：列同 write-pipeline 迁移 wp_0003 的视图
+    "PF_AUDIT_LOG_V": ("view", _cols("ID:V USER_NAME:V OPERATION_TIME:T PAGE_CODE:V TABLE_CODE:V TABLE_NAME:V RECORD_ID:V "
+                                     "OPERATION_TYPE:V FIELD_CODE:V FIELD_NAME:V OLD_VALUE:V NEW_VALUE:V CREATE_TIME:T"), None),
 }
 CMX_TABLES: dict[str, list[ColumnInfo]] = {
     "T_COST_BOM_GOODS_TREE_V": _cols("TREEID:V PID:V GOODSID:N GOODSNAME:V USEFLAG:V STANDARDTYPE:V LVCODE:N USEQTY:N ENTRYID:N"),
     "PUB_GOODS_V": _cols("GOODSID:N GOODSNAME:V GOODSNO:V PRICE:N SUQTY:N USEFLAG:V FACTORYNAME:V STANDARDTYPE:V ZX_PL:N "
                          "ZX_MINIMUM:N APPROVEDOCNO:V BASEUNITQTY:N ZX_CUSTOMERID:N CUSTOMNAME:V TARGETMARKET:V HOLDERSNAME:V "
                          "ISERP:N GOODSTYPE:V PACKTYPE:V TRANPOSNAME:V BOMID:N LASTSUQTY:N TRANPOSID:N"),
+    # seed 的导出 goods-price-pgoods-export 从 cmx 的物料表取物料编号（d_cg 的物料表没有 GOODSNO），列取自
+    # .reports/batch8-20261031/g3-audit-export/11 号只读查询（这里只建用到的两列）
+    "T_COST_GOODS": _cols("GOODSID:N GOODSNO:V"),
 }
 SEQUENCES = ["T_COST_PINGGU_SEQ", "T_COST_PINGGU_DTL_SEQ", "T_COST_GOODS_SEQ", "T_COST_PINGGU_LQ_SEQ",
              "T_COST_PINGGU_DTL_LQ_SEQ", "T_CT_GOODS_SEQ"]

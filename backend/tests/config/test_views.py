@@ -75,7 +75,7 @@ BUTTONS = [{"action": "addRow", "label": "新增"}, {"action": "copyRow", "label
 
 def _seed_with_buttons(role_buttons: list[str]) -> list[ConfigDraft]:
     items = seed_drafts()
-    page = next(d for d in items if d.type == "page").content
+    page = next(d for d in items if d.type == "page" and d.key == "COST_PINGGU").content
     page = {**page, "master": {**page["master"], "buttons": BUTTONS},
             "details": [{**page["details"][0], "buttons": BUTTONS[:3]}, {**page["details"][1], "buttons": []}]}
     role = {"name": "成本会计", "admin": False, "pages": {"COST_PINGGU": {"buttons": role_buttons}}}
@@ -271,3 +271,20 @@ def test_erp_row_entity() -> None:
     assert fields["ISERP"].editable is False
     assert view.master.erp_row is not None and view.master.erp_row.column == "ISERP"
     assert view.system_buttons == [] and view.details == []
+
+
+def test_read_only_page_audit_log() -> None:
+    """CF-18（只读页面，依据旧系统审计追踪页 auditLog）：seed 的审计追踪页没有保存操作（saveOperation 为 null），
+    系统管理员有 `*`，页面视图也不给保存：systemButtons 只有高级查询，字段都不能编辑；ID 不显示，其余字段为高级查询的
+    预置条件；区域按钮只有保存列配置。"""
+    catalog = Catalog({}).merged(seed_drafts())
+    view = build_views(catalog, 7, {})[("AUDIT_LOG", "ADMIN")]
+    assert view.save_operation is None and view.system_buttons == ["advancedSearch"]
+    assert view.layout == "single" and view.master.entity == "AUDIT_LOG" and view.master.primary_key == "ID"
+    assert not any(f.editable for f in view.master.fields)
+    assert [f.name for f in view.master.fields if f.visible] == [
+        "USER_NAME", "OPERATION_TIME", "PAGE_CODE", "TABLE_CODE", "TABLE_NAME", "RECORD_ID", "OPERATION_TYPE",
+        "FIELD_CODE", "FIELD_NAME", "OLD_VALUE", "NEW_VALUE", "CREATE_TIME"]
+    assert all(f.searchable for f in view.master.fields if f.visible)
+    assert [b.key for b in view.master.buttons] == ["master:saveGridConfig"]
+    assert dump_wire(PageView, view)["saveOperation"] is None

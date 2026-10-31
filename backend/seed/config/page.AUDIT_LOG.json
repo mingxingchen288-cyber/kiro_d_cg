@@ -1,0 +1,67 @@
+{
+  "type": "page",
+  "key": "AUDIT_LOG",
+  "name": "审计追踪",
+  "content": {
+    "title": "审计追踪",
+    "layout": "single",
+    "detailMode": "tabs",
+    "audit": false,
+    "saveOperation": null,
+    "master": {
+      "entity": "AUDIT_LOG",
+      "fields": {
+        "ID": {
+          "visible": false
+        },
+        "USER_NAME": {
+          "searchable": true
+        },
+        "OPERATION_TIME": {
+          "searchable": true
+        },
+        "PAGE_CODE": {
+          "searchable": true
+        },
+        "TABLE_CODE": {
+          "searchable": true
+        },
+        "TABLE_NAME": {
+          "searchable": true
+        },
+        "RECORD_ID": {
+          "searchable": true
+        },
+        "OPERATION_TYPE": {
+          "searchable": true
+        },
+        "FIELD_CODE": {
+          "searchable": true
+        },
+        "FIELD_NAME": {
+          "searchable": true
+        },
+        "OLD_VALUE": {
+          "searchable": true
+        },
+        "NEW_VALUE": {
+          "searchable": true
+        },
+        "CREATE_TIME": {
+          "searchable": true
+        }
+      },
+      "buttons": [
+        {
+          "action": "saveGridConfig",
+          "label": "保存列配置"
+        }
+      ],
+      "grid": {
+        "sideBar": true,
+        "cellSelection": true,
+        "groupBy": []
+      }
+    }
+  }
+}

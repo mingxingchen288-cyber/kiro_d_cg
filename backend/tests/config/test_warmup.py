@@ -29,8 +29,8 @@ def test_after_warm_up_first_request_needs_no_oracle_and_no_compile(env: Env) ->
     assert runtime.ready is False
     report = runtime.warm_up()
     assert runtime.ready is True
-    # 角色：seed 的 ADMIN、技术中心和 R；规则包：成本核算、物料清单
-    assert (report.roles, report.packs, report.generation) == (3, 2, env.generation())
+    # 角色：seed 的 ADMIN、技术中心和 R；规则包：成本核算、物料清单、审计追踪
+    assert (report.roles, report.packs, report.generation) == (3, 3, env.generation())
     compiled = reader.parsed.compiled
     env.cache.calls.clear()
     begins = len(env.uow.calls_to("begin"))
@@ -39,7 +39,7 @@ def test_after_warm_up_first_request_needs_no_oracle_and_no_compile(env: Env) ->
         snapshot.page_view("COST_PINGGU")
         snapshot.rules_pack("COST_PINGGU")
     assert env.cache.calls == ["read", "read"] and reader.oracle_reads == 0
-    assert len(env.uow.calls_to("begin")) == begins and reader.parsed.compiled == compiled == 2
+    assert len(env.uow.calls_to("begin")) == begins and reader.parsed.compiled == compiled == 3
 
 
 def test_newer_redis_version_is_not_overwritten(env: Env) -> None:
@@ -55,7 +55,7 @@ def test_newer_redis_version_is_not_overwritten(env: Env) -> None:
 def test_pack_compile_failure_fails_startup(env: Env) -> None:
     env.engine.fail("load_pack", PackInvalidError("JDM 含不允许的节点"))
     runtime = env.runtime(env.new_reader())
-    with pytest.raises(ConfigStartupError, match="规则包 COST_[A-Z_]+ 编译失败"):
+    with pytest.raises(ConfigStartupError, match="规则包 [A-Z_]+ 编译失败"):
         runtime.warm_up()
     assert runtime.ready is False
 

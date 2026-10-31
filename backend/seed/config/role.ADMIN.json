@@ -15,6 +15,11 @@
         "buttons": [
           "*"
         ]
+      },
+      "AUDIT_LOG": {
+        "buttons": [
+          "*"
+        ]
       }
     }
   }

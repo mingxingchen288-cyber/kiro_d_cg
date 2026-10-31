@@ -154,7 +154,8 @@ export interface PageContent {
   layout: 'single' | 'masterDetail';
   detailMode: 'tabs' | 'stack';
   audit: boolean;
-  saveOperation: string;
+  /** 为 null 时是只读页面（C06 v30 第 3 节，例如审计追踪） */
+  saveOperation: string | null;
   master: PageArea;
   details?: PageDetailArea[];
 }
