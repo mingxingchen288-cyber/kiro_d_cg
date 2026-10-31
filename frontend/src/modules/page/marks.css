@@ -1,0 +1,32 @@
+/*
+ * 改动标记和错误标记的样式（marks.ts）：表格的单元格（PageGrid.vue，根元素 .page-grid）和原地表单的字段（RecordForm.vue，
+ * 根元素 .record-form）共用。颜色沿用旧系统 MasterDetailPageV3.vue。
+ */
+.page-grid .cell-user-changed,
+.record-form .cell-user-changed {
+  background-color: #b7f4b3 !important;
+  color: #1a1a1a !important;
+}
+
+.page-grid .cell-calc-changed,
+.record-form .cell-calc-changed {
+  background-color: #fff2a8 !important;
+  color: #1a1a1a !important;
+}
+
+.page-grid .cell-new,
+.record-form .cell-new {
+  background-color: #0b3d91 !important;
+  color: #ffffff;
+}
+
+.page-grid .cell-deleted,
+.record-form .cell-deleted {
+  background-color: #f8d7da !important;
+  text-decoration: line-through;
+}
+
+.page-grid .cell-error,
+.record-form .cell-error {
+  box-shadow: inset 0 0 0 2px #d03050;
+}

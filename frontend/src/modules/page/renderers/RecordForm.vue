@@ -1,183 +1,141 @@
 <script setup lang="ts">
 /**
- * 原地表单（FP-03）：在主表区原地替换表格显示（表格只设为不可见，滚动位置和选中行保留），明细区不动。
- * 头部有返回、上一条、下一条；按页面视图的 formLayout（24 列网格）排列，为空时按字段顺序排列。
- * 表单中的修改与表格共用编辑缓冲和撤销历史（FP-04）；被冻结的单据点击字段时弹出审批进度（FP-16）。
+ * 原地表单（FP-03）：主表区和每个明细区用同一个组件，在这个区域原地替换表格显示（表格只设为不可见，滚动位置和选中行保留，
+ * 见 RegionPane.vue），其他区域不动。头部有返回、上一条、下一条。
+ * 内容来自 record-form.ts：与表格同一份区域元数据和同一个编辑缓冲（撤销、重做、预览、保存同表格，FP-04），改动标记和错误标记
+ * 同表格的单元格（marks.ts）；只有排布按区域的 formLayout（24 列网格），为空时每行 3 个字段。
+ * 被冻结的单据点击字段时弹出审批进度（FP-16）。
  */
 import { computed, reactive, watch } from 'vue';
-import type { FieldValue } from '../../../contracts/command';
-import type { FormCell, ViewField } from '../../../contracts/page-view';
-import { displayText, optionValues, parseInput } from '../fields';
 import type { PageRuntime } from '../page-runtime';
+import { parseInput } from '../fields';
+import { type FormItem, formView } from '../record-form';
 
 defineOptions({ name: 'RecordForm' });
 
-const props = defineProps<{ runtime: PageRuntime }>();
+const props = defineProps<{ runtime: PageRuntime; entity: string }>();
 const runtime = props.runtime;
 
-const view = computed(() => {
+const form = computed(() => {
+  // 页面视图（配置原地替换）、数据（编辑、预览、保存）、字典变了都重算；保存中（只读）经 cellEditable 读到
   void runtime.state.viewVersion;
-  return runtime.view.value!;
-});
-const master = computed(() => view.value.master);
-const recordId = computed(() => runtime.state.formRecord!);
-const gridId = computed(() => runtime.model.gridId(recordId.value));
-
-const values = computed(() => {
   void runtime.state.revision;
-  return runtime.model.values(master.value.entity, recordId.value);
-});
-
-const frozenBy = computed(() => {
-  void runtime.state.revision;
-  return runtime.model.frozenBy(master.value.entity, recordId.value);
-});
-
-const title = computed(() => {
-  const key = values.value[master.value.primaryKey];
-  return key ? `单据 ${key}` : '新增的单据（未保存）';
-});
-
-/** 24 列网格中的位置；formLayout 为空时每行 3 个字段 */
-const cells = computed<Array<{ field: ViewField; cell: FormCell }>>(() => {
-  const visible = master.value.fields.filter(f => f.visible);
-  const layout = master.value.formLayout;
-  if (layout.length) {
-    return layout
-      .map(cell => ({ field: visible.find(f => f.name === cell.field), cell }))
-      .filter((item): item is { field: ViewField; cell: FormCell } => Boolean(item.field));
-  }
-  return visible.map((field, index) => ({
-    field,
-    cell: { field: field.name, x: (index % 3) * 8, y: Math.floor(index / 3), w: 8, h: 1 }
-  }));
-});
-
-function cellStyle(cell: FormCell) {
-  return { gridColumn: `${cell.x + 1} / span ${cell.w}`, gridRow: `${cell.y + 1} / span ${cell.h}` };
-}
-
-function editable(field: ViewField) {
-  void runtime.state.revision;
-  void runtime.state.saving;
-  return runtime.cellEditable(master.value.entity, gridId.value, field.name);
-}
-
-function dictOptions(field: ViewField) {
   void runtime.state.dictVersion;
-  const dict = field.dictType ? runtime.dicts.get(field.dictType) : undefined;
-  if (dict) {
-    const list = [...dict].map(([value, label]) => ({ value, label }));
-    // 可填写的字典下拉（C05 dictFreeText）：当前值不在字典中时也列出，同表格中的编辑器
-    const current = values.value[field.name];
-    if (field.dictFreeText && typeof current === 'string' && current && !dict.has(current))
-      list.unshift({ value: current, label: current });
-    return list;
-  }
-  const options = optionValues(field);
-  return options ? options.map(value => ({ value, label: value })) : null;
-}
-
-function text(field: ViewField) {
-  const dict = field.dictType ? runtime.dicts.get(field.dictType) : undefined;
-  return displayText(field, values.value[field.name] ?? null, dict);
-}
-
-/** 文本和数值在离开输入框或回车时提交（每次提交是一个撤销步骤） */
-const drafts = reactive<Record<string, string>>({});
-watch(recordId, () => {
-  for (const key of Object.keys(drafts)) delete drafts[key];
+  return formView(runtime, props.entity)!;
 });
 
-function draftOf(field: ViewField) {
-  return field.name in drafts ? drafts[field.name] : String(values.value[field.name] ?? '');
+function cellStyle(item: FormItem) {
+  const { x, y, w, h } = item.cell;
+  return { gridColumn: `${x + 1} / span ${w}`, gridRow: `${y + 1} / span ${h}` };
 }
 
-function commit(field: ViewField, raw: unknown) {
-  delete drafts[field.name];
-  const value = parseInput(field, raw);
+/** 文本和数值在离开输入框或回车时提交（每次提交是一个撤销步骤）；换了行时清掉没提交的输入 */
+const drafts = reactive(new Map<string, string>());
+watch(
+  () => form.value.gridId,
+  () => drafts.clear()
+);
+
+function draftOf(item: FormItem) {
+  return drafts.get(item.field.name) ?? String(item.value ?? '');
+}
+
+function commit(item: FormItem, raw: unknown) {
+  drafts.delete(item.field.name);
+  const value = parseInput(item.field, raw);
   if (value === undefined) {
-    runtime.state.error = `${field.label} 不是合法的数值`;
+    runtime.state.error = `${item.field.label} 不是合法的数值`;
     return;
   }
-  if (value === (values.value[field.name] ?? null)) return;
-  runtime.editForm(field.name, value as FieldValue);
+  if (value === item.value) return;
+  runtime.editForm(props.entity, item.field.name, value);
 }
 
 /** 被冻结的单据：试图修改时弹出审批进度 */
 function onFocusField() {
-  if (frozenBy.value) runtime.guard(master.value.entity, recordId.value);
+  if (form.value.frozenBy) runtime.guard(props.entity, form.value.id);
 }
 
-function openLookup(field: ViewField) {
-  void runtime.openLookup(master.value.entity, gridId.value, field.name);
+function openLookup(item: FormItem) {
+  void runtime.openLookup(props.entity, form.value.gridId, item.field.name);
 }
 </script>
 
 <template>
   <div class="record-form h-full flex-col">
     <div class="record-form__header flex-y-center gap-8px">
-      <NButton size="small" @click="runtime.closeForm()">返回</NButton>
-      <NButton size="small" @click="runtime.stepForm(-1)">上一条</NButton>
-      <NButton size="small" @click="runtime.stepForm(1)">下一条</NButton>
-      <span class="ml-8px text-14px font-medium">{{ title }}</span>
-      <span v-if="frozenBy" class="text-12px text-warning">审批 {{ frozenBy }} 中，只读</span>
+      <NButton size="small" @click="runtime.closeForm(entity)">返回</NButton>
+      <NButton size="small" @click="runtime.stepForm(entity, -1)">上一条</NButton>
+      <NButton size="small" @click="runtime.stepForm(entity, 1)">下一条</NButton>
+      <span class="ml-8px text-14px font-medium">{{ form.title }}</span>
+      <span v-if="form.frozenBy" class="text-12px text-warning">审批 {{ form.frozenBy }} 中，只读</span>
     </div>
     <div class="record-form__body">
-      <div v-for="{ field, cell } in cells" :key="field.name" class="record-form__cell" :style="cellStyle(cell)">
+      <div
+        v-for="item in form.items"
+        :key="item.field.name"
+        class="record-form__cell"
+        :class="item.marks"
+        :data-field="item.field.name"
+        :style="cellStyle(item)"
+      >
         <div class="record-form__label">
-          <span v-if="runtime.model.cellRequired(master.entity, recordId, field.name)" class="text-error">*</span>
-          {{ field.label }}
+          <span v-if="item.required" class="text-error">*</span>
+          {{ item.field.label }}
         </div>
         <div class="record-form__control" @mousedown="onFocusField">
-          <template v-if="field.lookup">
+          <template v-if="item.field.lookup">
             <NInputGroup>
-              <NInput size="small" :value="text(field)" readonly />
-              <NButton size="small" @click="openLookup(field)">选择</NButton>
+              <NInput size="small" :value="item.text" readonly />
+              <NButton size="small" @click="openLookup(item)">选择</NButton>
             </NInputGroup>
           </template>
-          <template v-else-if="!editable(field)">
-            <NInput size="small" :value="text(field)" readonly />
+          <template v-else-if="!item.editable">
+            <NInput size="small" :value="item.text" readonly />
           </template>
-          <template v-else-if="field.type === 'boolean'">
-            <NCheckbox :checked="values[field.name] === true" @update:checked="(v: boolean) => commit(field, v)" />
+          <template v-else-if="item.field.type === 'boolean'">
+            <NCheckbox :checked="item.value === true" @update:checked="(v: boolean) => commit(item, v)" />
           </template>
-          <template v-else-if="dictOptions(field)">
+          <template v-else-if="item.options">
             <NSelect
               size="small"
               clearable
-              :tag="Boolean(field.dictFreeText)"
-              :filterable="Boolean(field.dictFreeText)"
-              :value="(values[field.name] as string | null) ?? null"
-              :options="dictOptions(field)!"
-              @update:value="(v: string | null) => commit(field, v)"
+              :tag="Boolean(item.field.dictFreeText)"
+              :filterable="Boolean(item.field.dictFreeText)"
+              :value="(item.value as string | null) ?? null"
+              :options="item.options"
+              @update:value="(v: string | null) => commit(item, v)"
             />
           </template>
-          <template v-else-if="field.type === 'date' || field.type === 'datetime'">
+          <template v-else-if="item.field.type === 'date' || item.field.type === 'datetime'">
             <NDatePicker
               size="small"
               clearable
               class="w-full"
-              :type="field.type === 'date' ? 'date' : 'datetime'"
-              :value-format="field.type === 'date' ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm:ss'"
-              :formatted-value="text(field) || null"
-              @update:formatted-value="(v: string | null) => commit(field, v)"
+              :type="item.field.type === 'date' ? 'date' : 'datetime'"
+              :value-format="item.field.type === 'date' ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm:ss'"
+              :formatted-value="item.text || null"
+              @update:formatted-value="(v: string | null) => commit(item, v)"
             />
           </template>
           <template v-else>
             <NInput
               size="small"
-              :value="draftOf(field)"
-              :input-props="{ inputmode: field.type === 'number' ? 'decimal' : 'text' }"
-              @update:value="(v: string) => (drafts[field.name] = v)"
-              @change="(v: string) => commit(field, v)"
+              :value="draftOf(item)"
+              :input-props="{ inputmode: item.field.type === 'number' ? 'decimal' : 'text' }"
+              @update:value="(v: string) => drafts.set(item.field.name, v)"
+              @change="(v: string) => commit(item, v)"
             />
           </template>
         </div>
+        <div v-if="item.error" class="record-form__error">{{ item.error }}</div>
       </div>
     </div>
   </div>
 </template>
+
+<!-- 字段的改动标记和错误标记：与表格的单元格共用（marks.ts） -->
+<style src="../marks.css"></style>
 
 <style scoped>
 .record-form {
@@ -199,9 +157,25 @@ function openLookup(field: ViewField) {
   overflow: auto;
 }
 
+.record-form__cell {
+  padding: 2px 6px 4px;
+  border-radius: 4px;
+}
+
 .record-form__label {
   font-size: 12px;
   color: #64748b;
   margin-bottom: 4px;
+}
+
+/* 新增行深蓝底白字（marks.css）：标签也用白字 */
+.record-form__cell.cell-new .record-form__label {
+  color: inherit;
+}
+
+.record-form__error {
+  font-size: 12px;
+  color: #d03050;
+  margin-top: 2px;
 }
 </style>

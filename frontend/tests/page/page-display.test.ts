@@ -44,7 +44,7 @@ describe('千分位（C05 grouping）', () => {
   it('成本单 2555 的批量 3500000：表格显示 3,500,000；编辑框给出的值、粘贴的 3,500,000 都按 3500000 写入', async () => {
     const ctx = await openCostPage(displayView());
     const { runtime } = ctx;
-    const columns = buildColumns(runtime, runtime.view.value!.master, true);
+    const columns = buildColumns(runtime, runtime.view.value!.master);
     const qty = columns.find(c => c.colId === 'QTY')!;
     expect(format(qty, '3500000')).toBe('3,500,000');
     // 数值列用 AG Grid 默认的编辑框，取单元格原值（不经 valueFormatter），这里只配了显示格式
@@ -72,7 +72,7 @@ describe('千分位（C05 grouping）', () => {
     });
     await runtime.fetchMasterRows({ startRow: 0, endRow: 100 });
     const row = runtime.summaryRow(MASTER)!;
-    const columns = buildColumns(runtime, runtime.view.value!.master, true);
+    const columns = buildColumns(runtime, runtime.view.value!.master);
     expect(format(columns.find(c => c.colId === 'QTY')!, row.QTY as string)).toBe('3,510,000');
     expect(format(columns.find(c => c.colId === 'TOTAL_COST')!, row.TOTAL_COST as string)).toBe('1,234,567.89');
   });
@@ -127,7 +127,7 @@ describe('字典下拉可填写（C05 dictFreeText，成本核算主表"分类"�
   it('用可填写的字典下拉编辑器，选项为字典的四项；选"委托研发"后命令写这个文本', async () => {
     const ctx = await openClassPage();
     const { runtime } = ctx;
-    const columns = buildColumns(runtime, runtime.view.value!.master, true);
+    const columns = buildColumns(runtime, runtime.view.value!.master);
     const memo = columns.find(c => c.colId === 'MEMO')!;
     expect(memo.cellEditor).toBe(DICT_FREE_TEXT_EDITOR);
     expect(memo.cellEditorPopup).toBe(true);
@@ -144,7 +144,7 @@ describe('字典下拉可填写（C05 dictFreeText，成本核算主表"分类"�
   it('填写字典以外的值"外部合作"：照样写这个文本，显示也是它', async () => {
     const ctx = await openClassPage();
     const { runtime } = ctx;
-    const columns = buildColumns(runtime, runtime.view.value!.master, true);
+    const columns = buildColumns(runtime, runtime.view.value!.master);
     const memo = columns.find(c => c.colId === 'MEMO')!;
     expect(setValue(memo, { ...runtime.gridRow(MASTER, '2550') }, '外部合作')).toBe(true);
     expect(runtime.model.buffer.documents()[0].master).toEqual({
@@ -163,7 +163,7 @@ describe('字典下拉可填写（C05 dictFreeText，成本核算主表"分类"�
     const ctx = await openCostPage(view, fake =>
       fake.http.on('GET', '/api/dicts/:dictType', { items: CLASSES.map(v => ({ value: v, label: v })) })
     );
-    const column = buildColumns(ctx.runtime, ctx.runtime.view.value!.master, true).find(c => c.colId === 'MEMO')!;
+    const column = buildColumns(ctx.runtime, ctx.runtime.view.value!.master).find(c => c.colId === 'MEMO')!;
     expect(column.cellEditor).toBe('agSelectCellEditor');
   });
 });
