@@ -2,6 +2,7 @@
 /**
  * 通用页面：按页面编码打开，列、明细、按钮、规则都来自页面视图（C05），不为单个页面写专门的组件。
  * 单表页只有主表区；主从页在主表区下面显示明细区，明细按 Tab 或堆叠显示，分隔线可以拖动（FP-01，旧系统为 NSplit，默认各一半）。
+ * 主表区和每个明细区都是 RegionPane：表格加这个区域的原地表单（FP-03）。
  * 页面行为都在 page-runtime 中，这里只负责布局和把操作交给它。
  * 工具栏在"高级查询"之后有"查看审批进度"（FP-21，旧系统主表工具栏"送审"下拉中的同名项，授给全部业务角色，所以每个页面
  * 都有；新平台不做"送审"，只放这一项）；从审批"原单据"打开时，工具栏写明只显示这张单据，可以点"显示全部"（FP-20）。
@@ -10,13 +11,12 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ViewButton, ViewRegion } from '../../../contracts/page-view';
 import { createPlatformApi } from '../../../contracts/api';
 import type { ShellApi } from '../../../contracts/shell';
-import PageGrid from '../grid-adapter/PageGrid.vue';
 import { PageRuntime } from '../page-runtime';
 import AdvancedSearchDialog from './AdvancedSearchDialog.vue';
 import ApprovalProgressDialog from './ApprovalProgressDialog.vue';
 import CopyDialog from './CopyDialog.vue';
 import LookupDialog from './LookupDialog.vue';
-import RecordForm from './RecordForm.vue';
+import RegionPane from './RegionPane.vue';
 
 defineOptions({ name: 'GenericPage' });
 
@@ -166,16 +166,13 @@ onBeforeUnmount(() => {
       <div class="min-h-0 flex-1">
         <NSplit v-if="masterDetail" direction="vertical" :default-size="0.5" :min="0.15" :max="0.85" class="h-full">
           <template #1>
-            <div class="generic-page__master">
-              <div
-                data-testid="master-grid"
-                class="absolute inset-0"
-                :style="{ visibility: state.formRecord ? 'hidden' : 'visible' }"
-              >
-                <PageGrid :runtime="runtime" :entity="view.master.entity" master />
-              </div>
-              <RecordForm v-if="state.formRecord" :runtime="runtime" class="absolute inset-0" />
-            </div>
+            <RegionPane
+              :runtime="runtime"
+              :entity="view.master.entity"
+              master
+              grid-test-id="master-grid"
+              class="h-full"
+            />
           </template>
           <template #2>
             <div class="generic-page__detail h-full flex-col">
@@ -234,24 +231,20 @@ onBeforeUnmount(() => {
                       {{ button.label }}
                     </NButton>
                   </div>
-                  <div class="min-h-0 flex-1">
-                    <PageGrid :runtime="runtime" :entity="d.entity" :master="false" />
-                  </div>
+                  <RegionPane :runtime="runtime" :entity="d.entity" :master="false" class="min-h-0 flex-1" />
                 </div>
               </div>
             </div>
           </template>
         </NSplit>
-        <div v-else class="generic-page__master h-full">
-          <div
-            data-testid="master-grid"
-            class="absolute inset-0"
-            :style="{ visibility: state.formRecord ? 'hidden' : 'visible' }"
-          >
-            <PageGrid :runtime="runtime" :entity="view.master.entity" master />
-          </div>
-          <RecordForm v-if="state.formRecord" :runtime="runtime" class="absolute inset-0" />
-        </div>
+        <RegionPane
+          v-else
+          :runtime="runtime"
+          :entity="view.master.entity"
+          master
+          grid-test-id="master-grid"
+          class="h-full"
+        />
       </div>
       <LookupDialog :runtime="runtime" />
       <CopyDialog :runtime="runtime" />
@@ -277,11 +270,6 @@ onBeforeUnmount(() => {
   gap: 12px;
   font-size: 12px;
   padding-bottom: 4px;
-}
-
-.generic-page__master {
-  position: relative;
-  height: 100%;
 }
 
 .generic-page__detail-bar {

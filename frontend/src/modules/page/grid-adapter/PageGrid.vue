@@ -38,7 +38,7 @@ defineOptions({ name: 'PageGrid' });
 const props = defineProps<{
   runtime: PageRuntime;
   entity: string;
-  /** 主表：服务端行模型，并带原地表单的展开列 */
+  /** 主表：服务端行模型（主表、明细都带原地表单的展开列） */
   master: boolean;
 }>();
 
@@ -55,7 +55,7 @@ const columnDefs = computed<ColDef<GridRow>[]>(() => {
   void runtime.state.dictVersion;
   const current = region.value;
   if (!current) return [];
-  const columns = buildColumns(runtime, current, props.master);
+  const columns = buildColumns(runtime, current);
   if (!props.master) {
     const groupBy = new Set(current.grid.groupBy);
     for (const column of columns) if (column.colId && groupBy.has(column.colId)) column.rowGroup = true;
@@ -359,31 +359,10 @@ function getContextMenuItems(params: GetContextMenuItemsParams<GridRow>): Array<
   />
 </template>
 
+<!-- 单元格的改动标记和错误标记：与原地表单共用（marks.ts） -->
+<style src="../marks.css"></style>
+
 <style scoped>
-:deep(.cell-user-changed) {
-  background-color: #b7f4b3 !important;
-  color: #1a1a1a !important;
-}
-
-:deep(.cell-calc-changed) {
-  background-color: #fff2a8 !important;
-  color: #1a1a1a !important;
-}
-
-:deep(.cell-new) {
-  background-color: #0b3d91 !important;
-  color: #ffffff;
-}
-
-:deep(.cell-deleted) {
-  background-color: #f8d7da !important;
-  text-decoration: line-through;
-}
-
-:deep(.cell-error) {
-  box-shadow: inset 0 0 0 2px #d03050;
-}
-
 :deep(.row-deleted) {
   opacity: 0.5;
 }

@@ -286,7 +286,7 @@ describe('配置原地替换（FP-09）', () => {
     const ctx = await openCostPage();
     const { runtime, fake, master } = ctx;
     await selectRecord(ctx, '2550');
-    runtime.openForm('2550');
+    runtime.openForm(MASTER, '2550');
     runtime.edit(MASTER, '2550', 'MEMO', '正在输入');
     const changed = costView();
     changed.version = 14;
@@ -303,7 +303,7 @@ describe('配置原地替换（FP-09）', () => {
     expect(runtime.state.viewVersion).toBe(1);
     expect(runtime.cellEditable(MASTER, '2550', 'QTY')).toBe(false);
     expect(runtime.gridRow(MASTER, '2550').MEMO).toBe('正在输入');
-    expect(runtime.state.formRecord).toBe('2550');
+    expect(runtime.state.forms[MASTER]).toBe('2550');
     expect(runtime.state.activeRecord).toBe('2550');
     expect(master.selected).toEqual(['2550']);
     expect(master.refreshed).toBeGreaterThan(refreshed);

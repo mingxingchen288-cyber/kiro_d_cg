@@ -64,7 +64,7 @@ describe('汇总行', () => {
     expect(runtime.summaryRow(MASTER)).toEqual({ QTY: '52', TOTAL_COST: '65.0767', __id: SUMMARY_ROW_ID });
 
     // 显示格式同这一列：总成本 2 位小数；汇总行不能编辑，没有表单按钮
-    const columns = buildColumns(runtime, runtime.view.value!.master, true);
+    const columns = buildColumns(runtime, runtime.view.value!.master);
     const total = columns.find(c => c.colId === 'TOTAL_COST')!;
     const row = runtime.summaryRow(MASTER)!;
     expect((total.valueFormatter as (p: unknown) => string)({ value: row.TOTAL_COST })).toBe('65.08');
@@ -144,7 +144,7 @@ describe('汇总行', () => {
       type: 'boolean'
     });
     const { runtime } = await openCostPage(view);
-    const columns = buildColumns(runtime, runtime.view.value!.details[0], false);
+    const columns = buildColumns(runtime, runtime.view.value!.details[0]);
     const specified = columns.find(c => c.colId === 'CUSTOMER_SPECIFIED')!;
     expect(specified.cellDataType).toBe('boolean');
     const select = specified.cellRendererSelector as (p: unknown) => { component: () => string } | undefined;

@@ -4,7 +4,9 @@
  * - 只生成可见字段的列（FP-10）：不可见的字段不在列和列工具面板中，数据仍在行里。
  * - 列宽、固定用 initialWidth、initialPinned：查询和配置替换后不重置用户调整过的列（FP-08、FP-09）。
  * - 可编辑、样式、标记都用回调，每次从页面运行时取最新状态（配置替换和预览后立即生效）。
- * - 改动标记沿用旧系统（MasterDetailPageV3.vue）：改过的格绿色、计算带出变化的格黄色、新增行深蓝底白字、删除行半透明加删除线。
+ * - 改动标记沿用旧系统（MasterDetailPageV3.vue）：改过的格绿色、计算带出变化的格黄色、新增行深蓝底白字、删除行半透明加删除线；
+ *   判断和样式与原地表单共用（marks.ts、marks.css）。
+ * - 主表区和每个明细区的每行最前面都有原地表单的展开列（FP-03）。
  */
 import type {
   CellClassParams,
@@ -16,6 +18,7 @@ import type {
 import type { FieldValue } from '../../../contracts/command';
 import type { ViewField, ViewRegion } from '../../../contracts/page-view';
 import { compareDisplay, displayText, optionValues, parseInput } from '../fields';
+import { CELL_MARKS } from '../marks';
 import type { GridRow, PageRuntime } from '../page-runtime';
 
 export const FORM_COLUMN = '__form';
@@ -62,41 +65,39 @@ function filterOf(field: ViewField): ColDef['filter'] {
   return 'agTextColumnFilter';
 }
 
-export function buildColumns(runtime: PageRuntime, region: ViewRegion, withFormColumn: boolean): ColDef<GridRow>[] {
+export function buildColumns(runtime: PageRuntime, region: ViewRegion): ColDef<GridRow>[] {
   const entity = region.entity;
   const columns: ColDef<GridRow>[] = [];
-  if (withFormColumn) {
-    // FP-03：每行最前面固定一列展开图标，点击后在主表区原地显示表单
-    columns.push({
-      colId: FORM_COLUMN,
-      headerName: '',
-      pinned: 'left',
-      lockPosition: 'left',
-      lockPinned: true,
-      width: 36,
-      resizable: false,
-      sortable: false,
-      filter: false,
-      suppressHeaderMenuButton: true,
-      suppressColumnsToolPanel: true,
-      suppressNavigable: true,
-      cellClass: 'page-form-toggle',
-      cellRenderer: (params: { data?: GridRow; node?: { rowPinned?: unknown } }) => {
-        // 汇总行没有表单
-        if (params.node?.rowPinned) return '';
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'page-form-toggle__button';
-        button.title = '在表单中查看';
-        button.textContent = '⊞';
-        button.addEventListener('click', event => {
-          event.stopPropagation();
-          if (params.data) runtime.openForm(params.data.__id);
-        });
-        return button;
-      }
-    });
-  }
+  // FP-03：主表区和每个明细区的每行最前面固定一列展开图标，点击后在这个区域原地显示这一行的表单
+  columns.push({
+    colId: FORM_COLUMN,
+    headerName: '',
+    pinned: 'left',
+    lockPosition: 'left',
+    lockPinned: true,
+    width: 36,
+    resizable: false,
+    sortable: false,
+    filter: false,
+    suppressHeaderMenuButton: true,
+    suppressColumnsToolPanel: true,
+    suppressNavigable: true,
+    cellClass: 'page-form-toggle',
+    cellRenderer: (params: { data?: GridRow; node?: { rowPinned?: unknown } }) => {
+      // 汇总行没有表单
+      if (params.node?.rowPinned) return '';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'page-form-toggle__button';
+      button.title = '在表单中查看';
+      button.textContent = '⊞';
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        if (params.data) runtime.openForm(entity, params.data.__id);
+      });
+      return button;
+    }
+  });
   for (const field of region.fields) {
     if (!field.visible) continue;
     const dict = field.dictType ? runtime.dicts.get(field.dictType) : undefined;
@@ -128,20 +129,14 @@ export function buildColumns(runtime: PageRuntime, region: ViewRegion, withFormC
         return errors.length ? errors.map(e => e.message).join('；') : undefined;
       },
       cellClassRules: {
-        'cell-user-changed': (params: CellClassParams<GridRow>) =>
-          runtime.model.buffer.isChanged(entity, runtime.model.rowIdOf(idOf(params)), field.name),
-        'cell-calc-changed': (params: CellClassParams<GridRow>) =>
-          runtime.model.isCalcChanged(entity, runtime.model.rowIdOf(idOf(params)), field.name),
-        'cell-new': (params: CellClassParams<GridRow>) => {
-          const id = runtime.model.rowIdOf(idOf(params));
-          return runtime.model.buffer.isNew(entity, id);
-        },
-        'cell-deleted': (params: CellClassParams<GridRow>) =>
-          runtime.model.buffer.isDeleted(entity, runtime.model.rowIdOf(idOf(params))),
-        'cell-error': (params: CellClassParams<GridRow>) =>
-          runtime.model
-            .errorsOf(entity, runtime.model.rowIdOf(idOf(params)))
-            .some(e => e.field === field.name || (e.field === null && field.name === region.primaryKey)),
+        // 改动标记和错误标记与原地表单的字段同一组判断（marks.ts）
+        ...Object.fromEntries(
+          Object.entries(CELL_MARKS).map(([name, test]) => [
+            name,
+            (params: CellClassParams<GridRow>) =>
+              test(runtime.model, { region, id: runtime.model.rowIdOf(idOf(params)), field: field.name })
+          ])
+        ),
         'cell-lookup': () => Boolean(field.lookup)
       },
       cellStyle: params => {

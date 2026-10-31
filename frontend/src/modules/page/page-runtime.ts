@@ -163,8 +163,11 @@ export class PageRuntime {
     canRedo: false,
     /** 明细区显示的单据（主表行标识） */
     activeRecord: null as string | null,
-    /** 原地表单打开的主表行 */
-    formRecord: null as string | null,
+    /**
+     * 各区域打开的原地表单（FP-03）：键为主表或明细的实体，值为表单显示的行的表格行标识（新增行保存后不变），
+     * 没打开时为 null 或没有这个键。主表区和各明细区各自打开、关上。
+     */
+    forms: {} as Record<string, string | null>,
     detailMode: 'tabs' as 'tabs' | 'stack',
     activeDetail: '',
     /** 各区域选中的行数，键为 master 或明细实体 */
@@ -500,6 +503,7 @@ export class PageRuntime {
   private clearActive() {
     this.state.activeRecord = null;
     for (const detail of this.view.value?.details ?? []) this.port(detail.entity)?.setRows([]);
+    this.closeStaleForms();
   }
 
   selectedRows(entity: string): string[] {
@@ -509,6 +513,8 @@ export class PageRuntime {
   /** 明细区显示这张单据：还没加载时按单据加载接口读取（C09 第 4 节） */
   async activate(recordId: string) {
     this.state.activeRecord = recordId;
+    // 明细区换了单据：明细的表单关上
+    this.closeStaleForms();
     await this.ensureRecord(recordId);
     if (this.state.activeRecord !== recordId) return;
     for (const detail of this.view.value?.details ?? [])
@@ -610,8 +616,8 @@ export class PageRuntime {
       if (exists && !masterPort.hasRow(gridId)) masterPort.insertRows([{ id: gridId, after: null }]);
       else if (!exists && masterPort.hasRow(gridId)) {
         masterPort.removeRows([gridId]);
+        // 表单显示的行不在了时由 syncState 关上表单
         if (this.state.activeRecord === row.id) this.state.activeRecord = null;
-        if (this.state.formRecord === row.id) this.state.formRecord = null;
       }
     }
     const record = this.state.activeRecord;
@@ -641,6 +647,7 @@ export class PageRuntime {
 
   private syncState() {
     const buffer = this.model.buffer;
+    this.closeStaleForms();
     this.state.revision += 1;
     this.state.dirtyCount = buffer.size;
     this.state.canUndo = buffer.canUndo;
@@ -1047,10 +1054,7 @@ export class PageRuntime {
         );
       }
     }
-    if (this.state.formRecord && !this.model.buffer.current(master, this.state.formRecord)) {
-      const key = result.idMap[this.state.formRecord];
-      this.state.formRecord = key && this.model.buffer.current(master, key) ? key : null;
-    }
+    // 表单显示的行：新增行保存后表格行标识不变，表单照旧打开；提交审批后移除的新增单据的表单由 syncState 关上
     if (reloadNeeded) this.port(master)?.reload();
     // 规则效果栏：保存过的单据的效果去掉；没成功的单据修改还在，它的效果（例如"每片含量必填且必须大于0"）照旧显示
     for (const recordId of recordIds) this.model.setEffects(recordId, []);
@@ -1556,29 +1560,47 @@ export class PageRuntime {
 
   // ================================================================ 原地表单（FP-03）
 
-  openForm(gridId: string) {
-    const id = this.model.rowIdOf(gridId);
-    this.state.formRecord = id;
-    this.port(this.model.master)?.select(gridId);
+  /**
+   * 在这个区域（主表区或某个明细区）原地打开这一行的表单，表格中选中这一行。每个区域一个表单，主表和明细的可以同时开。
+   * 表单的内容见 record-form.ts：与表格同一份区域元数据、同一个编辑缓冲，只有排布按区域的 formLayout。
+   */
+  openForm(entity: string, gridId: string) {
+    this.state.forms[entity] = gridId;
+    this.port(entity)?.select(gridId);
   }
 
-  closeForm() {
-    this.state.formRecord = null;
+  closeForm(entity: string) {
+    this.state.forms[entity] = null;
   }
 
-  /** 表单头部的上一条、下一条：按主表表格的显示顺序 */
-  stepForm(offset: -1 | 1) {
-    const current = this.state.formRecord;
+  /** 表单头部的上一条、下一条：按这个区域表格的显示顺序；明细为明细区当前单据这个明细的行（含新增的行） */
+  stepForm(entity: string, offset: -1 | 1) {
+    const current = this.state.forms[entity];
     if (!current) return;
-    const next = this.port(this.model.master)?.neighbor(this.model.gridId(current), offset);
-    if (next) this.openForm(next);
+    const next = this.port(entity)?.neighbor(current, offset);
+    if (next) this.openForm(entity, next);
   }
 
-  /** 表单中改了一个字段（与表格共用编辑缓冲和撤销历史） */
-  editForm(field: string, value: FieldValue) {
-    const id = this.state.formRecord;
-    if (!id) return false;
-    return this.edit(this.model.master, this.model.gridId(id), field, value);
+  /** 表单中改了一个字段：同在表格中改这一格（edit），共用编辑缓冲和撤销历史 */
+  editForm(entity: string, field: string, value: FieldValue) {
+    const gridId = this.state.forms[entity];
+    return gridId ? this.edit(entity, gridId, field, value) : false;
+  }
+
+  /**
+   * 表单显示的行不在了（撤销新增、删掉新增的行、按钮删掉的行、提交审批后移除的新增单据），或明细区换了单据（主表选了另一张、
+   * 明细跟着主表清空）时，关上这个表单：明细的表单只显示明细区当前单据这个明细的行。
+   */
+  private closeStaleForms() {
+    const active = this.state.activeRecord;
+    for (const [entity, gridId] of Object.entries(this.state.forms)) {
+      const id = gridId ? this.model.rowIdOf(gridId) : null;
+      const shown =
+        entity === this.model.master
+          ? Boolean(id && this.model.buffer.current(entity, id))
+          : Boolean(id && active && this.model.detailIds(entity, active).includes(id));
+      if (gridId && !shown) this.state.forms[entity] = null;
+    }
   }
 }
 
