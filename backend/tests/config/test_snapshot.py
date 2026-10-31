@@ -122,7 +122,7 @@ def test_interleaved_saves_and_reads_never_mix_versions(steps: list[str]) -> Non
     那一刻的值），同一快照的内容之后不变。两个进程交替读取。"""
     env = _saved()
     other = env.new_reader()
-    role = next(d for d in seed_drafts() if d.type == "role").content
+    role = next(d for d in seed_drafts() if (d.type, d.key) == ("role", "ADMIN")).content
     page = next(d for d in seed_drafts() if d.type == "page" and d.key == "COST_PINGGU").content
     names = {env.generation(): (role["name"], page["title"])}
     current = dict(zip(("role", "title"), names[env.generation()], strict=True))

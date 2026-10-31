@@ -244,6 +244,13 @@ def seed_drafts() -> list[ConfigDraft]:
     return [parse_wire(ConfigDraft, json.loads(p.read_text(encoding="utf-8"))) for p in sorted(SEED.glob("*.json"))]
 
 
+_ALL_SIX = ("COST_PINGGU", "COST_PINGGU_LQ", "GOODS_MANAGE", "CUSTOMER_MANAGE", "GOODS_PRICE_MANAGE", "FORMONEY_MANAGE")
+MIGRATED_ROLE_PAGES = {"001": _ALL_SIX, "002": _ALL_SIX, "003": _ALL_SIX, "005": _ALL_SIX, "006": _ALL_SIX,
+                       "007": ("COST_PINGGU", "COST_PINGGU_LQ", "GOODS_MANAGE"), "008": _ALL_SIX}
+"""第 9 批由 cmx T_COST_ROLE_PAGE 迁来的 7 个角色能访问的页面（CF-21），每个角色每个页面一份页面视图：
+生产（007）旧系统只有成本核算两页和产品信息维护，其余 6 个角色都是这 6 个页面。"""
+
+
 def seed_without_rules() -> list[ConfigDraft]:
     """seed 中除计算规则以外的配置项。seed 的规则配置项（`rule.R_*.json`）是成本核算的 17 条计算规则，由
     `rules-core/fixtures/gen_packs.py` 的 COST_RULES（公式与 cmx 虚拟列一致）按 C06 第 5 节写成，order 按旧系统页面规则；
@@ -281,7 +288,9 @@ def goods_price_items() -> list[ConfigDraft]:
     entity = {"table": "T_COST_GOODS", "readView": "T_COST_GOODS_PRICE_V", "primaryKey": "GOODSID", "freezable": True,
               "erpRow": {"column": "ISERP", "value": "1", "localValue": "0"},
               "fields": [f("GOODSID", role="system"), f("GOODSNAME", "text", "erp"), f("PRICE", source="erp"), f("ZX_PRICE"),
-                         f("ISERP"), f("USEFLAG", "text"), f("ROW_CLASS_FLAG", "text", column=None)]}
+                         f("ISERP"), f("USEFLAG", "text"), f("ROW_CLASS_FLAG", "text", column=None),
+                         # 同 seed 的 ERP 列：第 9 批迁来的角色（CF-21）在物料清单页的列权限把它们设为不能改
+                         *(f(n, "text", "erp") for n in ("GOODSTYPE", "PACKTYPE", "FACTORYNAME", "STANDARDTYPE"))]}
     page = {"title": "物料清单及成本", "layout": "single", "detailMode": "tabs", "audit": True,
             "saveOperation": "GOODS_PRICE_MANAGE.save", "master": {"entity": "COST_GOODS_PRICE", "grid": GRID}}
     operation = {"label": "保存", "kind": "save", "writableFields": {"COST_GOODS_PRICE": ["ZX_PRICE"]},

@@ -1,0 +1,169 @@
+{
+  "type": "role",
+  "key": "008",
+  "name": "采购",
+  "content": {
+    "name": "采购",
+    "admin": false,
+    "pages": {
+      "COST_PINGGU": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:generateFromBom",
+          "master:saveGridConfig",
+          "COST_MATERIAL:addRow",
+          "COST_MATERIAL:deleteRow",
+          "COST_MATERIAL:modify",
+          "COST_MATERIAL:copyRow",
+          "COST_MATERIAL:saveGridConfig",
+          "COST_PACKAGE:addRow",
+          "COST_PACKAGE:deleteRow",
+          "COST_PACKAGE:modify",
+          "COST_PACKAGE:copyRow",
+          "COST_PACKAGE:saveGridConfig",
+          "export:cost-pinggu-export"
+        ],
+        "columns": {
+          "master": {
+            "APEX_PL": {"editable": false},
+            "ANNUAL_QTY": {"editable": false},
+            "YIELD": {"editable": false},
+            "P_PERPACK": {"editable": false},
+            "S_PERBACK": {"editable": false},
+            "X_PERBACK": {"editable": false},
+            "PACKTYPE": {"editable": false},
+            "OUT_PRICE_RMB": {"visible": false},
+            "SALEMONEY": {"visible": false},
+            "JGF_BATCH": {"visible": false},
+            "COST_PERQP": {"editable": false},
+            "JGF_PERQP": {"visible": false},
+            "ML_PERQP": {"visible": false},
+            "Y_JG_RE": {"visible": false},
+            "Y_ML": {"visible": false},
+            "Y_SALE": {"visible": false},
+            "FMRATE": {"editable": false},
+            "USESTATUS": {"editable": false},
+            "OUT_PRICE_F": {"visible": false, "editable": false},
+            "DOSAGE": {"editable": false},
+            "M_PERPACK": {"editable": false},
+            "PINGGU_CLASS": {"editable": false},
+            "BUSINESS_USER": {"editable": false}
+          },
+          "COST_MATERIAL": {
+            "PER_HL": {"editable": false},
+            "EXADD_MATER": {"editable": false},
+            "CUSTOMER_SPECIFIED": {"editable": false}
+          },
+          "COST_PACKAGE": {
+            "DTL_USEFLAG": {"editable": false},
+            "EXADD_MATER": {"editable": false},
+            "PER_HL": {"editable": false},
+            "CUSTOMER_SPECIFIED": {"editable": false}
+          }
+        }
+      },
+      "COST_PINGGU_LQ": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:generateFromBom",
+          "master:saveGridConfig",
+          "COST_MATERIAL_LQ:addRow",
+          "COST_MATERIAL_LQ:deleteRow",
+          "COST_MATERIAL_LQ:modify",
+          "COST_MATERIAL_LQ:copyRow",
+          "COST_MATERIAL_LQ:saveGridConfig",
+          "COST_PACKAGE_LQ:addRow",
+          "COST_PACKAGE_LQ:deleteRow",
+          "COST_PACKAGE_LQ:modify",
+          "COST_PACKAGE_LQ:copyRow",
+          "COST_PACKAGE_LQ:saveGridConfig"
+        ],
+        "columns": {
+          "master": {
+            "APEX_PL": {"editable": false},
+            "YIELD": {"editable": false},
+            "S_PERBACK": {"editable": false},
+            "X_PERBACK": {"editable": false},
+            "OUT_PRICE_RMB": {"visible": false, "editable": false},
+            "SALEMONEY": {"visible": false},
+            "JGF_BATCH": {"visible": false},
+            "COST_PERQP": {"editable": false},
+            "JGF_PERQP": {"visible": false},
+            "ML_PERQP": {"visible": false},
+            "Y_JG_RE": {"visible": false},
+            "Y_ML": {"visible": false},
+            "Y_SALE": {"visible": false},
+            "OUT_PRICE_F": {"visible": false, "editable": false},
+            "M_PERPACK": {"editable": false}
+          },
+          "COST_MATERIAL_LQ": {
+            "DTL_USEFLAG": {"editable": false},
+            "PER_HL": {"editable": false},
+            "EXADD_MATER": {"editable": false}
+          },
+          "COST_PACKAGE_LQ": {
+            "PER_HL": {"editable": false},
+            "EXADD_MATER": {"editable": false},
+            "MEMO": {"editable": false},
+            "STANDARDTYPE": {"editable": false}
+          }
+        }
+      },
+      "GOODS_MANAGE": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:saveGridConfig"
+        ]
+      },
+      "CUSTOMER_MANAGE": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:saveGridConfig",
+          "COST_TRANPOSER:addRow",
+          "COST_TRANPOSER:deleteRow",
+          "COST_TRANPOSER:modify",
+          "COST_TRANPOSER:copyRow",
+          "COST_TRANPOSER:saveGridConfig"
+        ]
+      },
+      "GOODS_PRICE_MANAGE": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:saveGridConfig",
+          "export:goods-price-pgoods-export"
+        ]
+      },
+      "FORMONEY_MANAGE": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:saveGridConfig",
+          "master:syncErpRate"
+        ]
+      }
+    }
+  }
+}

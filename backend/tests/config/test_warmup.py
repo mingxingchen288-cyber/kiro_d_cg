@@ -29,8 +29,9 @@ def test_after_warm_up_first_request_needs_no_oracle_and_no_compile(env: Env) ->
     assert runtime.ready is False
     report = runtime.warm_up()
     assert runtime.ready is True
-    # 角色：seed 的 ADMIN、技术中心和 R；规则包：成本核算、物料清单、审计追踪、产品信息维护、客户信息、外币管理、液体成本核算
-    assert (report.roles, report.packs, report.generation) == (3, 7, env.generation())
+    # 角色：seed 的 ADMIN、技术中心、第 9 批迁来的 7 个（CF-21）和 R；
+    # 规则包：成本核算、物料清单、审计追踪、产品信息维护、客户信息、外币管理、液体成本核算
+    assert (report.roles, report.packs, report.generation) == (10, 7, env.generation())
     compiled = reader.parsed.compiled
     env.cache.calls.clear()
     begins = len(env.uow.calls_to("begin"))

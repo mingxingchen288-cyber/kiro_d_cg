@@ -14,7 +14,7 @@ import pytest
 
 from cost_platform.contracts.types import ConfigDraft, PackInvalidError
 
-from .support import Env, base_world, draft, flow_samples
+from .support import MIGRATED_ROLE_PAGES, Env, base_world, draft, flow_samples
 
 WORLD = {(d.type, d.key): d for d in [*base_world(), *flow_samples()]}
 
@@ -57,7 +57,8 @@ def test_every_page_view_and_pack_generated(env: Env) -> None:
         "pageView/AUDIT_LOG|ADMIN", "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心",
         "pageView/GOODS_PRICE_MANAGE|ADMIN", "pageView/GOODS_PRICE_MANAGE|技术中心", "pageView/GOODS_MANAGE|ADMIN",
         "pageView/CUSTOMER_MANAGE|ADMIN", "pageView/FORMONEY_MANAGE|ADMIN", "pageView/COST_PINGGU_LQ|ADMIN",
-        "pageView/COST_PINGGU_LQ|技术中心"}
+        "pageView/COST_PINGGU_LQ|技术中心",
+        *(f"pageView/{p}|{r}" for r, pages in MIGRATED_ROLE_PAGES.items() for p in pages)}  # 第 9 批迁来的 7 个角色
 
 
 # ---------------------------------------------------------------- 引用的实体、字段、操作、页面、审批流、Lookup、字典都存在
@@ -524,7 +525,10 @@ def test_c06_rule_samples_can_be_saved(env: Env) -> None:
     calc = doc_json("C06", 4)
     ui = doc_json("C06", 5)
     page = draft("page", "GOODS_MANAGE", {**WORLD[("page", "GOODS_PRICE_MANAGE")].content, "title": "物料管理"})
-    assert problems(env, draft("rule", "R_PKG_BATCH_QTY", calc), draft("rule", "R_GOODS_ERP_LOCK", ui), page) == []
+    found = problems(env, draft("rule", "R_PKG_BATCH_QTY", calc), draft("rule", "R_GOODS_ERP_LOCK", ui), page)
+    # 样例的"物料管理页"借用 GOODS_MANAGE 的编码、换成物料清单的实体；第 9 批迁来的角色（CF-21）在真实的产品信息维护页上
+    # 有列权限（产品英文名 GOODSNAME_EN 等），换了实体后不在其中。这里只看样例本身。
+    assert [p for p in found if not (p[0] == "role" and (p[2] or "").startswith("pages.GOODS_MANAGE.columns"))] == []
 
 
 def test_c06_menu_and_dict_samples_can_be_saved(env: Env) -> None:
