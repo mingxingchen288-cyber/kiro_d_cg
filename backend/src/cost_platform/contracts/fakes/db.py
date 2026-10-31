@@ -19,7 +19,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import Connection, RootTransaction
 from sqlalchemy.pool import StaticPool
 
-from ..types import ColumnInfo
+from ..types import ColumnInfo, DbObject
 from ._script import Scripted
 
 sqlite3.register_adapter(Decimal, str)
@@ -85,25 +85,30 @@ class FakeUnitOfWorkFactory(Scripted):
 
 
 class FakeSchemaInspector(Scripted):
-    """`SchemaInspector`：表和视图的结构由 `add_table`、`add_view` 预设；表的主键由 `add_table` 的 `primary_key` 给出。"""
+    """`SchemaInspector`：表和视图的结构由 `add_table`、`add_view` 预设；表的主键由 `add_table` 的 `primary_key` 给出，
+    列注释由 `comments` 给出（没给的列没有注释）。"""
 
-    scriptable = ('columns', 'object_type', 'primary_key')
+    scriptable = ('columns', 'object_type', 'primary_key', 'column_comments', 'objects')
 
     def __init__(self) -> None:
         super().__init__()
         self._tables: dict[str, dict[str, ColumnInfo]] = {}
         self._types: dict[str, Literal["table", "view"]] = {}
         self._keys: dict[str, str] = {}
+        self._comments: dict[str, dict[str, str]] = {}
 
-    def add_table(self, table: str, columns: Sequence[ColumnInfo], primary_key: str | None = None) -> None:
+    def add_table(self, table: str, columns: Sequence[ColumnInfo], primary_key: str | None = None,
+                  comments: Mapping[str, str] | None = None) -> None:
         self._tables[table] = {c.name: c for c in columns}
         self._types[table] = "table"
+        self._comments[table] = dict(comments or {})
         if primary_key is not None:
             self._keys[table] = primary_key
 
-    def add_view(self, view: str, columns: Sequence[ColumnInfo]) -> None:
+    def add_view(self, view: str, columns: Sequence[ColumnInfo], comments: Mapping[str, str] | None = None) -> None:
         self._tables[view] = {c.name: c for c in columns}
         self._types[view] = "view"
+        self._comments[view] = dict(comments or {})
 
     def columns(self, table: str) -> dict[str, ColumnInfo] | None:
         self._record("columns", table)
@@ -117,6 +122,20 @@ class FakeSchemaInspector(Scripted):
     def primary_key(self, table: str) -> str | None:
         self._record("primary_key", table)
         return self._keys.get(table) if self._types.get(table) == "table" else None
+
+    def column_comments(self, table: str) -> dict[str, str | None] | None:
+        self._record("column_comments", table)
+        found = self._tables.get(table)
+        if found is None:
+            return None
+        comments = self._comments.get(table, {})
+        return {name: comments.get(name) for name in found}
+
+    def objects(self, keyword: str) -> list[DbObject]:
+        self._record("objects", keyword)
+        upper = keyword.strip().upper()
+        found = [DbObject(name=name, type=kind) for name, kind in self._types.items() if upper in name.upper()]
+        return sorted(found, key=lambda o: (o.type, o.name))[:100]
 
 
 class FakeConnectionFactory(Scripted):

@@ -6,6 +6,9 @@
 可编辑再与页面保存操作的 `writableFields` 取交集（C05）：后端保存时按它拒绝（authz 的 `writable_fields`），
 页面上显示能编辑的字段，保存时一定能写。不可编辑、但随可编辑字段的 Lookup 回填写库的字段标 `fillWritable`（C05）。
 页面字段设置的 `searchable` 为 true、且叠加后可见的字段标 `searchable`（C05 v7，高级查询的预置条件）。
+实体字段的 `default` 原样带出，`compare` 只带出显示方式 `format`（C05 v9、CF-19）：前端新增行时立即填上默认值，
+同旧系统 `useWorkingSetStore.ts` 的 resolveColumnDefaultValue；对比按配置的显示方式，同旧 `useMetaColumns.ts`
+的 renderCompareValue。
 
 按钮：区域按钮按页面配置的顺序，只留当前角色有权限的：要 `*` 或权限键 `master:<动作>`、`<明细实体>:<动作>`，
 新增、删除也一样按区域授权（C06 v24 第 8 节，用户 2026-10-30"控制到明细级别"）。`systemButtons` 只有 `save`、
@@ -23,6 +26,7 @@ from cost_platform.contracts.types import (
     ButtonConfig,
     EntityConfig,
     EntityField,
+    FieldCompareView,
     FieldFlags,
     FieldSetting,
     LookupConfig,
@@ -87,6 +91,8 @@ def _view_field(field: EntityField, entity: EntityConfig, setting: FieldSetting 
         aggregate=setting.aggregate if setting else None, grouping=field.grouping,
         dict_free_text=bool(setting and setting.dict_type and setting.dict_free_text),
         searchable=visible and setting is not None and setting.searchable is True,
+        default=field.default,
+        compare=FieldCompareView(format=field.compare.format) if field.compare is not None else None,
     )
 
 

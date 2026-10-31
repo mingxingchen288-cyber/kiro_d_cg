@@ -538,6 +538,33 @@ def _view_lookup(value: Any) -> Any:
     return value
 
 
+class StaticDefault(Wire):
+    type: Literal["static"]
+    value: str
+
+
+class BuiltinDefault(Wire):
+    type: Literal["builtin"]
+    value: Literal["currentUserId", "currentUserName", "currentDeptId", "currentDeptName", "currentRoleCode", "currentTime"]
+
+
+class OptionsDefault(Wire):
+    type: Literal["options"]
+    value: list[str]
+
+
+DefaultValue = Annotated[StaticDefault | BuiltinDefault | OptionsDefault, Field(discriminator="type")]
+"""字段的默认值（C06 第 2 节 `fields[].default`），页面视图原样带出（C05 v9）。"""
+
+CompareFormat: TypeAlias = Literal["value", "percent", "both"]
+
+
+class FieldCompareView(Wire):
+    """页面视图中字段的对比（C05 v9）：只带显示方式，取自实体字段的 `compare.format`（C06 第 2 节）。"""
+
+    format: CompareFormat
+
+
 class ViewField(Wire):
     name: str
     label: str
@@ -563,6 +590,10 @@ class ViewField(Wire):
     """字典下拉中可以填写字典以外的值：取自页面配置（C06 第 3 节）；为 false 时省略。"""
     searchable: Bool = False
     """页面配置的 `searchable` 为 true 且字段可见：高级查询对话框一打开就列出这个字段的条件（C05 v7）。为 false 时省略。"""
+    default: DefaultValue | None = None
+    """新增行的默认值：取自实体字段（C06 第 2 节），写法相同（C05 v9）；没有配置时省略。"""
+    compare: FieldCompareView | None = None
+    """对比的显示方式：实体字段配了 `compare` 时给出它的 `format`（C05 v9）；没有配置时省略。"""
 
 
 class ViewButton(Wire):
@@ -675,34 +706,8 @@ Condition: TypeAlias = str | VisualCondition
 """条件：表达式文本，或可视化条件。"""
 
 
-class DataItem(Wire):
-    """规则需要的数据库数据，表达式中写作 `data.名称`。"""
-
-    name: str
-    sql: str
-    binds: dict[str, str] = {}
-
-
 # ---- 2. entity
-
-class StaticDefault(Wire):
-    type: Literal["static"]
-    value: str
-
-
-class BuiltinDefault(Wire):
-    type: Literal["builtin"]
-    value: Literal["currentUserId", "currentUserName", "currentDeptId", "currentDeptName", "currentRoleCode", "currentTime"]
-
-
-class OptionsDefault(Wire):
-    type: Literal["options"]
-    value: list[str]
-
-
-DefaultValue = Annotated[StaticDefault | BuiltinDefault | OptionsDefault, Field(discriminator="type")]
-
-CompareFormat: TypeAlias = Literal["value", "percent", "both"]
+# 字段的默认值（`StaticDefault` 等）和对比的显示方式（`CompareFormat`）定义在 C05 一节，页面视图也用它们。
 
 
 class FieldCompare(Wire):
@@ -958,7 +963,6 @@ class RuleConfig(Wire):
     category: Literal["calc", "validate", "ui"]
     field: str | None = None
     order: Int
-    data_items: list[DataItem] = []
     when: Condition | None = None
     expression: str | None = None
     branches: list[Branch] | None = None
@@ -1594,6 +1598,23 @@ class SchemaColumnsResponse(Wire):
     columns: list[SchemaColumn]
 
 
+class SchemaObjectsRequest(Wire):
+    """按关键字列出表和视图（C09 v16 第 3 节，新建页面向导、"表与列"填视图名和目标表时用）。"""
+
+    keyword: str
+
+
+class SchemaObject(Wire):
+    name: str
+    type: Literal["table", "view"]
+
+
+class SchemaObjectsResponse(Wire):
+    """名称中含关键字的表和视图，最多 100 个，先表后视图、各按名称排列（同旧系统 `MetaConfigService.listDbObjects`）。"""
+
+    objects: list[SchemaObject]
+
+
 class WizardGenerateRequest(Wire):
     """新建页面向导的生成请求；`master`、`details` 的内容由 config CF-14 校验。"""
 
@@ -2189,6 +2210,14 @@ class ColumnInfo:
     length: int | None
     precision: int | None
     scale: int | None
+
+
+@dataclass(frozen=True)
+class DbObject:
+    """数据库中的一个表或视图（db-core 的 `SchemaInspector.objects`，C08 v21）。"""
+
+    name: str
+    type: Literal["table", "view"]
 
 
 @dataclass(frozen=True)

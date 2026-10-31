@@ -135,6 +135,8 @@ const ROUNDTRIP: Array<[string, Schema<unknown>, unknown]> = [
   ['C09 向导读列请求', c09.WizardColumnsRequest, { readView: 'T_COST_GOODS_PRICE_V', table: 'T_COST_GOODS' }],
   ['C09 向导读列响应', c09.WizardColumnsResponse, s.wizardColumnsResponseSample],
   ['C09 读表结构响应', c09.SchemaColumnsResponse, s.schemaColumnsResponseSample],
+  ['C09 搜表和视图请求', c09.SchemaObjectsRequest, { keyword: 'T_COST_GOODS' }],
+  ['C09 搜表和视图响应', c09.SchemaObjectsResponse, s.schemaObjectsResponseSample],
   [
     'C09 向导生成请求',
     c09.WizardGenerateRequest,
@@ -292,11 +294,11 @@ function pythonClasses() {
 }
 
 /**
- * 前端独有的类型，以及前端比后端多出的字段。多出的字段都是契约缺口，记在
- * .reports/modules/frontend-page/contract-gaps.md：ViewField 的 default（第 1 项）和 compare（第 2 项）。
+ * 前端独有的类型，以及前端比后端多出的字段（契约缺口）。字段的默认值后端是 `StaticDefault`、`BuiltinDefault`、
+ * `OptionsDefault` 三个类的联合，前端合成一个 `FieldDefault`。ViewField 的 default、compare 已由 C05 v9 补上，没有缺口了。
  */
-const FRONTEND_ONLY = new Set(['FieldDefault', 'FieldCompareView']);
-const KNOWN_GAPS: Record<string, string[]> = { ViewField: ['compare', 'default'] };
+const FRONTEND_ONLY = new Set(['FieldDefault']);
+const KNOWN_GAPS: Record<string, string[]> = {};
 
 describe('前端类型与后端 types.py 的字段名一致', () => {
   const python = pythonClasses();

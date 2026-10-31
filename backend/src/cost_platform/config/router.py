@@ -29,6 +29,8 @@ from cost_platform.contracts.types import (
     PlatformError,
     SchemaColumnsRequest,
     SchemaColumnsResponse,
+    SchemaObjectsRequest,
+    SchemaObjectsResponse,
     WizardColumnsRequest,
     WizardColumnsResponse,
     WizardGenerateRequest,
@@ -120,6 +122,12 @@ def create_router(service: ConfigService, context: ContextFactory) -> APIRouter:
         _admin(context(request, True))
         body: SchemaColumnsRequest = await _body(request, SchemaColumnsRequest)
         return dump_wire(SchemaColumnsResponse, service.schema_columns(body.name))
+
+    @router.post("/api/config/schema/objects")
+    async def schema_objects(request: Request) -> Any:
+        _admin(context(request, True))
+        body: SchemaObjectsRequest = await _body(request, SchemaObjectsRequest)
+        return dump_wire(SchemaObjectsResponse, service.schema_objects(body.keyword))
 
     @router.post("/api/config/wizard/generate")
     async def wizard_generate(request: Request) -> Any:

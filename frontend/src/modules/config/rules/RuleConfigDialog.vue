@@ -219,16 +219,6 @@ editor.load();
             </div>
             <NButton size="tiny" dashed class="mt-4" @click="(card.content.branches = [...(card.content.branches ?? []), { when: null, expression: '' }]), dirty(card)">+ 添加分支</NButton>
           </template>
-          <template v-if="card.content.layer !== 'page'">
-            <div v-for="(item, di) in card.content.dataItems ?? []" :key="di" class="formula-card">
-              <div class="rule-row">
-                <div class="rule-field"><span class="field-label">数据项名称（表达式中写 data.名称）</span><NInput v-model:value="item.name" size="small" class="w-180" @update:value="dirty(card)" /></div>
-                <div class="rule-field field-grow"><span class="field-label">SQL（只读查询，参数用绑定变量）</span><NInput v-model:value="item.sql" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }" size="small" @update:value="dirty(card)" /></div>
-                <NButton size="tiny" quaternary type="error" @click="card.content.dataItems!.splice(di, 1), dirty(card)">删除</NButton>
-              </div>
-            </div>
-            <NButton size="tiny" dashed class="mt-4" @click="(card.content.dataItems = [...(card.content.dataItems ?? []), { name: '', sql: '', binds: {} }]), dirty(card)">+ 数据项（有数据项的规则只在后端执行）</NButton>
-          </template>
           <ProblemList :problems="card.problems" />
         </div>
         <div v-for="r in state.required" :key="r._id" class="rule-card">

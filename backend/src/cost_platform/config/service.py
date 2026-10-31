@@ -33,6 +33,7 @@ from cost_platform.contracts.types import (
     PageView,
     PlatformError,
     SchemaColumnsResponse,
+    SchemaObjectsResponse,
     WizardColumnsRequest,
     WizardColumnsResponse,
     WizardGenerateRequest,
@@ -191,6 +192,11 @@ class ConfigService:
         from .wizard import schema_columns
 
         return schema_columns(self._validator.schema, name)
+
+    def schema_objects(self, keyword: str) -> SchemaObjectsResponse:
+        from .wizard import schema_objects
+
+        return schema_objects(self._validator.schema, keyword)
 
     def wizard_generate(self, request: WizardGenerateRequest, user_id: str) -> SaveResult:
         from .wizard import generate

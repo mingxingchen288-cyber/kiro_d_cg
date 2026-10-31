@@ -179,6 +179,11 @@ export const SchemaColumnsResponse = object('SchemaColumnsResponse', {
   columns: array(SchemaColumn)
 });
 export type SchemaColumnsResponse = Infer<typeof SchemaColumnsResponse>;
+/** C09 v16：名称含关键字的表和视图，最多 100 个，先表后视图（新建页面向导填视图名、目标表时搜索） */
+export const SchemaObjectsRequest = object('SchemaObjectsRequest', { keyword: str });
+export const SchemaObject = object('SchemaObject', { name: str, type: literal('table', 'view') });
+export const SchemaObjectsResponse = object('SchemaObjectsResponse', { objects: array(SchemaObject) });
+export type SchemaObjectsResponse = Infer<typeof SchemaObjectsResponse>;
 export const WizardGenerateRequest = object('WizardGenerateRequest', {
   parentMenu: code,
   pageCode: code,

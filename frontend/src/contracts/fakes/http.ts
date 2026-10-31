@@ -71,6 +71,7 @@ const DEFAULTS: Array<[HttpMethod, string, FakeHandler]> = [
   ['POST', '/api/config/validate', sample(s.configValidateResponseSample)],
   ['POST', '/api/config/wizard/columns', sample(s.wizardColumnsResponseSample)],
   ['POST', '/api/config/schema/columns', sample(s.schemaColumnsResponseSample)],
+  ['POST', '/api/config/schema/objects', sample(s.schemaObjectsResponseSample)],
   // C09 没有写生成接口的响应体，模拟实现返回空
   ['POST', '/api/config/wizard/generate', noContent],
   ['POST', '/api/pages/:pageCode/rows', sample(s.listResponseSample)],

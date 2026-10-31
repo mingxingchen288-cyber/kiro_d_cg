@@ -88,11 +88,12 @@ export function belongsTo(rule: RuleContent, area: RuleArea, masterFields: strin
   return !masterFields.includes(rule.field) && area.table.fields.some(f => f.name === rule.field);
 }
 
-/** 规则卡片 → 配置内容：只写有值的可选字段；页面层规则在前端执行，不写数据项 */
+/**
+ * 规则卡片 → 配置内容：只写有值的可选字段。规则没有"数据项"（C06 v27 去掉，FC-15；旧系统的规则对话框也没有），不写 `dataItems`。
+ */
 export function cardContent(card: RuleCard): RuleContent {
   const c = plain(card.content);
   const out: RuleContent = { layer: c.layer, target: c.target, category: c.category, field: c.field || null, order: Number(c.order) };
-  if (c.layer !== 'page') out.dataItems = c.dataItems ?? [];
   if (c.when !== undefined && c.when !== null && c.when !== '') {
     const when = isVisual(c.when) ? cleanVisual(c.when) : c.when.trim();
     if (!isVisual(when) || when.conditions.length) out.when = when;
@@ -299,7 +300,6 @@ export class RuleEditor {
   setLayer(card: RuleCard, layer: 'entity' | 'page') {
     card.content.layer = layer;
     card.content.target = layer === 'entity' ? this.area.table.entity : this.area.pageCode;
-    if (layer === 'page') delete card.content.dataItems;
     card.dirty = true;
   }
 

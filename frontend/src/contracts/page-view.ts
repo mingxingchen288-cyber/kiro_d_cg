@@ -36,10 +36,7 @@ export const ViewLookup = object('ViewLookup', {
 });
 export type ViewLookup = Infer<typeof ViewLookup>;
 
-/**
- * 新增行的默认值，写法同 C06 第 2 节 `fields[].default`。
- * C05 v3 的页面视图还没有这一项（契约缺口，见 .reports/modules/frontend-page/contract-gaps.md 第 1 项），后端给出时前端照用。
- */
+/** 新增行的默认值（C05 v9 `fields[].default`），写法同 C06 第 2 节；没有配置时省略 */
 export const FieldDefault = object('FieldDefault', {
   type: literal('static', 'builtin', 'options'),
   value: json
@@ -47,8 +44,8 @@ export const FieldDefault = object('FieldDefault', {
 export type FieldDefault = Infer<typeof FieldDefault>;
 
 /**
- * 对比的显示方式，取自 C06 第 2 节 `fields[].compare.format`。C05 v3 还没有这一项（契约缺口第 2 项）；
- * 没有时按行中给出的差值和百分比都显示。
+ * 对比的显示方式（C05 v9 `fields[].compare`），取自 C06 第 2 节 `fields[].compare.format`；实体字段没有配置对比时省略。
+ * v9 之前生成的页面视图没有这一项，前端按都显示。
  */
 export const FieldCompareView = object('FieldCompareView', { format: literal('value', 'percent', 'both') });
 export type FieldCompareView = Infer<typeof FieldCompareView>;
@@ -83,7 +80,9 @@ export const ViewField = object('ViewField', {
    * 高级查询对话框一打开就列出这个字段的条件（旧系统列配置的"查询"）。
    */
   searchable: optional(bool),
+  /** C05 v9：新增行的默认值（实体字段的 `default`），新增行时立即填上，`options` 用下拉（frontend-page FP-23） */
   default: optional(nullable(FieldDefault)),
+  /** C05 v9：对比的显示方式（实体字段 `compare.format`），value 只显示差值、percent 只显示百分比、both 都显示（FP-24） */
   compare: optional(nullable(FieldCompareView))
 });
 export type ViewField = Infer<typeof ViewField>;

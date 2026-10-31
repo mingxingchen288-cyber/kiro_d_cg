@@ -50,3 +50,13 @@
     - 核对（`06-复制核对.out.txt`）：列与清单相同、按 cmx 顺序、虚拟列 0，类型、精度、可空、默认值与 cmx 相同；行数 14419/14419、493/493、5148/5148；三张表双向 MINUS 都是 0；三个视图的行数 9837/9837、2535/2535、2178/2178，与 cmx 视图（物料清单按未删除过滤，液体明细按未删除单据过滤）双向 MINUS 都是 0；视图只引用 d_cg 的表；序列 T_COST_GOODS_SEQ、T_COST_PINGGU_LQ_SEQ、T_COST_PINGGU_DTL_LQ_SEQ 从 300862、100041、100197 开始，都是 cmx 最大主键加一；主键 PK_T_COST_GOODS、PK_COST_PINGGU_LQ、PK_COST_PINGGU_DTL_LQ；含聚维酮K30（25）的液体成本单 74 张，与 C06 7.10 相同。
     - 命令输出：`05-copy.log`（新建 5 项、重建物料表）、`07-copy-again.log`（再执行一次，10 项都"已存在，未改动"）。`tests/db_core/test_copy_tables.py` 每次检查各表的列和顺序、虚拟列、主键、序列，各视图有效且不引用 cmx，以及重复执行不改动（包含在上面 T-DB-1 的 39 passed 中）。行数和逐行内容只在复制当时核对：cmx 还在使用、数据在变，平台不做持续同步。
   - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：状态由"进行中"改为"完成"：本条 2026-10-29 的子条目已逐条核对验收标准（列、顺序、虚拟列、行数、视图、序列、重复执行），`tests/db_core/test_copy_tables.py`（第 18 行标 oracle）照常通过（第 7 批合并后 `-m "oracle or redis"` 196 passed、0 failed、0 skipped，`.reports/batch7-20261030/merge/pytest-real-1.txt`）；剩下的只有独立复核，`.reports/review/` 中没有本卡的复核记录，状态里补写"待独立复核"；按用户规则（`.kiro/steering/测试范围.md`）不阻断完成。
+
+### T-DB-5 列注释、按关键字列出表和视图
+
+- 归属与目标：实现 DB-07（盘点 `.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B14、B15；用户 2026-10-31 回复"开始"）。契约 C08 v21。来源：旧系统 `MetaConfigService.listDbObjects` 第 621–645 行、`listViewColumns`（DBA_COL_COMMENTS）。
+- 前置输入：开始前 T-DB-1。
+- 负责范围：`db_core/schema.py` 的 `OracleSchemaInspector.objects`（新增）和 `column_comments`（T-DB-1 已有，C08 之外的方法，这次纳入 C08 v21、加进端口和替代实现）；`contracts/ports.py`、`contracts/types.py`（`DbObject`）、`contracts/fakes/db.py`（替代实现，`add_table`、`add_view` 可带 `comments`）。
+- 交付物：上述两个方法。
+- 接入责任：config 的 T-CF-13 使用。
+- 验收标准：契约测试（替代实现和真实实现共用）：列注释每一列都在、按列顺序、没有注释的为 None、表不存在时为 None；关键字不分大小写、先表后视图。真实验证（只读，只查 d_cg 的数据字典，不建表）：T_COST_PINGGU_LQ 的 COST_PERBOX、M_PERPACK 注释为"每盒成本""每中盒小盒数"，DOCID 为 None；"t_cost_goods"列出 T_COST_GOODS（表）和 T_COST_GOODS_PRICE_V（视图），名称都含关键字、先表后视图；空关键字时最多 100 个。
+- 状态与证据：进行中（模拟验证和只读真实验证通过；待独立复核）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`。模拟验证：`tests/contracts/test_schema_inspector.py` 的 `test_column_comments`、`test_objects_by_keyword`（替代实现），包含在 `pytest -m "not oracle and not redis"` 1316 passed 中。真实验证：`tests/db_core/test_ports.py` 的 `test_column_comments`、`test_objects_on_d_cg`（连同同文件的 `test_business_tables_and_views`、`test_sequence_exists`）只读通过，`pytest-real-readonly.txt` 5 passed。同文件 `TestOracleSchemaInspector`（真实实现的契约测试，会在 d_cg 建、删 `CT_SCHEMA_PROBE` 表和视图）新增的两条没有跑，合并后随 `-m "oracle or redis" tests/db_core` 一起跑。

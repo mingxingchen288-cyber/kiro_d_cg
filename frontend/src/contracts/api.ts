@@ -39,6 +39,7 @@ import type {
   RejectRequest,
   RowsResponse,
   SchemaColumnsResponse,
+  SchemaObjectsResponse,
   SelectRoleResponse,
   WithdrawRequest,
   WizardColumnsRequest,
@@ -91,6 +92,7 @@ export function createPlatformApi(http: HttpClient) {
     validateConfig: (body: ConfigValidateRequest) => http.post<ConfigValidateResponse>('/api/config/validate', body),
     wizardColumns: (body: WizardColumnsRequest) => http.post<WizardColumnsResponse>('/api/config/wizard/columns', body),
     schemaColumns: (name: string) => http.post<SchemaColumnsResponse>('/api/config/schema/columns', { name }),
+    schemaObjects: (keyword: string) => http.post<SchemaObjectsResponse>('/api/config/schema/objects', { keyword }),
     wizardGenerate: (body: WizardGenerateRequest) => http.post<unknown>('/api/config/wizard/generate', body),
 
     // ---- 4. queries-export

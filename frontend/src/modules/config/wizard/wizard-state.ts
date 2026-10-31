@@ -2,7 +2,8 @@
  * 新建页面向导（FC-07、config CF-14、C09 `wizard/columns`、`wizard/generate`），对照旧系统 WizardPanel.vue、
  * WizardStep1～3.vue、useWizardState.ts：
  * 1. 页面菜单：归属菜单（菜单分组）、页面名称、页面编码（只允许大写字母、数字、下划线，最长 64，同旧系统）；
- * 2. 导入表与配置字段：页面模式单表 / 主从；主表的视图和写入表，"导入列"后调整标题、显示、编辑、ERP 列；
+ * 2. 导入表与配置字段：页面模式单表 / 主从；主表的视图和写入表（输入关键字搜表和视图，FC-14），"导入列"后调整标题
+ *    （预填列注释，没有注释时为列名）、显示、编辑、ERP 列；
  *    主从时添加明细表并选关联字段；审计默认开启，明细显示方式默认多 Tab（单表页不显示，按预填值提交）；
  *    写入表的序列 `<表名>_SEQ` 不存在时提示先建序列，不能继续；
  * 3. 确认生成：列出将生成的配置项，生成请求随审计、明细显示方式一起提交。
@@ -48,6 +49,19 @@ export interface MenuGroupOption {
   label: string;
   value: string;
 }
+
+/**
+ * 搜表的下拉项：`label`、`value` 都是名称（NAutoComplete 选中时把 `label` 填进输入框），下拉中显示为"名称（表）"
+ * "名称（视图）"（`kind`，见 WizardTableForm.vue 的 renderLabel）
+ */
+export interface ObjectOption {
+  label: string;
+  value: string;
+  kind: '表' | '视图';
+}
+
+/** 输入几个字符起查，同旧系统 SectionTables.vue 第 47–56 行 searchDbObjects */
+export const SEARCH_MIN_LENGTH = 2;
 
 export function emptyTable(): WizardTable {
   return {
@@ -104,8 +118,13 @@ export class WizardState {
     errors: [] as string[],
     problems: [] as ConfigProblem[],
     busy: false,
-    generated: null as unknown
+    generated: null as unknown,
+    /** 视图名、目标表输入框的下拉（FC-14），各输入框共用，同旧系统的 dbObjectOptions */
+    objectOptions: [] as ObjectOption[]
   });
+
+  /** 只用最后一次输入的结果：先发的请求后回来时丢掉 */
+  private searchSeq = 0;
 
   constructor(
     private readonly api: PlatformApi,
@@ -129,7 +148,30 @@ export class WizardState {
     this.state.details.splice(index, 1);
   }
 
-  /** 导入列：读视图（没有视图时读表）的结构和序列是否存在（只读） */
+  /**
+   * 按关键字搜表和视图（FC-14、C09 v16 `schema/objects`）：输入两个字符起查，列出名称含关键字的表和视图，最多 100 个，
+   * 先表后视图；不到两个字符或查询失败时下拉为空。同旧系统 SectionTables.vue 的 searchDbObjects 和
+   * MetaConfigService.listDbObjects。
+   */
+  async searchObjects(keyword: string) {
+    this.searchSeq += 1;
+    const seq = this.searchSeq;
+    const text = keyword.trim();
+    if (text.length < SEARCH_MIN_LENGTH) {
+      this.state.objectOptions = [];
+      return;
+    }
+    let options: ObjectOption[] = [];
+    try {
+      const result = await this.api.schemaObjects(text);
+      options = result.objects.map(o => ({ label: o.name, value: o.name, kind: o.type === 'table' ? '表' : '视图' }));
+    } catch {
+      options = [];
+    }
+    if (seq === this.searchSeq) this.state.objectOptions = options;
+  }
+
+  /** 导入列：读视图（没有视图时读表）的结构和序列是否存在（只读）；标题为列注释，没有注释时为列名（config CF-20） */
   async importColumns(table: WizardTable) {
     table.importError = '';
     try {

@@ -47,7 +47,6 @@ describe('规则表单（FC-06）', () => {
       category: 'calc',
       field: 'BATCH_QTY',
       order: 10,
-      dataItems: [],
       branches: [
         { when: "matches(GOODSNAME, '桶|说明书|小盒|标签|瓶|盖|干燥剂|序列化')", expression: 'master.APEX_PL / master.P_PERPACK * (1 + EXADD_MATER / 100)' },
         { when: "matches(GOODSNAME, '硬片|铝箔|复合膜')", expression: 'PER_HL * master.APEX_PL * (1 + EXADD_MATER / 100) / 1000000' }

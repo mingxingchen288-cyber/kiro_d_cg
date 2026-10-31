@@ -12,7 +12,7 @@ import pytest
 
 from cost_platform.contracts.fakes import FakeSchemaInspector
 from cost_platform.contracts.ports import SchemaInspector
-from cost_platform.contracts.types import ColumnInfo
+from cost_platform.contracts.types import ColumnInfo, DbObject
 
 # NUMBER(18,2) 可空、VARCHAR2(50) 非空、DATE 可空：数值列给出精度和小数位，字符列给出长度，其余为 None。
 COLUMNS = [
@@ -65,6 +65,19 @@ class SchemaInspectorContract:
         harness.create_view("CT_SCHEMA_PROBE_V", "CT_SCHEMA_PROBE")
         assert harness.inspector.primary_key("CT_SCHEMA_PROBE") == "GOODSNAME"
         assert harness.inspector.primary_key("CT_SCHEMA_PROBE_V") is None
+
+    def test_column_comments(self, harness: SchemaInspectorHarness) -> None:
+        """C08 v21：每一列都在，按列的顺序；没有注释的列为 None；表不存在时为 None。"""
+        harness.create_table("CT_SCHEMA_PROBE", COLUMNS)
+        assert harness.inspector.column_comments("CT_SCHEMA_PROBE") == {c.name: None for c in COLUMNS}
+        assert harness.inspector.column_comments(harness.missing_table()) is None
+
+    def test_objects_by_keyword(self, harness: SchemaInspectorHarness) -> None:
+        """C08 v21：名称含关键字的表和视图，关键字不分大小写，先表后视图（同旧系统 listDbObjects）。"""
+        harness.create_table("CT_SCHEMA_PROBE", COLUMNS)
+        harness.create_view("CT_SCHEMA_PROBE_V", "CT_SCHEMA_PROBE")
+        assert harness.inspector.objects("ct_schema_probe") == [DbObject("CT_SCHEMA_PROBE", "table"),
+                                                                DbObject("CT_SCHEMA_PROBE_V", "view")]
 
 
 class FakeSchemaInspectorHarness:

@@ -2,7 +2,7 @@
 /**
  * 可编辑规则，同旧系统 CellEditableDialog.vue（760px，"可编辑规则 - 区域"）：每张卡片一条 `ui` 规则——可视化条件，
  * 作用范围（整行 / 指定字段），条件成立时的效果（不可编辑、可编辑、必填）。条件也可以改写成表达式。
- * 旧系统的"启用 SQL 判断"在 C06 中是规则的数据项（只在后端执行）；页面层的界面规则只在前端预览时执行，不能用 SQL，这里不提供。
+ * 旧系统的"启用 SQL 判断"这里不提供：页面层的界面规则只在前端预览时执行，不能用 SQL；C06 的规则也没有数据项（v27 去掉）。
  */
 import { computed } from 'vue';
 import { NButton, NEmpty, NInput, NInputNumber, NModal, NPopconfirm, NRadio, NRadioGroup, NSelect, NSpace, NTag } from 'naive-ui';

@@ -111,7 +111,8 @@ def build_pack(catalog: Catalog, master: str, version: int, core_version: str) -
             id=code, layer=rule.layer, entity=entity_code,
             operation=rule.target if rule.layer == "operation" else None,
             page=rule.target if rule.layer == "page" else None,
-            category=rule.category, order=rule.order, server_only=bool(rule.data_items), jdm=code,
+            # C06 v27 去掉了规则的数据项，规则都不依赖数据库数据，C07 的 serverOnly 都为 false
+            category=rule.category, order=rule.order, server_only=False, jdm=code,
         ))
         graphs[code] = _rule_graph(catalog, code, rule, entity_code, master)
     return RulesPack(pack_id=master, version=version, core_version=core_version, fields=fields, rules=rules, jdm=graphs)

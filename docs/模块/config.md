@@ -78,6 +78,11 @@
   - 保存操作的编码为 `<页面编码>.save`，页面的 `saveOperation` 引用它；`kind` 为 `save`，`propagation` 为 `continue`，`rowNotFound` 取默认的 `skip`，`impact` 为主表实体和各明细实体。
   - 保存操作的 `writableFields` 按生成的实体和页面配置逐个实体列出，不放开全部字段：只包含 `role` 为 `input`、`column` 不为 null、实体的 `fieldDefaults` 和页面都没有设为不可编辑的字段，不包含主键、主从关联字段和 `erpRow.column`；没有 `erpRow` 的实体不包含 ERP 列（C06 第 10 节）。
   - 已有实体可以从视图重新导入列：新列加入，已有列的设置不变，视图中已删除的列列出来，由管理员处理。
+- CF-19：页面视图的字段带出实体字段的 `default` 和 `compare` 的显示方式（C05 v9，2026-10-31 第 8 批，盘点 B8、B9）：`default` 原样带出（写法同 C06 第 2 节），`compare` 只带 `{"format": ...}`，没有配置时两项都省略。新增行时前端立即按默认值填值、对比按配置的显示方式显示（frontend-page 的 FP-23、FP-24），同旧系统 `useWorkingSetStore.ts` 第 543–585 行、`useMetaColumns.ts` 第 166–176、423–455 行。保存时后端照样按实体字段补默认值（WP-16），与页面视图无关。seed 的实体都没有配这两项，页面视图不变。
+- CF-20：新建页面向导读列注释、按关键字列出表和视图（2026-10-31 第 8 批，盘点 B14、B15）：
+  - `wizard/columns` 的 `label` 取读结构的那个视图（没有视图时为表）的列注释，没有注释的列取列名，同旧系统 `MetaConfigService.listViewColumns`（DBA_COL_COMMENTS）和 `useWizardState.ts` 第 103 行 `headerText: vc.comment || vc.columnName`。例：液体成本核算主表 T_COST_PINGGU_LQ 的 COST_PERBOX 标题为"每盒成本"、M_PERPACK 为"每中盒小盒数"；生成的实体字段 `label` 取向导提交的标题（CF-14）。
+  - `POST /api/config/schema/objects`（C09 v16）：经 db-core 的 `SchemaInspector.objects`（DB-07）列出 d_cg 中名称含关键字的表和视图，最多 100 个，先表后视图、各按名称排列，同旧系统 `MetaConfigService.listDbObjects` 第 621–645 行；只读，管理员才能用。
+- 规则没有"数据项"（C06 v27，盘点 U3）：写了 `dataItems` 的规则保存时按未定义的字段拒绝（422），保存时也不再校验数据项的 SQL；规则包中规则的 `serverOnly`（C07）都为 false。
 
 ## 4. 依赖
 

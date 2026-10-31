@@ -4,7 +4,8 @@
 `configType`、`configKey`、`path`、`message`）。审批流的校验在 `validation_flow.py`。
 
 - 表和列经 db-core 的 `SchemaInspector` 核对；序列、部门经 `deps.py` 的两个协议；
-- SQL（关联 SQL、数据项、导出、审批人、行权限、审批流片段）经调用方的 UnitOfWork 交给数据库解析（`sql_check.QueryChecker`）；
+- SQL（关联 SQL、导出、审批人、行权限、审批流片段）经调用方的 UnitOfWork 交给数据库解析（`sql_check.QueryChecker`）；
+  规则没有数据项（C06 v27 去掉，写了 `dataItems` 的规则按未定义的字段拒绝）；
 - 规则包经 rules-core 的 `RulesEngine.load_pack` 编译，`PackInvalidError`（含依赖成环）转成错误明细。
 """
 
@@ -534,13 +535,6 @@ def _rule(run: Run, entry: Entry) -> None:
             pool = fields if item.source == "row" else master_fields
             if entity_code is not None and item.field not in pool:
                 run.err(entry, f"{at}.conditions[{j}].field", f"字段 {item.field} 不存在")
-    for i, item in enumerate(rule.data_items):
-        for name, ref in item.binds.items():
-            plain = ref.removeprefix("master.")
-            pool = master_fields if ref.startswith("master.") else fields
-            if entity_code is not None and plain not in pool:
-                run.err(entry, f"dataItems[{i}].binds.{name}", f"字段 {ref} 不存在")
-        run.query(entry, f"dataItems[{i}].sql", item.sql, item.binds)
 
 
 def _role(run: Run, entry: Entry) -> None:

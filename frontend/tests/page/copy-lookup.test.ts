@@ -192,6 +192,13 @@ describe('对比显示（FP-15，E29）', () => {
     });
     expect(COMPARE_DOWN_COLOR).toBe('#43a047');
   });
+
+  it('FP-24：配置页选"只显示差值"时为 ↑0.30，"只显示百分比"时为 ↑8.57%，"都显示"时为 ↑0.30 (8.57%)（C05 v9 的 compare.format）', () => {
+    const compare = { value: '3.50', diff: '0.30', percent: '8.57' };
+    const text = (format: 'value' | 'percent' | 'both') =>
+      compareDisplay({ ...price, compare: { format } }, compare)?.text;
+    expect([text('value'), text('percent'), text('both')]).toEqual(['0.30', '8.57%', '0.30 (8.57%)']);
+  });
 });
 
 describe('高级查询', () => {

@@ -72,6 +72,7 @@
     - Lookup 对话框：浏览器 `frontend/tests/e2e/g0-1030.spec.ts:376`"场景 5a"（产品 Lookup 选 392）、`batch7-page-display.spec.ts:56`（产品选择的表头是中文标题、产品ID 列宽 80）通过（第 7 批合并后端到端 42 passed，`.reports/batch7-20261030/merge/e2e-6.txt`）。Lookup 显示列的标题和宽度（甲核对第四节 B7）由第 7 批 PG 组做（没有单独的任务卡；提交 7d00696，C06 v22、C05 v6；报告 `.reports/batch7-20261030/pg-page-display/报告.md`）。
     - 页面视图没有字段的 `default`（甲核对第四节 B8）、对比的显示方式（B9），以及默认值"当前部门名称"取不到（B10）：未做，排在第 8 批。
     - "待独立复核"按用户规则（`.kiro/steering/测试范围.md`）不阻断完成，保持原样，没有改成已复核。
+  - 2026-10-31 第 8 批 G5（`batch8/config-caps`）：B8、B9 已做，见 T-FP-18 和 config 的 T-CF-12（C05 v9：页面视图带 `default`、`compare.format`），上面"页面视图的 `default`、对比显示方式未做"和"后端给出前 E28 的默认值只能按'数值为 0、其他为空'"已不对。E28、E29 的写法在浏览器中的用例（`batch8-config-caps.spec.ts` 场景 2、3）已写好，待主代理合并后运行；运行通过前状态仍为"待联调"。B10 归第 8 批 G4。
 
 ### T-FP-7 汇总行
 
@@ -207,3 +208,13 @@
 - 状态与证据：进行中（模拟验证和浏览器业务例子通过，待独立复核）。2026-10-30 第 7 批 PG 组，提交 7d00696（`batch7/page-display`），报告 `.reports/batch7-20261030/pg-page-display/报告.md`。合并后（2026-10-31，主代理）seed 的变化经配置接口写进 d_cg（`.reports/batch7-20261030/merge/save_config.out.txt`：seed 45 项与 d_cg 相同），后端模拟 1309 passed、真实 196 passed，前端单元 581 passed，整套端到端 42 passed，其中本卡 4 条（`.reports/batch7-20261030/merge/e2e-6.txt`）。
   - 与任务描述的差别：盘点写的是"分类多选"，核对旧系统后按旧系统做成单值的"下拉（可填写）"：旧 `TagSelectCellEditor.vue` 用 naive-ui `NSelect` 的 `tag`、`filterable`、`clearable`，没有 `multiple`；cmx 和 d_cg 的实际数据都是单值。
   - 物料清单页旧系统没有一列配千分位，没有补。
+
+### T-FP-18 新增行立即显示默认值、对比按配置的显示方式
+
+- 归属与目标：实现 FP-23、FP-24（盘点 `.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B8、B9；用户 2026-10-31 回复"开始"）。契约 C05 v9（后端 T-CF-12）。来源：旧系统 `cost-web/src/v3/composables/meta-v3/useWorkingSetStore.ts` 第 543–585 行、`useMetaColumns.ts` 第 166–176、204–219、423–455 行。
+- 前置输入：开始前 T-FP-6、T-CF-12。
+- 负责范围：`contracts/page-view.ts`（`default`、`compare` 由契约缺口改为 C05 v9 的字段）、`modules/page/fields.ts`（`newRowValues`、`optionValues`、`compareDisplay` 已按可选字段实现，本卡核对并补测试）、`grid-adapter/columns.ts`、`renderers/RecordForm.vue`（`options` 下拉，已有）。
+- 交付物：新增行时立即按页面视图的默认值显示，`options` 字段用下拉；对比按 `compare.format` 只显示差值、只显示百分比或都显示。
+- 接入责任：真实联调在本卡的浏览器用例（待主代理合并后运行）。
+- 验收标准：业务例子 E28、E29；模拟验证：配置为只显示差值、只显示百分比、都显示时，当前 3.80、历史 3.50 分别显示"0.30""8.57%""0.30 (8.57%)"。浏览器（d_cg，正式用例 `frontend/tests/e2e/batch8-config-caps.spec.ts` 场景 2、3，`@shared-config`，临时改实体配置、结束时恢复）：成本核算主表商务人员配当前用户姓名、剂型下拉"片剂、胶囊剂"、收率固定 98，admin 点"新增"后新行立即显示 admin 的姓名、片剂、98，剂型双击出这两个值的下拉，不保存；物料清单执行价配"与参考价格对比"，物料 14142 的执行价旁按"只显示差值""只显示百分比"显示，与列表接口的对比结果相同。
+- 状态与证据：进行中（模拟验证通过；浏览器用例已写好，用了 C05 v9 的页面视图，main 的后端读不了，待主代理合并后运行；待独立复核）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`。模拟验证：`tests/page/copy-lookup.test.ts` 新增 FP-24 一条（E28、E29 原有）；契约测试 `samples.test.ts` 去掉 ViewField 的 `default`、`compare` 缺口，与后端 `types.py` 字段一致；`pnpm test` 42 个文件 590 passed。浏览器：两条用例列在 `shared-config` 项目（`e2e-list-shared.txt`），合并后运行 `.reports/batch8-20261031/g5-config-caps/run-e2e.ps1 -Project shared-config -Grep 'B8|B9'`（脚本里的 worktree 路径、端口按合并后的位置改）。

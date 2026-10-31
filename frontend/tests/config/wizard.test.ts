@@ -80,6 +80,40 @@ describe('新建页面向导（FC-07）', () => {
     });
   });
 
+  it('FC-14 输入"T_COST_GOODS"列出表和视图（同旧系统 searchDbObjects，两个字符起查）；导入的标题是列注释', async () => {
+    const backend = createBackend();
+    backend.http.on('POST', '/api/config/schema/objects', {
+      objects: [
+        { name: 'T_COST_GOODS', type: 'table' },
+        { name: 'T_COST_GOODS_PRICE_V', type: 'view' }
+      ]
+    });
+    const wizard = new WizardState(backend.api, backend.store);
+    await wizard.searchObjects('T');
+    expect(backend.http.callsTo('POST', '/api/config/schema/objects')).toHaveLength(0);
+    expect(wizard.state.objectOptions).toEqual([]);
+    await wizard.searchObjects('T_COST_GOODS');
+    expect(backend.http.callsTo('POST', '/api/config/schema/objects')[0].body).toEqual({ keyword: 'T_COST_GOODS' });
+    expect(wizard.state.objectOptions).toEqual([
+      { label: 'T_COST_GOODS', value: 'T_COST_GOODS', kind: '表' },
+      { label: 'T_COST_GOODS_PRICE_V', value: 'T_COST_GOODS_PRICE_V', kind: '视图' }
+    ]);
+    // 液体成本核算主表：后端给出的标题是列注释（COST_PERBOX 每盒成本），没有注释的列是列名；生成时只提交和列名不同的标题
+    backend.http.on('POST', '/api/config/wizard/columns', {
+      primaryKey: 'DOCID',
+      sequence: { name: 'T_COST_PINGGU_LQ_SEQ', exists: true },
+      columns: [
+        { name: 'DOCID', type: 'number', label: 'DOCID', inTable: true },
+        { name: 'COST_PERBOX', type: 'number', label: '每盒成本', inTable: true }
+      ]
+    });
+    const master = wizard.state.master;
+    master.table = 'T_COST_PINGGU_LQ';
+    await wizard.importColumns(master);
+    expect(master.columns.map(c => c.label)).toEqual(['DOCID', '每盒成本']);
+    expect(wizard.request().master.labels).toEqual({ COST_PERBOX: '每盒成本' });
+  });
+
   it('管理员关闭审计：请求中 audit 为 false；单表页仍带 detailMode', async () => {
     const backend = createBackend();
     backend.http.on('POST', '/api/config/wizard/columns', goodsColumns());
