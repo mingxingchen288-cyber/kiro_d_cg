@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_TOTAL_BC",
+  "name": "液体主表每批包材成本",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU_LQ",
+    "category": "calc",
+    "field": "TOTAL_BC",
+    "order": 10,
+    "expression": "sum(map(filter(COST_PACKAGE_LQ, #.DTL_USEFLAG == '印字包材' or #.DTL_USEFLAG == '非印字包材'), #.COST_BATCH)) * (sum(map(filter(COST_MATERIAL_LQ, #.DTL_USEFLAG == '原料'), #.COST_BATCH)) > 0 ? 1 / 1.13 : 1)"
+  }
+}

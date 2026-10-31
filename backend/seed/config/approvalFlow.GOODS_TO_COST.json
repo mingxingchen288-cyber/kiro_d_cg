@@ -181,8 +181,12 @@
         "keyColumn": "DTLID",
         "columns": [
           {
-            "field": "DOCID",
+            "field": "master.DOCID",
             "label": "单据号"
+          },
+          {
+            "field": "master.GOODSNAME",
+            "label": "产品"
           },
           {
             "field": "GOODSNAME",
@@ -222,8 +226,12 @@
         "keyColumn": "DTLID",
         "columns": [
           {
-            "field": "DOCID",
+            "field": "master.DOCID",
             "label": "单据号"
+          },
+          {
+            "field": "master.GOODSNAME",
+            "label": "产品"
           },
           {
             "field": "GOODSNAME",

@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_JGF_BATCH",
+  "name": "液体主表每批加工费",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU_LQ",
+    "category": "calc",
+    "field": "JGF_BATCH",
+    "order": 1,
+    "expression": "SALEMONEY - TOTAL_COST"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MAT_BATCH_QTY",
+  "name": "液体原辅料每批数量",
+  "content": {
+    "layer": "entity",
+    "target": "COST_MATERIAL_LQ",
+    "category": "calc",
+    "field": "BATCH_QTY",
+    "order": 2,
+    "expression": "PER_HL * master.APEX_PL * (1 + EXADD_MATER / 100) / 1000000"
+  }
+}

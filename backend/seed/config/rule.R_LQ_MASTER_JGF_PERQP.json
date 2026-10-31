@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_JGF_PERQP",
+  "name": "液体主表每盒加工费",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU_LQ",
+    "category": "calc",
+    "field": "JGF_PERQP",
+    "order": 3,
+    "expression": "JGF_BATCH / APEX_PL"
+  }
+}

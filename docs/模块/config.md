@@ -78,6 +78,10 @@
   - 保存操作的编码为 `<页面编码>.save`，页面的 `saveOperation` 引用它；`kind` 为 `save`，`propagation` 为 `continue`，`rowNotFound` 取默认的 `skip`，`impact` 为主表实体和各明细实体。
   - 保存操作的 `writableFields` 按生成的实体和页面配置逐个实体列出，不放开全部字段：只包含 `role` 为 `input`、`column` 不为 null、实体的 `fieldDefaults` 和页面都没有设为不可编辑的字段，不包含主键、主从关联字段和 `erpRow.column`；没有 `erpRow` 的实体不包含 ERP 列（C06 第 10 节）。
   - 已有实体可以从视图重新导入列：新列加入，已有列的设置不变，视图中已删除的列列出来，由管理员处理。
+- CF-17：seed 带液体成本核算（2026-10-31 第 8 批 G2，T-CF-10；用户 2026-10-30 对第 4 项回复"要"，2026-10-31 回复"开始"）。按旧页面 cost-pinggu-lq"物料成本核算表_液体"转换（cmx 表元数据 176～178、页面组件 176/177/186/187、页面规则 604/608/609/616/620、列元数据、Lookup 78、T_COST_ROLE_PAGE 143/261），共 24 项新配置，写法同成本核算，不改 config 的代码：
+  - 实体 `COST_PINGGU_LQ`（T_COST_PINGGU_LQ，旧主表 42 列）、`COST_MATERIAL_LQ`、`COST_PACKAGE_LQ`（都写 T_COST_PINGGU_DTL_LQ，分别读 V_COST_PINGGU_MATERIAL_LQ、V_COST_PINGGU_PACKAGE_LQ）；页面 `COST_PINGGU_LQ`（标题"液体成本核算"，明细"原料/辅料""包材"，按钮同旧组件，去掉"同步采购价"）；操作 `COST_PINGGU_LQ.save`、`COST_PINGGU_LQ.generateFromBom`（operations OP-12）；规则 `R_LQ_*` 17 条（主表 12 条计算、1 条"ERP未搭建BOM"整行红底，原辅料、包材各 2 条计算）；Lookup `costMaterial`（物料选择，单价取参考价格 PRICE，旧液体页面用的就是它；成本核算用的是 `costMaterialEffective`）；`role.ADMIN`、`role.技术中心` 加这个页面。
+  - 与旧系统一致：计算公式按旧前端规则 604、616、620（与成本核算不同：每批销售额不除包装规格，每盒成本、每盒加工费按批量除，没有"出厂价 = 外币 × 汇率"）；空值按 0、除以 0 得 0、包材名称三个分支都不匹配时每批数量不变，同旧计算引擎 `calculator.ts`。对 d_cg 493 张液体单据重算的对比见 T-CF-10。
+  - 与旧系统不同：旧规则读 SOURCE_BATCH_QTY 的分支不写（d_cg 没有这一列，cmx 未删除明细中全为空或 0，分支不成立）；明细的分类 DTL_USEFLAG 由物料 Lookup 带出（明细表没有这一列，旧页面原辅料的下拉写的是视图不读的列，不带出时新增行分类为空、主表合计漏算）；旧 VALIDATION 615、619 字段名写成小写 `price`，旧系统取不到值、实际不校验，不写；"同步采购价"用户 2026-10-30 不要（同成本核算）。
 
 ## 4. 依赖
 

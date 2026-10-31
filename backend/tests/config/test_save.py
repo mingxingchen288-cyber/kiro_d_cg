@@ -33,7 +33,8 @@ def test_save_writes_new_version_views_and_packs_in_one_generation(env: Env) -> 
     records = env.records()
     assert {r.id for r in records.values() if r.type in ("pageView", "rulesPack")} == {
         "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心", "pageView/GOODS_PRICE_MANAGE|ADMIN",
-        "pageView/GOODS_PRICE_MANAGE|技术中心", "rulesPack/COST_PINGGU", "rulesPack/COST_GOODS_PRICE"}
+        "pageView/GOODS_PRICE_MANAGE|技术中心", "rulesPack/COST_PINGGU", "rulesPack/COST_GOODS_PRICE",
+        "pageView/COST_PINGGU_LQ|ADMIN", "pageView/COST_PINGGU_LQ|技术中心", "rulesPack/COST_PINGGU_LQ"}
     page = next(d for d in seed_drafts() if d.type == "page")
     changed = page.content | {"title": "成本核算（改）"}
     result = env.save([draft("page", "COST_PINGGU", changed, "成本核算")])
@@ -101,7 +102,8 @@ def test_ensure_admin_role(env: Env) -> None:
     assert env.service.ensure_admin_role() is True
     admin = env.stored("role", "ADMIN")
     assert admin == {"name": "系统管理员", "admin": True,
-                     "pages": {"COST_PINGGU": {"buttons": ["*"]}, "GOODS_PRICE_MANAGE": {"buttons": ["*"]}}}
+                     "pages": {"COST_PINGGU": {"buttons": ["*"]}, "COST_PINGGU_LQ": {"buttons": ["*"]},
+                               "GOODS_PRICE_MANAGE": {"buttons": ["*"]}}}
     env.save([menu])
     generation = env.generation()
     assert env.service.ensure_admin_role() is False
@@ -112,6 +114,7 @@ def test_list_and_get_items(env: Env) -> None:
     env.save(seed_drafts())
     pages = env.service.list_items("page")
     assert [(i.type, i.key, i.version, i.updated_by) for i in pages] == [("page", "COST_PINGGU", 1, "1"),
+                                                                         ("page", "COST_PINGGU_LQ", 1, "1"),
                                                                          ("page", "GOODS_PRICE_MANAGE", 1, "1")]
     assert {i.type for i in env.service.list_items()} == {"approvalFlow", "dict", "entity", "export", "lookup", "menu",
                                                            "operation", "page", "role", "rule"}

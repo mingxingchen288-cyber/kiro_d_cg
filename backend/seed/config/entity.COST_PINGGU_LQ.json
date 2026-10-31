@@ -1,0 +1,456 @@
+{
+  "type": "entity",
+  "key": "COST_PINGGU_LQ",
+  "name": "物料成本核算表_液体",
+  "content": {
+    "table": "T_COST_PINGGU_LQ",
+    "primaryKey": "DOCID",
+    "freezable": true,
+    "fields": [
+      {
+        "name": "DOCID",
+        "column": "DOCID",
+        "label": "ID",
+        "type": "number",
+        "source": "own",
+        "role": "system"
+      },
+      {
+        "name": "GOODSID",
+        "column": "GOODSID",
+        "label": "产品ID",
+        "type": "number",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "GOODSNAME",
+        "column": "GOODSNAME",
+        "label": "产品名称",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "GOODSNAME_EN",
+        "column": "GOODSNAME_EN",
+        "label": "产品英文名",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "STRENGTH",
+        "column": "STRENGTH",
+        "label": "剂量",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "MA_NO",
+        "column": "MA_NO",
+        "label": "注册证号",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "ANNUAL_QTY",
+        "column": "ANNUAL_QTY",
+        "label": "年需求量",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "input",
+        "scale": 2
+      },
+      {
+        "name": "APEX_PL",
+        "column": "APEX_PL",
+        "label": "批量",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "input",
+        "scale": 2
+      },
+      {
+        "name": "MAH",
+        "column": "MAH",
+        "label": "注册持有人",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "P_PERPACK",
+        "column": "P_PERPACK",
+        "label": "包装规格",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "input",
+        "scale": 2
+      },
+      {
+        "name": "S_PERBACK",
+        "column": "S_PERBACK",
+        "label": "每大箱装盒数",
+        "type": "number",
+        "source": "own",
+        "role": "input",
+        "scale": 2
+      },
+      {
+        "name": "PACKTYPE",
+        "column": "PACKTYPE",
+        "label": "包装形式",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "X_PERBACK",
+        "column": "X_PERBACK",
+        "label": "每托大箱数",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "input",
+        "scale": 2
+      },
+      {
+        "name": "M_PERPACK",
+        "column": "M_PERPACK",
+        "label": "每中盒小盒数",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "input",
+        "scale": 2
+      },
+      {
+        "name": "TOTAL_FL",
+        "column": "TOTAL_FL",
+        "label": "每批辅料成本",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "TOTAL_BC",
+        "column": "TOTAL_BC",
+        "label": "每批包材成本",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "TOTAL_YL",
+        "column": "TOTAL_YL",
+        "label": "每批原料成本",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "USESTATUS",
+        "column": "USESTATUS",
+        "label": "状态",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "DOSAGE",
+        "column": "DOSAGE",
+        "label": "剂型",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "YIELD",
+        "column": "YIELD",
+        "label": "收率(%)",
+        "type": "number",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "TOTAL_COST",
+        "column": "TOTAL_COST",
+        "label": "每批物料成本",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "COST_PERBOX",
+        "column": "COST_PERBOX",
+        "label": "每盒成本",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "OUT_PRICE_RMB",
+        "column": "OUT_PRICE_RMB",
+        "label": "出厂价(RMB)",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "input",
+        "scale": 4
+      },
+      {
+        "name": "OUT_PRICE_F",
+        "column": "OUT_PRICE_F",
+        "label": "出厂价(外币)",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "input",
+        "scale": 4
+      },
+      {
+        "name": "SALEMONEY",
+        "column": "SALEMONEY",
+        "label": "每批销售额",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "JGF_BATCH",
+        "column": "JGF_BATCH",
+        "label": "每批加工费",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "COST_PERQP",
+        "column": "COST_PERQP",
+        "label": "每盒生产成本",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "input",
+        "scale": 2
+      },
+      {
+        "name": "JGF_PERQP",
+        "column": "JGF_PERQP",
+        "label": "每盒加工费",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "ML_PERQP",
+        "column": "ML_PERQP",
+        "label": "每盒毛利",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "Y_JG_RE",
+        "column": "Y_JG_RE",
+        "label": "年加工费",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "Y_ML",
+        "column": "Y_ML",
+        "label": "年毛利",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "Y_SALE",
+        "column": "Y_SALE",
+        "label": "年销售额",
+        "type": "number",
+        "grouping": true,
+        "source": "own",
+        "role": "calculated",
+        "scale": 2
+      },
+      {
+        "name": "CUSTOMID",
+        "column": "CUSTOMID",
+        "label": "客户ID",
+        "type": "number",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "CUSTOMNAME",
+        "column": "CUSTOMNAME",
+        "label": "客户名称",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "MEMO",
+        "column": "MEMO",
+        "label": "备注",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "PROJECTNO",
+        "column": "PROJECTNO",
+        "label": "项目号",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "COUNTRY",
+        "column": "COUNTRY",
+        "label": "国家",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "FMNAME",
+        "column": "FMNAME",
+        "label": "币种",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "FORM",
+        "column": "FORM",
+        "label": "包装形式",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "FMRATE",
+        "column": "FMRATE",
+        "label": "汇率",
+        "type": "number",
+        "source": "own",
+        "role": "input",
+        "scale": 2
+      },
+      {
+        "name": "TRANPOSID",
+        "column": "TRANPOSID",
+        "label": "分销商ID",
+        "type": "number",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "LIVERY",
+        "column": "LIVERY",
+        "label": "分销商",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      }
+    ],
+    "details": [
+      {
+        "entity": "COST_MATERIAL_LQ",
+        "parentKey": "DOCID"
+      },
+      {
+        "entity": "COST_PACKAGE_LQ",
+        "parentKey": "DOCID"
+      }
+    ],
+    "fieldDefaults": {
+      "GOODSNAME": {
+        "editable": false
+      },
+      "GOODSNAME_EN": {
+        "editable": false
+      },
+      "STRENGTH": {
+        "editable": false
+      },
+      "MA_NO": {
+        "editable": false
+      },
+      "ANNUAL_QTY": {
+        "editable": false
+      },
+      "MAH": {
+        "editable": false
+      },
+      "P_PERPACK": {
+        "editable": false
+      },
+      "PACKTYPE": {
+        "editable": false
+      },
+      "USESTATUS": {
+        "editable": false
+      },
+      "DOSAGE": {
+        "editable": false
+      },
+      "CUSTOMNAME": {
+        "editable": false
+      },
+      "MEMO": {
+        "editable": false
+      },
+      "PROJECTNO": {
+        "editable": false
+      },
+      "COUNTRY": {
+        "editable": false
+      },
+      "FORM": {
+        "editable": false
+      },
+      "FMRATE": {
+        "editable": false
+      },
+      "TRANPOSID": {
+        "editable": false
+      },
+      "LIVERY": {
+        "editable": false
+      }
+    }
+  }
+}

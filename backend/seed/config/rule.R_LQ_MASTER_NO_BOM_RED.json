@@ -1,0 +1,28 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_NO_BOM_RED",
+  "name": "液体：ERP未搭建BOM的单据整行红底",
+  "content": {
+    "layer": "page",
+    "target": "COST_PINGGU_LQ",
+    "category": "ui",
+    "field": null,
+    "order": 200,
+    "when": {
+      "logic": "AND",
+      "conditions": [
+        {
+          "source": "row",
+          "field": "MEMO",
+          "op": "eq",
+          "value": "ERP未搭建BOM"
+        }
+      ]
+    },
+    "effect": {
+      "rowStyle": {
+        "backgroundColor": "#ffcccc"
+      }
+    }
+  }
+}

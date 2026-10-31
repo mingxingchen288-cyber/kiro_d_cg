@@ -1,7 +1,7 @@
 /**
  * T-AS-7 样例二：在浏览器中完成 C06 7.9、7.10 两个审批场景（真实联调，浏览器 → 前端 → 后端 → d_cg）。
  * 发起人 jishu01（部门 18 技术中心，角色"技术中心"），审批人 admin。测试数据自己建、用例结束时自动删（support.ts 的 data）：
- * - 成本单由 admin 经接口新建（备注带 PF_TEST）；ERP 物料（模拟 ERP 同步写入）和液体成本单平台写不了，由
+ * - 成本单由 admin 经接口新建（备注带 PF_TEST）；ERP 物料（模拟 ERP 同步写入）和液体成本单由
  *   `backend/tests/e2e/sample_two.py` 直接写表、删除（见那里的说明）。
  *
  * 1. 7.9：admin 新建一张"评估中"的成本单（硬脂酸镁客户指定、玉米淀粉不是）；jishu01 在成本核算页取消硬脂酸镁的
@@ -10,7 +10,7 @@
  * 2. 7.10：ERP 物料（参考价格 10，执行价为空）、含它的两张成本单 D1、D2 和一张液体成本单。jishu01 打开物料清单及成本，
  *    这一行是 ERP 行（绿底，物料名称不能编辑），把单价改成 12 并保存，提示已提交审批；admin 在待办中打开详情，
  *    受影响单据"成本核算（原辅料）"有 D1、D2 两行，取消 D2 后 D2 恢复为 10.00，通过；D1 单价 12、金额 120，D2 不变，
- *    物料清单执行价 12，液体明细单价 12。
+ *    物料清单执行价 12，液体明细单价 12、按液体的计算规则重算（第 8 批液体成本核算注册成实体后，每批成本 50 → 60）。
  */
 import {
   type Api,
@@ -154,7 +154,8 @@ test('7.10 物料清单改价：ERP 行只能改单价，审批人取消一张�
   };
   expect(await price(d1.docId)).toEqual(['12', '120']);
   expect(await price(d2.docId)).toEqual(['10', '100']);
-  expect(data.showGoods(goodsid, lq.dtlid)).toEqual({ zxPrice: '12', lqPrice: '12', lqCostBatch: '50' });
+  // 液体明细：每批数量 5（mg/ml 5 × 批量 1000000 / 1000000）× 单价 12，按液体规则重算（C06 7.5）
+  expect(data.showGoods(goodsid, lq.dtlid)).toEqual({ zxPrice: '12', lqPrice: '12', lqCostBatch: '60' });
 
   // WP-20：审批通过时写修改人（审批人 admin，同旧系统 DynamicDataService 写 UPDATE_BY），视图按 UPDATE_BY 判断这一行
   // 已被人工修改，重新打开后变成黄底（旧 GRID_STYLE 的 erp-updated）

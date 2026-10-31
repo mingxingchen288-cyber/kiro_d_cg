@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import pytest
@@ -77,6 +78,39 @@ def test_c06_calc_rule_sample_e02() -> None:
     assert result["ok"] is True
     batch = {r["rowKey"]: r["computed"]["BATCH_QTY"] for r in result["rows"] if r["entity"] == "COST_PACKAGE"}
     assert batch == {"1": "1020", "2": "5.1"}
+
+
+def test_seed_liquid_rules_sample_e43() -> None:
+    """E43（第 8 批 G2）：seed 的液体规则（R_LQ_*，旧 cost-pinggu-lq 的 604、616、620）编成液体成本核算的规则包，对一张液体单据
+    算出每批数量、每批成本和主表各项；名称不在包材三个分支里的铝箔保持原来的每批数量 1200。按 WP-15 保留 8 位小数比较。"""
+    pack = build_pack(Catalog({}).merged(seed_drafts()), "COST_PINGGU_LQ", 1, ENGINE.core_version())
+    assert {r.id for r in pack.rules} == {d.key for d in seed_drafts() if d.type == "rule" and d.key.startswith("R_LQ_")}
+    handle = ENGINE.load_pack(pack_bytes(pack))
+    context = {"userId": "1", "departmentId": "10", "role": "ADMIN", "today": "2026-10-31", "origin": "user"}
+    master = {"APEX_PL": "300000", "P_PERPACK": "50", "S_PERBACK": "576", "X_PERBACK": "12", "YIELD": "95", "OUT_PRICE_RMB": "2",
+              "ANNUAL_QTY": "1200000", "COST_PERQP": "0.6"}
+    material = [{"rowKey": "1", "values": {"DTL_USEFLAG": "原料", "GOODSNAME": "原料甲", "PER_HL": "10", "EXADD_MATER": "2", "PRICE": "100"}},
+                {"rowKey": "2", "values": {"DTL_USEFLAG": "辅料", "GOODSNAME": "辅料乙", "PER_HL": "500", "EXADD_MATER": None, "PRICE": "0.2"}}]
+    package = [{"rowKey": "3", "values": {"DTL_USEFLAG": "印字包材", "GOODSNAME": "口服液瓶", "EXADD_MATER": "1", "PRICE": "0.5"}},
+               {"rowKey": "4", "values": {"DTL_USEFLAG": "非印字包材", "GOODSNAME": "大纸箱", "EXADD_MATER": None, "PRICE": "5"}},
+               {"rowKey": "5", "values": {"DTL_USEFLAG": "非印字包材", "GOODSNAME": "托盘", "EXADD_MATER": None, "PRICE": "50"}},
+               {"rowKey": "6", "values": {"DTL_USEFLAG": "印字包材", "GOODSNAME": "药品包装用铝箔", "EXADD_MATER": None,
+                                          "BATCH_QTY": "1200", "PRICE": "0.02"}}]
+    request = {"purpose": "operation", "operation": "COST_PINGGU_LQ.save", "page": "COST_PINGGU_LQ", "phase": "commit",
+               "context": context, "changed": [], "data": {},
+               "document": {"entity": "COST_PINGGU_LQ", "master": {"rowKey": "9", "values": master},
+                            "details": {"COST_MATERIAL_LQ": material, "COST_PACKAGE_LQ": package}}}
+    result = json.loads(ENGINE.evaluate(handle, json.dumps(request, ensure_ascii=False)))
+    assert result["ok"] is True
+    computed = {r["rowKey"]: {k: format(Decimal(v).quantize(Decimal("1e-8"), ROUND_HALF_UP).normalize(), "f")
+                              for k, v in r["computed"].items()} for r in result["rows"]}
+    assert {k: (v["BATCH_QTY"], v["COST_BATCH"]) for k, v in computed.items() if k != "9"} == {
+        "1": ("3.06", "306"), "2": ("150", "30"), "3": ("303000", "151500"), "4": ("521", "2605"), "5": ("44", "2200"),
+        "6": ("1200", "24")}
+    assert computed["9"] == {"TOTAL_YL": "270.79646018", "TOTAL_FL": "26.54867257", "TOTAL_BC": "138344.24778761",
+                             "TOTAL_COST": "138641.59292035", "SALEMONEY": "570000", "JGF_BATCH": "431358.40707965",
+                             "COST_PERBOX": "0.46213864", "JGF_PERQP": "1.43786136", "ML_PERQP": "0.83786136",
+                             "Y_JG_RE": "1725433.62831858", "Y_ML": "1005433.62831858", "Y_SALE": "2280000"}
 
 
 def test_c06_ui_rule_sample_whole_row() -> None:

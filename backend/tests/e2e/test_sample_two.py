@@ -4,9 +4,10 @@
 1. 7.9：jishu01 把"评估中"成本单里客户指定的硬脂酸镁改成不是客户指定 → 进入 TECH_CUSTOMER_MATERIAL，只冻结这张成本单，
    没有受影响单据，业务表不变；admin 通过后这一行写成不是客户指定，冻结解除。
 2. 7.10：jishu01 在物料清单把 ERP 物料的单价（执行价）10 改成 12 → 进入 GOODS_TO_COST（这一行 ISERP = 1，ZX_PRICE 必须
-   审批：approvalRequired 因单据进入了审批、且从 GOODS_PRICE_MANAGE 保存而放行）；含这个物料的成本单 D1、D2 和液体明细冻结，
-   列给审批人勾选。admin 取消 D2 那一行，预览中 D2 恢复为修改前；通过后物料清单执行价 12，D1 单价 12、金额和主表按计算规则
-   重算，D2 不变，液体明细单价 12（液体成本没有注册实体，按 C06 7.5 只改写入的列、不重算）。
+   审批：approvalRequired 因单据进入了审批、且从 GOODS_PRICE_MANAGE 保存而放行）；含这个物料的成本单 D1、D2 和液体成本单
+   （第 8 批注册成实体 COST_PINGGU_LQ，整张冻结）列给审批人勾选。admin 取消 D2 那一行，预览中 D2 恢复为修改前；通过后物料清单
+   执行价 12，D1 单价 12、金额和主表按计算规则重算，D2 不变，液体明细单价 12、按液体的计算规则重算（每批成本 50 → 60，
+   主表每批辅料成本 60），同旧 PKG_APPROVAL_PRICE_ACTIONS.GOODS_TO_COST 改单价后调液体重算（C06 7.5）。
 
 测试数据由 sample_two.CreatedData 新建、结束时删掉（docstring 见 sample_two.py）；测试产生的审批、投递、站内通知、命令记录
 由 dcg.Cleanup 删掉。结束时核对几张业务表的行数与开始时相同。
@@ -34,6 +35,7 @@ from .sample_two import (
     detail_rows,
     freezes,
     goods_row,
+    liquid_master,
     liquid_row,
     list_price,
     master_row,
@@ -176,7 +178,7 @@ def test_goods_price_change_updates_only_checked_documents(admin: Browser, tech:
     created = create_documents(admin, cleanup, data, [new_document("H5 联调样例三 D1", [{"GOODSID": goodsid, "PER_HL": "10", "PRICE": "10"}]),
                                                       new_document("H5 联调样例三 D2", [{"GOODSID": goodsid, "PER_HL": "10", "PRICE": "10"}])])
     (d1, [d1_row]), (d2, [d2_row]) = created
-    _, lq_row = data.add_liquid(goodsid, per_hl="5", price="10", batch_qty="5", cost_batch="50")
+    lq_doc, lq_row = data.add_liquid(goodsid, per_hl="5", price="10", batch_qty="5", cost_batch="50")
     d1_before, d2_before = (master_row(dcg, d1), detail_rows(dcg, d1)), (master_row(dcg, d2), detail_rows(dcg, d2))
     assert [D(str(d["cost_batch"])) for d in d1_before[1]] == [D(100)]  # 每批数量 10 × 单价 10
     goods_before, lq_before = goods_row(dcg, goodsid), liquid_row(dcg, lq_row)
@@ -187,7 +189,7 @@ def test_goods_price_change_updates_only_checked_documents(admin: Browser, tech:
     change = {"entity": GOODS_ENTITY, "master": {"op": "modify", "rowKey": goodsid, "changes": {"ZX_PRICE": "12"}}, "details": []}
     approval_id = submitted(run(tech, cleanup, GOODS_PAGE, GOODS_SAVE, [change]), GOODS_ENTITY, goodsid, "GOODS_TO_COST")
     assert freezes(dcg, approval_id) == {("T_COST_GOODS", goodsid), ("T_COST_PINGGU", d1), ("T_COST_PINGGU", d2),
-                                         ("T_COST_PINGGU_DTL_LQ", lq_row)}
+                                         ("T_COST_PINGGU_LQ", lq_doc)}  # 液体明细的表注册过：整张单据冻结（C06 7.4）
     assert goods_row(dcg, goodsid) == goods_before and liquid_row(dcg, lq_row) == lq_before
     assert (master_row(dcg, d1), detail_rows(dcg, d1)) == d1_before
 
@@ -205,6 +207,7 @@ def test_goods_price_change_updates_only_checked_documents(admin: Browser, tech:
     assert blocks["costPackage"]["rows"] == [] and blocks["lqPackage"]["rows"] == []
     assert [r["ref"]["key"] for r in blocks["lqMaterial"]["rows"]] == [lq_row]
     assert column(blocks["lqMaterial"], "单价") == [("10.00", "12.00")]
+    assert column(blocks["lqMaterial"], "金额") == [("50.00", "60.00")]  # 修改表注册过：按液体的规则重算（C06 7.6）
 
     # 取消 D2 那一行：预览中 D2 恢复为修改前
     checked = [{"flow": "GOODS_TO_COST", "block": "costMaterial", "key": d1_row},
@@ -237,9 +240,11 @@ def test_goods_price_change_updates_only_checked_documents(admin: Browser, tech:
     assert D(str(d1_master["total_fl"])) == D(120) and d1_master["total_cost"] != d1_before[0]["total_cost"]  # type: ignore[index]
     # D2：没有勾选，不变
     assert (master_row(dcg, d2), detail_rows(dcg, d2)) == d2_before
-    # 液体明细：单价写成 12；液体成本没有注册实体，不重算，金额仍为 50
+    # 液体明细：单价写成 12，按液体规则重算：每批数量 5（mg/ml 5 × 批量 1000000 / 1000000），每批成本 60，主表每批辅料成本 60
     lq_after = liquid_row(dcg, lq_row)
-    assert D(str(lq_after["price"])) == D(12) and {**lq_after, "price": None} == {**lq_before, "price": None}
+    assert (D(str(lq_after["price"])), D(str(lq_after["batch_qty"])), D(str(lq_after["cost_batch"]))) == (D(12), D(5), D(60))
+    lq_master = liquid_master(dcg, lq_doc)
+    assert (D(str(lq_master["total_fl"])), D(str(lq_master["total_cost"]))) == (D(60), D(60))
 
     delete_documents(admin, cleanup, [d1, d2])
     assert [master_row(dcg, d) for d in (d1, d2)] == [None, None]

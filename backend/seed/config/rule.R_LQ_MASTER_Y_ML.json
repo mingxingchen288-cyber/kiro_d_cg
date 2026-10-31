@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_Y_ML",
+  "name": "液体主表年毛利",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU_LQ",
+    "category": "calc",
+    "field": "Y_ML",
+    "order": 6,
+    "expression": "ML_PERQP * ANNUAL_QTY"
+  }
+}

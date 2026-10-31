@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MAT_COST_BATCH",
+  "name": "液体原辅料每批成本",
+  "content": {
+    "layer": "entity",
+    "target": "COST_MATERIAL_LQ",
+    "category": "calc",
+    "field": "COST_BATCH",
+    "order": 3,
+    "expression": "BATCH_QTY * PRICE"
+  }
+}

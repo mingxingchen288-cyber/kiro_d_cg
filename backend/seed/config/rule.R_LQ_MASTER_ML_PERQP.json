@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_ML_PERQP",
+  "name": "液体主表每盒毛利",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU_LQ",
+    "category": "calc",
+    "field": "ML_PERQP",
+    "order": 4,
+    "expression": "JGF_PERQP - COST_PERQP"
+  }
+}

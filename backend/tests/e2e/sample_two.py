@@ -5,9 +5,11 @@ d_cg 的业务数据不改：两个审批流涉及的单据都由这里新建，
   单价都等于物料清单的单价（执行价为空时取参考价格，115 为 75、310 为 22），不触发 COST_TO_GOODS。
 - 7.10：物料清单里新增一个 ERP 物料（模拟 ERP 同步写入：ISERP = 1、UPDATE_BY = 'ERP_SYNC'，参考价格 10、执行价为空，
   用途"辅料"），主键取 T_COST_GOODS_SEQ；admin 经平台新建两张成本单 D1、D2，各有一行这个物料（每片含量 10、单价 10）；
-  液体成本核算没有在平台注册（只有表和视图），液体主表、明细各一行直接写 SQL（T_COST_PINGGU_LQ_SEQ、T_COST_PINGGU_DTL_LQ_SEQ）。
-- 删除：成本单经平台删除（`delete_documents`）；平台删不了的（ERP 物料：删除满足 approvalRequired 条件的行必须审批，
-  液体成本没注册）和中途失败留下的，由 `drop_all` 直接按主键删。
+  液体主表（批量 1000000）、明细（这个物料，mg/ml 5、单价 10，每批数量 5、每批成本 50，与液体规则算出的相同）各一行直接写 SQL
+  （T_COST_PINGGU_LQ_SEQ、T_COST_PINGGU_DTL_LQ_SEQ）。液体成本核算第 8 批注册成实体（COST_PINGGU_LQ），这里仍直接写表，
+  与第 6 批相同的数据。
+- 删除：成本单经平台删除（`delete_documents`）；平台删不了的（ERP 物料：删除满足 approvalRequired 条件的行必须审批）、
+  液体成本单和中途失败留下的，由 `drop_all` 直接按主键删。
 
 用到的物料单价在运行时从 T_COST_GOODS_PRICE_V 读出，不写死。
 """
@@ -82,11 +84,11 @@ class CreatedData:
         return goodsid
 
     def add_liquid(self, goodsid: str, per_hl: str, price: str, batch_qty: str, cost_batch: str) -> tuple[str, str]:
-        """液体成本单一张，明细一行这个物料（液体成本核算没有在平台注册，直接写表）。"""
+        """液体成本单一张（批量 1000000），明细一行这个物料（直接写表）。"""
         with self.engine.begin() as conn:
             docid = str(conn.execute(text("SELECT t_cost_pinggu_lq_seq.NEXTVAL FROM dual")).scalar_one())
             dtlid = str(conn.execute(text("SELECT t_cost_pinggu_dtl_lq_seq.NEXTVAL FROM dual")).scalar_one())
-            conn.execute(text("INSERT INTO t_cost_pinggu_lq (docid, goodsname, memo) VALUES (:d, 'H5联调液体单', 'H5 联调样例三')"),
+            conn.execute(text("INSERT INTO t_cost_pinggu_lq (docid, goodsname, memo, apex_pl) VALUES (:d, 'H5联调液体单', 'H5 联调样例三', 1000000)"),
                          {"d": int(docid)})
             conn.execute(text("INSERT INTO t_cost_pinggu_dtl_lq (dtlid, docid, goodsid, per_hl, price, batch_qty, cost_batch) "
                               "VALUES (:t, :d, :g, :h, :p, :q, :c)"),
@@ -125,6 +127,10 @@ def liquid_row(engine: Engine, dtlid: str) -> dict[str, Any]:
     return one(engine, "SELECT * FROM t_cost_pinggu_dtl_lq WHERE dtlid = :t", t=int(dtlid))
 
 
+def liquid_master(engine: Engine, docid: str) -> dict[str, Any]:
+    return one(engine, "SELECT * FROM t_cost_pinggu_lq WHERE docid = :d", d=int(docid))
+
+
 def freezes(engine: Engine, approval_id: str) -> set[tuple[str, str]]:
     return {(r["root_table"], r["record_key"]) for r in rows(engine, "SELECT root_table, record_key FROM pf_approval_freeze "
                                                                      "WHERE approval_id = :a", a=int(approval_id))}
@@ -133,7 +139,7 @@ def freezes(engine: Engine, approval_id: str) -> set[tuple[str, str]]:
 # ---------------------------------------------------------------- 浏览器用例（frontend/tests/e2e/sample-two.spec.ts）调用
 
 def main() -> None:
-    """浏览器用例建、删平台写不了的测试数据（ERP 物料、液体成本单），输出 JSON。成本单由浏览器用例经接口建、删。
+    """浏览器用例建、删直接写表的测试数据（ERP 物料、液体成本单），输出 JSON。成本单由浏览器用例经接口建、删。
 
     用法（backend 目录）：
       uv run python -m tests.e2e.sample_two goods --price 10

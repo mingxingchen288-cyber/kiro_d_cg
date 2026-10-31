@@ -1,0 +1,391 @@
+{
+  "type": "page",
+  "key": "COST_PINGGU_LQ",
+  "name": "液体成本核算",
+  "content": {
+    "title": "液体成本核算",
+    "layout": "masterDetail",
+    "detailMode": "tabs",
+    "audit": true,
+    "saveOperation": "COST_PINGGU_LQ.save",
+    "master": {
+      "entity": "COST_PINGGU_LQ",
+      "fields": {
+        "DOCID": {
+          "pinned": "left",
+          "searchable": true
+        },
+        "GOODSID": {
+          "lookup": {
+            "code": "costGoods",
+            "fill": {
+              "GOODSID": "GOODSID",
+              "GOODSNAME": "GOODSNAME",
+              "STRENGTH": "STRENGTH",
+              "MA_NO": "MA_NO",
+              "APEX_PL": "APEX_PL",
+              "MAH": "MAH",
+              "P_PERPACK": "P_PERPACK",
+              "S_PERBACK": "S_PERBACK",
+              "CUSTOMID": "CUSTOMID",
+              "CUSTOMNAME": "CUSTOMNAME",
+              "MEMO": "MEMO",
+              "LIVERY": "LIVERY"
+            }
+          },
+          "searchable": true
+        },
+        "GOODSNAME": {
+          "searchable": true
+        },
+        "GOODSNAME_EN": {
+          "searchable": true
+        },
+        "STRENGTH": {
+          "searchable": true
+        },
+        "MA_NO": {
+          "searchable": true
+        },
+        "ANNUAL_QTY": {
+          "searchable": true
+        },
+        "APEX_PL": {
+          "searchable": true
+        },
+        "MAH": {
+          "searchable": true
+        },
+        "P_PERPACK": {
+          "searchable": true
+        },
+        "S_PERBACK": {
+          "searchable": true
+        },
+        "PACKTYPE": {
+          "searchable": true
+        },
+        "X_PERBACK": {
+          "searchable": true
+        },
+        "M_PERPACK": {
+          "searchable": true
+        },
+        "TOTAL_FL": {
+          "searchable": true
+        },
+        "TOTAL_BC": {
+          "searchable": true
+        },
+        "TOTAL_YL": {
+          "searchable": true
+        },
+        "USESTATUS": {
+          "searchable": true
+        },
+        "DOSAGE": {
+          "searchable": true
+        },
+        "YIELD": {
+          "searchable": true
+        },
+        "TOTAL_COST": {
+          "searchable": true
+        },
+        "COST_PERBOX": {
+          "searchable": true
+        },
+        "OUT_PRICE_RMB": {
+          "searchable": true
+        },
+        "OUT_PRICE_F": {
+          "searchable": true
+        },
+        "SALEMONEY": {
+          "searchable": true
+        },
+        "JGF_BATCH": {
+          "searchable": true
+        },
+        "COST_PERQP": {
+          "searchable": true
+        },
+        "JGF_PERQP": {
+          "searchable": true
+        },
+        "ML_PERQP": {
+          "searchable": true
+        },
+        "Y_JG_RE": {
+          "searchable": true
+        },
+        "Y_ML": {
+          "searchable": true
+        },
+        "Y_SALE": {
+          "searchable": true
+        },
+        "CUSTOMID": {
+          "lookup": {
+            "code": "costCustomer",
+            "fill": {
+              "CUSTOMID": "CUSTOMID",
+              "CUSTOMNAME": "CUSTOMNAME",
+              "COUNTRY": "COUNTRY",
+              "TRANPOSID": "TRANPOSID",
+              "LIVERY": "LIVERY"
+            }
+          },
+          "searchable": true
+        },
+        "CUSTOMNAME": {
+          "searchable": true
+        },
+        "MEMO": {
+          "searchable": true
+        },
+        "PROJECTNO": {
+          "searchable": true
+        },
+        "COUNTRY": {
+          "searchable": true
+        },
+        "FMNAME": {
+          "lookup": {
+            "code": "formoney",
+            "fill": {
+              "FMNAME": "FMNAME",
+              "FMRATE": "FMRATE"
+            }
+          },
+          "searchable": true
+        },
+        "FORM": {
+          "searchable": true
+        },
+        "FMRATE": {
+          "searchable": true
+        },
+        "TRANPOSID": {
+          "searchable": true
+        },
+        "LIVERY": {
+          "searchable": true
+        }
+      },
+      "buttons": [
+        {
+          "action": "addRow",
+          "label": "新增"
+        },
+        {
+          "action": "copyRow",
+          "label": "复制"
+        },
+        {
+          "action": "deleteRow",
+          "label": "删除"
+        },
+        {
+          "action": "generateFromBom",
+          "label": "由BOM生成明细",
+          "operation": "COST_PINGGU_LQ.generateFromBom",
+          "requiresSelection": true
+        },
+        {
+          "action": "saveGridConfig",
+          "label": "保存列配置"
+        }
+      ],
+      "grid": {
+        "sideBar": true,
+        "cellSelection": true,
+        "groupBy": []
+      }
+    },
+    "details": [
+      {
+        "entity": "COST_MATERIAL_LQ",
+        "title": "原料/辅料",
+        "fields": {
+          "DTLID": {
+            "searchable": true
+          },
+          "DOCID": {
+            "searchable": true
+          },
+          "DTL_USEFLAG": {
+            "searchable": true
+          },
+          "GOODSID": {
+            "lookup": {
+              "code": "costMaterial",
+              "fill": {
+                "GOODSID": "GOODSID",
+                "GOODSNAME": "GOODSNAME",
+                "PRICE": "PRICE",
+                "STANDARDTYPE": "STANDARDTYPE",
+                "GOODSTYPE": "GOODSTYPE",
+                "FACTORYNAME": "FACTORYNAME",
+                "GOODSNAME_EN": "GOODSNAME_EN",
+                "DTL_USEFLAG": "USEFLAG"
+              }
+            },
+            "searchable": true
+          },
+          "GOODSNAME": {
+            "searchable": true
+          },
+          "PER_HL": {
+            "searchable": true
+          },
+          "EXADD_MATER": {
+            "searchable": true
+          },
+          "BATCH_QTY": {
+            "searchable": true
+          },
+          "SUQTY": {
+            "searchable": true
+          },
+          "PRICE": {
+            "searchable": true
+          },
+          "BASE_PRICE": {
+            "searchable": true
+          },
+          "COST_BATCH": {
+            "searchable": true
+          },
+          "STANDARDTYPE": {
+            "searchable": true
+          },
+          "GOODSTYPE": {
+            "searchable": true
+          },
+          "MEMO": {
+            "searchable": true
+          },
+          "FACTORYNAME": {
+            "searchable": true
+          },
+          "GOODSNAME_EN": {
+            "searchable": true
+          }
+        },
+        "buttons": [
+          {
+            "action": "addRow",
+            "label": "新增"
+          },
+          {
+            "action": "copyRow",
+            "label": "复制"
+          },
+          {
+            "action": "deleteRow",
+            "label": "删除"
+          },
+          {
+            "action": "saveGridConfig",
+            "label": "保存列配置"
+          }
+        ],
+        "grid": {
+          "sideBar": true,
+          "cellSelection": true,
+          "groupBy": []
+        }
+      },
+      {
+        "entity": "COST_PACKAGE_LQ",
+        "title": "包材",
+        "fields": {
+          "DTLID": {
+            "searchable": true
+          },
+          "DOCID": {
+            "searchable": true
+          },
+          "DTL_USEFLAG": {
+            "searchable": true
+          },
+          "GOODSID": {
+            "lookup": {
+              "code": "costMaterial",
+              "fill": {
+                "GOODSID": "GOODSID",
+                "GOODSNAME": "GOODSNAME",
+                "PRICE": "PRICE",
+                "FACTORYNAME": "FACTORYNAME",
+                "GOODSTYPE": "GOODSTYPE",
+                "GOODSNAME_EN": "GOODSNAME_EN",
+                "DTL_USEFLAG": "USEFLAG"
+              }
+            },
+            "searchable": true
+          },
+          "GOODSNAME": {
+            "searchable": true
+          },
+          "PER_HL": {
+            "searchable": true
+          },
+          "EXADD_MATER": {
+            "searchable": true
+          },
+          "BATCH_QTY": {
+            "searchable": true
+          },
+          "SUQTY": {
+            "searchable": true
+          },
+          "PRICE": {
+            "searchable": true
+          },
+          "BASE_PRICE": {
+            "searchable": true
+          },
+          "COST_BATCH": {
+            "searchable": true
+          },
+          "FACTORYNAME": {
+            "searchable": true
+          },
+          "GOODSTYPE": {
+            "searchable": true
+          },
+          "MEMO": {
+            "searchable": true
+          },
+          "GOODSNAME_EN": {
+            "searchable": true
+          }
+        },
+        "buttons": [
+          {
+            "action": "addRow",
+            "label": "新增"
+          },
+          {
+            "action": "copyRow",
+            "label": "复制"
+          },
+          {
+            "action": "deleteRow",
+            "label": "删除"
+          },
+          {
+            "action": "saveGridConfig",
+            "label": "保存列配置"
+          }
+        ],
+        "grid": {
+          "sideBar": true,
+          "cellSelection": true,
+          "groupBy": []
+        }
+      }
+    ]
+  }
+}

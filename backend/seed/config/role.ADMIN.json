@@ -11,6 +11,11 @@
           "*"
         ]
       },
+      "COST_PINGGU_LQ": {
+        "buttons": [
+          "*"
+        ]
+      },
       "GOODS_PRICE_MANAGE": {
         "buttons": [
           "*"

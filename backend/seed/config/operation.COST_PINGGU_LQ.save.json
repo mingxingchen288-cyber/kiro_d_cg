@@ -1,0 +1,62 @@
+{
+  "type": "operation",
+  "key": "COST_PINGGU_LQ.save",
+  "name": "液体成本核算保存",
+  "content": {
+    "label": "保存",
+    "kind": "save",
+    "writableFields": {
+      "COST_PINGGU_LQ": [
+        "GOODSID",
+        "GOODSNAME",
+        "GOODSNAME_EN",
+        "STRENGTH",
+        "MA_NO",
+        "ANNUAL_QTY",
+        "APEX_PL",
+        "MAH",
+        "P_PERPACK",
+        "S_PERBACK",
+        "PACKTYPE",
+        "X_PERBACK",
+        "M_PERPACK",
+        "USESTATUS",
+        "DOSAGE",
+        "YIELD",
+        "OUT_PRICE_RMB",
+        "OUT_PRICE_F",
+        "COST_PERQP",
+        "CUSTOMID",
+        "CUSTOMNAME",
+        "MEMO",
+        "PROJECTNO",
+        "COUNTRY",
+        "FMNAME",
+        "FORM",
+        "FMRATE",
+        "TRANPOSID",
+        "LIVERY"
+      ],
+      "COST_MATERIAL_LQ": [
+        "GOODSID",
+        "PER_HL",
+        "EXADD_MATER",
+        "PRICE",
+        "MEMO"
+      ],
+      "COST_PACKAGE_LQ": [
+        "GOODSID",
+        "PER_HL",
+        "EXADD_MATER",
+        "PRICE",
+        "MEMO"
+      ]
+    },
+    "impact": [
+      "COST_PINGGU_LQ",
+      "COST_MATERIAL_LQ",
+      "COST_PACKAGE_LQ"
+    ],
+    "propagation": "continue"
+  }
+}

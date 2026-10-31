@@ -54,7 +54,7 @@ def test_every_page_view_and_pack_generated(env: Env) -> None:
         "rulesPack/COST_PINGGU", "rulesPack/COST_GOODS_PRICE", "rulesPack/COST_PINGGU_LQ"}
     assert {k for k, r in records.items() if r.type == "pageView"} == {
         "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心", "pageView/GOODS_PRICE_MANAGE|ADMIN",
-        "pageView/GOODS_PRICE_MANAGE|技术中心"}
+        "pageView/GOODS_PRICE_MANAGE|技术中心", "pageView/COST_PINGGU_LQ|ADMIN", "pageView/COST_PINGGU_LQ|技术中心"}
 
 
 # ---------------------------------------------------------------- 引用的实体、字段、操作、页面、审批流、Lookup、字典都存在
@@ -185,9 +185,9 @@ def test_pack_compiles_pass(env: Env) -> None:
     """新规则和 seed 的 17 条计算规则一起编进成本核算的规则包（按规则编码排列）。"""
     assert problems(env, MEMO_RULE) == []
     assert env.engine.packs[-1].pack.pack_id == "COST_PINGGU"
-    # 物料清单页的行底色规则（target GOODS_PRICE_MANAGE）在物料清单的规则包里
+    # 物料清单页的行底色规则（target GOODS_PRICE_MANAGE）在物料清单的规则包里，液体成本核算的规则（target 以 _LQ 结尾）在液体的
     seed_rules = [key for (config_type, key), d in WORLD.items()
-                  if config_type == "rule" and d.content["target"] != "GOODS_PRICE_MANAGE"]
+                  if config_type == "rule" and d.content["target"] != "GOODS_PRICE_MANAGE" and not d.content["target"].endswith("_LQ")]
     assert [r.id for r in env.engine.packs[-1].pack.rules] == sorted([*seed_rules, "R_MEMO"])
 
 

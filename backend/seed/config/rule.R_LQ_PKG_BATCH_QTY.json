@@ -1,0 +1,26 @@
+{
+  "type": "rule",
+  "key": "R_LQ_PKG_BATCH_QTY",
+  "name": "液体包材每批数量",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PACKAGE_LQ",
+    "category": "calc",
+    "field": "BATCH_QTY",
+    "order": 1,
+    "branches": [
+      {
+        "when": "matches(GOODSNAME, '桶|说明书|小盒|标签|瓶|盖注射器|适配器|量杯|勺|分度器')",
+        "expression": "master.APEX_PL * (1 + EXADD_MATER / 100)"
+      },
+      {
+        "when": "matches(GOODSNAME, '大纸箱')",
+        "expression": "ceil(master.APEX_PL / master.S_PERBACK * (1 + EXADD_MATER / 100))"
+      },
+      {
+        "when": "matches(GOODSNAME, '托盘')",
+        "expression": "ceil(master.APEX_PL / (master.S_PERBACK * master.X_PERBACK) * (1 + EXADD_MATER / 100))"
+      }
+    ]
+  }
+}
