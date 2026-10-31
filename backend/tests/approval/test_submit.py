@@ -193,6 +193,7 @@ def test_e39_cost_documents_listed_and_checked() -> None:
     [approval] = h.save(YANGNA, "GOODS_PRICE_MANAGE", [goods(25, ZX_PRICE="80")]).state.approvals
     with h.uow.begin() as uow:
         rows = h.store.affected(uow, approval.approval_id)
-    assert [(r.block, r.key, r.checked) for r in rows] == [("costMaterial", "206323", True), ("costMaterial", "103681", True)]
+    # 按修改表的主键排列（同旧系统 ORDER BY 主键），不按关联条件查询返回的先后
+    assert [(r.block, r.key, r.checked) for r in rows] == [("costMaterial", "103681", True), ("costMaterial", "206323", True)]
     assert h.world.row("T_COST_GOODS", 25)["ZX_PRICE"] is None  # type: ignore[index]
     assert approval.document == t.RecordRef(entity="COST_GOODS_PRICE", record_key="25")

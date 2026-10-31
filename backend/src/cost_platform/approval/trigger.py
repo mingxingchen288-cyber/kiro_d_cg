@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 
 from cost_platform.contracts.ports import UnitOfWork
 from cost_platform.contracts.types import (
@@ -355,7 +356,10 @@ class TriggerStage:
                                 merged[key].triggers.append(i)
                         else:
                             merged[key] = AffectedRow(flow_hit.flow.code, block.key, 0, target, key, False, [i], True, dict(row))
-                for seq, row in enumerate([*merged.values(), *missing.values()], start=1):
+                # 按修改表的主键排列（同旧系统受影响行按主键 ORDER BY，ApprovalObjectService.java 第 419、666 行）：
+                # 关联条件的查询没有排序，Oracle 返回的先后取决于行存放的位置，同样的数据两次查询可能不同
+                ordered = sorted(merged.values(), key=lambda r: _key_order(r.key))
+                for seq, row in enumerate([*ordered, *missing.values()], start=1):
                     row.seq = seq
                     found.append(row)
         return found
@@ -417,3 +421,11 @@ class TriggerStage:
                 details.append(frozen_detail(None, key, entry))
         if details:
             raise PlatformError(ErrorCode.FROZEN_BY_APPROVAL, "要冻结的数据已在另一个未结束的审批中，不能发起审批", details)
+
+
+def _key_order(key: str | None) -> tuple[int, Decimal | str]:
+    """受影响行按主键排列：数字主键按数值，其余按文本（同一张修改表的主键类型相同）。"""
+    try:
+        return 0, Decimal(key or "")
+    except InvalidOperation:
+        return 1, key or ""
