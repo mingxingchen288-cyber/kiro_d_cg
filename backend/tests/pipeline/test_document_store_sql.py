@@ -9,7 +9,8 @@ import pytest
 
 from cost_platform.contracts import types as t
 from cost_platform.pipeline.document_store import DetailSource, OracleDocumentStore
-from cost_platform.pipeline.locks import LockBook, PipelineLocks
+from cost_platform.contracts.fakes import FakeSchemaInspector
+from cost_platform.pipeline.locks import LockBook, PipelineLocks, ReadViews
 from cost_platform.pipeline.writer import ChangeWriter
 
 from .recording import RecordingUnitOfWork
@@ -62,10 +63,29 @@ def test_lock_load_several_documents_one_lock_per_row_in_key_order() -> None:
     assert list(rows) == ["1001"]
 
 
+def goods_views(*sources: str) -> ReadViews:
+    """物料清单的读取视图 T_COST_GOODS_PRICE_V 读取的表（d_cg 中它只读 T_COST_GOODS）。"""
+    inspector = FakeSchemaInspector()
+    inspector.add_view("T_COST_GOODS_PRICE_V", [], sources=sources)
+    return ReadViews(inspector)
+
+
 def test_lock_load_reads_view_by_field_name() -> None:
-    """有 readView 时只锁表的行，再普通读视图（视图可以关联别的表或经数据库链接的视图，FOR UPDATE 不落到它们上）。"""
+    """读取视图只读本表（物料清单的 T_COST_GOODS_PRICE_V 只读 T_COST_GOODS）：只锁一行时一条语句经视图按字段名加锁并读出。"""
     uow = RecordingUnitOfWork()
-    OracleDocumentStore(5).lock_load(uow, GOODS, GOODS_ENTITY, ["115"])  # type: ignore[arg-type]
+    OracleDocumentStore(5, goods_views("T_COST_GOODS")).lock_load(uow, GOODS, GOODS_ENTITY, ["115"])  # type: ignore[arg-type]
+    assert uow.connection.sql == ["SELECT GOODSID, NAME, ISERP, PRICE, ZX_PRICE FROM T_COST_GOODS_PRICE_V "
+                                  "WHERE GOODSID IN (:k0) ORDER BY GOODSID FOR UPDATE WAIT 5"]
+
+
+@pytest.mark.parametrize("sources", [("T_COST_CUSTOMER", "T_COST_GOODS"), ("CMX.ERP_FORMONEY_V", "T_COST_GOODS"), None])
+def test_lock_load_view_joining_other_tables_locks_table_then_reads(sources: tuple[str, ...] | None) -> None:
+    """读取视图关联了别的表或经数据库链接读的视图（产品信息维护的 T_COST_GOODS_V 关联客户、分销商表，外币管理的
+    T_COST_FORMONEY_V 关联 cmx 经 ERP 链接读的视图），或不知道视图读取哪些表（`views` 为 None）时：只锁表的这一行，
+    再普通读视图，FOR UPDATE 不落到关联的行和链接上（WP-03）。"""
+    uow = RecordingUnitOfWork()
+    views = None if sources is None else goods_views(*sources)
+    OracleDocumentStore(5, views).lock_load(uow, GOODS, GOODS_ENTITY, ["115"])  # type: ignore[arg-type]
     assert uow.connection.sql == ["SELECT GOODSID FROM T_COST_GOODS WHERE GOODSID = :k FOR UPDATE WAIT 5",
                                   "SELECT GOODSID, NAME, ISERP, PRICE, ZX_PRICE FROM T_COST_GOODS_PRICE_V "
                                   "WHERE GOODSID IN (:k0) ORDER BY GOODSID"]
@@ -73,22 +93,21 @@ def test_lock_load_reads_view_by_field_name() -> None:
 
 def test_deferred_lock_reads_the_own_document_in_the_lock_statement() -> None:
     """往前冻结的页面推迟加锁（用户 2026-10-30 规则 3、4）：物料 115 是本命令的单据，加锁前已普通读到；成本单 1002 是要冻结的。
-    按统一顺序先锁 1002（只锁），再锁 115 并读出数据（与普通保存的加锁读取相同：物料有 readView，锁表的行再读视图），
-    用它核对，不另外重读。"""
+    按统一顺序先锁 1002（只锁），再锁 115 并读出数据（与普通保存的加锁读取同一条：物料清单的读取视图只读本表），用它核对，
+    不另外重读。"""
     ctx = Setup().context()
     goods_row = (D(115), "硬脂酸镁", D(1), D("3.50"), D("3.50"))
     uow = RecordingUnitOfWork()
-    uow.connection.results = [[goods_row], [], [], [goods_row]]
-    locks = PipelineLocks(LockBook(), OracleDocumentStore(5), scales_inspector())
+    uow.connection.results = [[goods_row], [], [goods_row]]
+    locks = PipelineLocks(LockBook(), OracleDocumentStore(5, goods_views("T_COST_GOODS")), scales_inspector())
     goods, doc = t.DocumentRef(GOODS, "115"), t.DocumentRef(MASTER, "1002")
     expected = locks.read(uow, ctx, [goods])  # type: ignore[arg-type]
     locks.lock(uow, ctx, [locks.document(ctx, goods), locks.document(ctx, doc)], expected)  # type: ignore[arg-type]
     assert uow.connection.sql == [
         "SELECT GOODSID, NAME, ISERP, PRICE, ZX_PRICE FROM T_COST_GOODS_PRICE_V WHERE GOODSID IN (:k0) ORDER BY GOODSID",
         "SELECT DOCID FROM T_COST_PINGGU WHERE DOCID = :k FOR UPDATE WAIT 5",
-        "SELECT GOODSID FROM T_COST_GOODS WHERE GOODSID = :k FOR UPDATE WAIT 5",
         "SELECT GOODSID, NAME, ISERP, PRICE, ZX_PRICE FROM T_COST_GOODS_PRICE_V "
-        "WHERE GOODSID IN (:k0) ORDER BY GOODSID"]
+        "WHERE GOODSID IN (:k0) ORDER BY GOODSID FOR UPDATE WAIT 5"]
 
 
 def test_lock_load_row_permission_in_same_statement() -> None:

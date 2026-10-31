@@ -166,3 +166,12 @@
 - 交付物：命令审查（C09 第 7a 节 `CommandLog.sql[].rows`）中查询语句的行数。
 - 验收标准：模拟验证：一次取完、按批取（`yield_per`，导出用）都记取出的行数，没有结果的查询为 0，SQL 条数不变；真实验证（d_cg）：物料清单页保存（seed 的 GOODS_PRICE_MANAGE，测试自建本地物料）中加锁前的普通读取、加锁读取各为 1 行，改物料影响 1 行，SQL 条数仍是 7 条。
 - 状态与证据：进行中（模拟验证和真实验证通过，待独立复核）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`。模拟：`tests/pipeline/test_tracing.py` 的 `test_query_rows_are_rows_fetched`、原用例的查询行数改为 1。真实：`tests/pipeline/test_oracle_goods_save_sql_count.py` 加行数断言，连同 `test_oracle_sql_count.py`、`test_oracle_lock_order.py` 16 passed（`.reports/batch8-20261031/g3-audit-export/pytest-wp23-oracle.txt`）。前端命令审查面板照旧显示 `rows`，没有改。
+
+### T-WP-15 只对关联了别的表的读取视图先锁表、再读视图
+
+- 归属与目标：第 8 批合并时（2026-10-31）修正 G1 的 WP-03 例外。G1 让有 `readView` 的实体只锁一行时也先锁表、再普通读视图，物料清单页保存由 7 条变为 8 条，不满足 WP-10。物料清单的读取视图 T_COST_GOODS_PRICE_V 只读 T_COST_GOODS（d_cg 的 USER_DEPENDENCIES，`.reports/batch8-20261031/merge/q02-物料清单视图定义.out.txt`），对它 FOR UPDATE 不会锁到别的行，所以只对关联了别的表、视图或数据库链接的读取视图（产品信息维护的 T_COST_GOODS_V、外币管理的 T_COST_FORMONEY_V）先锁表、再读视图。纯技术实现，SQL 条数回到用户定的目标，不用再问用户。
+- 前置输入：T-CF-9（G1 的例外）、T-WP-6（预读）；db-core 的 `SchemaInspector.view_sources`（DB-08）、config 的 `EntityDirectory.read_views`（C08 v22）。
+- 负责范围：`pipeline/locks.py` 的 `ReadViews`、`pipeline/document_store.py` 的 `lock_load`、`pipeline/warmup.py`（预读已发布实体的读取视图）、`pipeline/plugin.py`；`db_core/schema.py` 的 `view_sources`；`config/entities.py` 的 `read_views`；`contracts/ports.py`、`contracts/fakes/db.py`、`contracts/fakes/config.py`。
+- 交付物：上述功能。
+- 验收标准：模拟验证：读取视图只读本表时只锁一行一条加锁读出，关联了别的表、经数据库链接或不知道读哪些表时先锁表、再读视图（`tests/pipeline/test_document_store_sql.py`）；插件 start 时预读已发布实体的读取视图（`tests/pipeline/test_warmup.py`）；`view_sources` 的契约测试（替代实现和 d_cg 共用）。真实验证（d_cg）：三个读取视图读取的表（`tests/db_core/test_ports.py::test_view_sources_on_d_cg`）；物料清单页保存 7 条（`tests/pipeline/test_oracle_goods_save_sql_count.py`）；外币管理"同步ERP汇率"仍只锁 T_COST_FORMONEY（`tests/operations/test_basic_pages_oracle.py`）。
+- 状态与证据：进行中（模拟验证和真实验证通过，待独立复核）。后端模拟 1338 passed；真实 `tests/db_core/test_ports.py`、`tests/pipeline`、`tests/operations/test_basic_pages_oracle.py`、`test_sql_actions_oracle.py`、`tests/approval/test_oracle_or_sign.py` 67 passed；`lint-imports` 5 kept。两个真实测试的组装（`test_oracle_updated_by.py`、`approval/test_oracle_or_sign.py`）和 `lock_order_support.py` 改成与插件相同，带上 `ReadViews`。

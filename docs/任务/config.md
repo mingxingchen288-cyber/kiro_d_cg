@@ -113,7 +113,7 @@
 - 交付物：上述功能。
 - 接入责任：主代理合并即可，不改插件清单。
 - 验收标准：模拟验证：新增的行同一条 INSERT 写创建人和修改人，修改只写修改人（`tests/pipeline/test_updated_by.py`）；有 `readView` 的实体只锁一行时，先锁表的这一行、再普通读视图（`tests/pipeline/test_document_store_sql.py`）。真实验证：外币管理"同步ERP汇率"的加锁语句都锁 T_COST_FORMONEY，不对经 ERP 链接的视图 FOR UPDATE；物料清单页保存的 SQL 条数（`tests/pipeline/test_oracle_goods_save_sql_count.py`）。
-- 状态与证据：进行中（模拟验证、真实验证通过；物料清单页保存由 7 条变为 8 条，按 WP-10 待用户确认；待独立复核）。模拟 1311 passed（`pytest-all-3.txt`）；真实 `tests/db_core`、`tests/pipeline`、`tests/operations/test_sql_actions_oracle.py`、`test_basic_pages_oracle.py` 91 passed（`pytest-real-3.txt`）；`lint-imports` 5 kept。
+- 状态与证据：进行中（模拟验证、真实验证通过；待独立复核）。合并时（2026-10-31）改为只对关联了别的表的读取视图先锁表、再读视图（write-pipeline 的 T-WP-15），物料清单页保存仍为 7 条，不用再问用户。模拟 1311 passed（`pytest-all-3.txt`）；真实 `tests/db_core`、`tests/pipeline`、`tests/operations/test_sql_actions_oracle.py`、`test_basic_pages_oracle.py` 91 passed（`pytest-real-3.txt`）；`lint-imports` 5 kept。
 ### T-CF-10 液体成本核算页
 
 - 归属与目标：实现 CF-17：按旧页面 cost-pinggu-lq（物料成本核算表_液体）用配置做出液体成本核算页。来源：盘点 `.reports/inventory-20261030/乙-旧系统功能对照.md` 第 1 节（旧系统有这个页面、新平台没有，物料清单改价审批却会改液体明细单价）、第 4 节（问用户液体页面是否还要），用户 2026-10-30 对第 4 项回复"要"，2026-10-31 回复"开始"。旧配置和源码的出处见 CF-17。

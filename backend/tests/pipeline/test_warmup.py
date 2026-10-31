@@ -1,4 +1,4 @@
-"""启动时和配置变更后预读已发布实体的表的列定义（WP-15、WP-10）：第一次保存不再多读一次列定义。"""
+"""启动时和配置变更后预读已发布实体的表的列定义（WP-15、WP-10）和读取视图读取的表（WP-03）：第一次保存不再多读一次。"""
 
 from __future__ import annotations
 
@@ -73,7 +73,8 @@ class _Providers:
 
 
 def test_plugin_start_preloads_before_ready() -> None:
-    """插件 start 返回时已经读完（assembly 在全部插件 start 之后才接受请求）；stop 停掉后台检查。"""
+    """插件 start 返回时已经读完（assembly 在全部插件 start 之后才接受请求）：表的列定义，和读取视图读取的表（WP-03，
+    物料、成本核算明细的视图）；stop 停掉后台检查。"""
     providers = _Providers()
     plugin = PipelinePlugin(lock_wait_seconds=5, request_wait_seconds=5, redis_url="redis://127.0.0.1:6379/0",
                             redis_namespace="cp")
@@ -81,5 +82,7 @@ def test_plugin_start_preloads_before_ready() -> None:
     asyncio.run(plugin.start())
     try:
         assert _tables_read(providers.inspector) == sorted({e.table for e in ENTITIES.values()})
+        views = sorted({e.read_view for e in ENTITIES.values() if e.read_view})
+        assert views and [c.args[0] for c in providers.inspector.calls_to("view_sources")] == views
     finally:
         asyncio.run(plugin.stop())

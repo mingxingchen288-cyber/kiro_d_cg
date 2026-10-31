@@ -9,6 +9,8 @@ write-pipeline 的 `ColumnScales`）。名称按 Oracle 不加引号的写法转
 `WizardGenerateService.getPkColumn`（主键约束的列）、`ensureSequenceExists`（USER_SEQUENCES）。
 
 - `column_comments`、`objects`（C08 v21，DB-07）：新建页面向导的列标题取列注释，没有注释时取列名；按关键字搜表和视图。
+- `view_sources`（C08 v22，DB-08）：视图直接读取的表、视图和同义词（USER_DEPENDENCIES），write-pipeline 判断读取视图
+  是否只读实体自己的表（WP-03）。
 - `sequence_exists`：C08 没有（`.reports/modules/db-core/contract-gaps.md`），config 检查 `<表名>_SEQ` 已存在
   （C06 第 10 节、CF-14、C09 wizard/columns 的 `sequence.exists`）。
 """
@@ -35,6 +37,16 @@ _SEQUENCE = text("SELECT COUNT(*) FROM user_sequences WHERE sequence_name = :b_n
 _COMMENTS = text("SELECT c.column_name, m.comments FROM user_tab_columns c "
                  "LEFT JOIN user_col_comments m ON m.table_name = c.table_name AND m.column_name = c.column_name "
                  "WHERE c.table_name = :b_name ORDER BY c.column_id")
+# 视图直接读取的对象（C08 v22）：USER_DEPENDENCIES 中视图依赖的表、视图、同义词，函数、包、类型、序列不算；视图存在、
+# 一个依赖都没有时为一行空值。当前用户的只写名称，别的用户写"用户.名称"，经数据库链接的加"@链接名"。
+_VIEW_SOURCES = text(
+    "SELECT CASE WHEN d.referenced_name IS NULL THEN NULL "
+    "WHEN d.referenced_owner = USER THEN d.referenced_name ELSE d.referenced_owner || '.' || d.referenced_name END "
+    "|| CASE WHEN d.referenced_link_name IS NOT NULL THEN '@' || d.referenced_link_name END AS source "
+    "FROM user_views v LEFT JOIN user_dependencies d ON d.name = v.view_name AND d.type = 'VIEW' "
+    "AND d.referenced_type NOT IN ('PACKAGE', 'PACKAGE BODY', 'FUNCTION', 'PROCEDURE', 'TYPE', 'TYPE BODY', 'SEQUENCE', "
+    "'OPERATOR', 'LIBRARY', 'JAVA CLASS') "
+    "WHERE v.view_name = :b_name ORDER BY 1")
 # 同旧系统 listDbObjects：OBJECT_NAME LIKE '%关键字%'（关键字转大写，`_`、`%` 照样是通配符），先表后视图，最多 100 个
 _OBJECTS = text("SELECT * FROM (SELECT object_name, object_type FROM user_objects "
                 "WHERE object_type IN ('TABLE', 'VIEW') AND object_name LIKE '%' || :b_keyword || '%' "
@@ -88,3 +100,9 @@ class OracleSchemaInspector:
         with self._engine.connect() as c:
             rows = c.execute(_OBJECTS, {"b_keyword": keyword.strip().upper()}).all()
         return [DbObject(name=str(r[0]), type="table" if r[1] == "TABLE" else "view") for r in rows]
+
+    def view_sources(self, view: str) -> list[str] | None:
+        """视图直接读取的表、视图和同义词（USER_DEPENDENCIES），按名称排列；不是视图时为 None。"""
+        with self._engine.connect() as c:
+            rows = c.execute(_VIEW_SOURCES, {"b_name": view.upper()}).all()
+        return [str(r[0]) for r in rows if r[0] is not None] if rows else None

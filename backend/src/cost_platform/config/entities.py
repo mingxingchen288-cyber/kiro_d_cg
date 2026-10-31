@@ -82,3 +82,7 @@ class PublishedEntities:
     def tables(self) -> list[str]:
         """已发布的实体写入的表，按名称排列（write-pipeline 预读列定义用）。"""
         return sorted(self._current().tables)
+
+    def read_views(self) -> list[str]:
+        """已发布的实体的读取视图，按名称排列（write-pipeline 预读视图读取的表用，C08 v22）。"""
+        return sorted({e.read_view for e in self._current().entities.values() if e.read_view})

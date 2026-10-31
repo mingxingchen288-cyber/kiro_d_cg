@@ -8,8 +8,9 @@
 2. 一个事务中新加的锁必须排在已持有的全部锁之后（往后找，可以执行到一半再锁）；排在前面或同层时，调用方先用普通查询找出
    范围，再和自己的单据合在一起一次锁完。违反时 `LockBook.claim` 返回 500：这是实现错误，用户操作触发不了。
 3. 一次锁多行时按顺序一行一条 `SELECT … FOR UPDATE WAIT n`，不依赖一条 SQL 内部的加锁顺序（没有核实过）；只锁一行时
-   （普通保存只锁一张单据）加锁和读数据仍是一条语句，SQL 条数不变。例外：实体有 readView 时只锁表的行，再普通读视图
-   （视图可以关联别的表或经数据库链接的视图，FOR UPDATE 不能落到它们上，`document_store.lock_load`）。
+   （普通保存只锁一张单据）加锁和读数据仍是一条语句，SQL 条数不变。例外：实体的读取视图关联了别的表、视图或经数据库
+   链接读的（`ReadViews`），只锁一行时也先锁 `table` 的行、再普通读视图，FOR UPDATE 不落到关联的行和链接上
+   （`document_store.lock_load`）；只读本表的视图（物料清单）仍是一条。
 4. 加锁前普通读到的本命令单据，锁住后核对；不同时抛 `LockScopeChanged`，编排回滚整个事务、整条命令重来。核对用的数据由
    加锁语句本身读出：这些单据按顺序轮到时用"锁一行并读出数据"的语句（`lock_select_sql`，与普通保存的加锁读取同一条），
    仍是一行一条；其余对象只锁不读（`lock_key_sql`）。有明细的单据另用一条普通查询读明细（明细不加锁，单据锁在主表行上）。
@@ -56,6 +57,74 @@ def lock_select_sql(select: str, source: str, key_column: str, wait: int) -> str
 def lock_row_sql(table: str, key_column: str, wait: int) -> str:
     """锁没注册的表中的一行并读出整行（WP-19）。"""
     return f"SELECT * FROM {table} WHERE {key_column} = :k FOR UPDATE WAIT {wait}"
+
+
+# ---------------------------------------------------------------- 读取视图读取哪些表（只锁一行时用哪种加锁语句）
+
+class ReadViews:
+
+    """实体的读取视图读取哪些表（WP-03），经 `SchemaInspector.view_sources` 读取，每个视图在进程内只读一次（视图变更随
+
+    部署重启生效，同 `ColumnScales`）。
+
+
+
+    只读实体自己的表的视图（例如物料清单的 T_COST_GOODS_PRICE_V 只读 T_COST_GOODS），只锁一行时仍一条
+
+    `SELECT … FOR UPDATE` 加锁并读出（SQL 条数同 WP-10）；关联了别的表、视图或经数据库链接读的（产品信息维护的
+
+    T_COST_GOODS_V、外币管理的 T_COST_FORMONEY_V），先锁 `table` 的行、再普通读视图，FOR UPDATE 不落到关联的行和链接上
+
+    （`document_store.lock_load`）。插件 start 时和配置变更后由 `warmup.SchemaWarmup` 预读已发布实体的读取视图。"""
+
+
+
+    def __init__(self, inspector: SchemaInspector) -> None:
+
+        self._inspector = inspector
+
+        self._views: dict[str, tuple[str, ...]] = {}
+
+
+
+    def only_table(self, view: str, table: str) -> bool:
+
+        """视图只读 `table` 这一张表（当前用户的）。"""
+
+        key = view.upper()
+
+        if key not in self._views:
+
+            self._read(view)
+
+        return self._views[key] == (table.upper(),)
+
+
+
+    def preload(self, views: Iterable[str]) -> list[str]:
+
+        """把还没读过的视图读进来，每个视图一次 `view_sources`；返回这次读了的视图。"""
+
+        done = []
+
+        for view in views:
+
+            if view.upper() not in self._views:
+
+                self._read(view)
+
+                done.append(view)
+
+        return done
+
+
+
+    def _read(self, view: str) -> None:
+
+        self._views[view.upper()] = tuple(s.upper() for s in self._inspector.view_sources(view) or [])
+
+
+
 
 
 # ---------------------------------------------------------------- 锁对象

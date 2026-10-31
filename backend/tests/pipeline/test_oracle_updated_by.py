@@ -41,7 +41,7 @@ from cost_platform.pipeline.command_log import OracleCommandRecorder
 from cost_platform.pipeline.copies import OracleCopySources
 from cost_platform.pipeline.document_store import OracleDocumentStore
 from cost_platform.pipeline.loader import DocumentLoader, PageSaveInvolved
-from cost_platform.pipeline.locks import LockBook, PipelineLocks
+from cost_platform.pipeline.locks import LockBook, PipelineLocks, ReadViews
 from cost_platform.pipeline.merge import DocumentMerger, IntentMerger
 from cost_platform.pipeline.stages import LockStage, MergeIntentsStage, MergePatchesStage, RecalculateStage, WriteChangesStage
 from cost_platform.pipeline.table_writer import OracleTableWriter
@@ -92,7 +92,7 @@ class Platform:
         self.accounts = OracleAccounts(self.uow)
         permission = RolePermissionChecker()
         scales = ColumnScales(schema)
-        store = OracleDocumentStore(5)
+        store = OracleDocumentStore(5, ReadViews(schema))  # 同 pipeline 插件
         loader = DocumentLoader(store, permission, book)
         deps = ApprovalDeps(catalog=catalog_of(entities, self.config), schema=schema, directory=self.accounts,
                             documents=OracleDocumentReader(self.uow, entities), rules=rules, tables=tables,

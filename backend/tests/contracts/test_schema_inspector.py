@@ -79,6 +79,14 @@ class SchemaInspectorContract:
         assert harness.inspector.objects("ct_schema_probe") == [DbObject("CT_SCHEMA_PROBE", "table"),
                                                                 DbObject("CT_SCHEMA_PROBE_V", "view")]
 
+    def test_view_sources(self, harness: SchemaInspectorHarness) -> None:
+        """C08 v22：视图读取的表（write-pipeline 判断读取视图是否只读本表，WP-03）；表和不存在的名字为 None。"""
+        harness.create_table("CT_SCHEMA_PROBE", COLUMNS)
+        harness.create_view("CT_SCHEMA_PROBE_V", "CT_SCHEMA_PROBE")
+        assert harness.inspector.view_sources("CT_SCHEMA_PROBE_V") == ["CT_SCHEMA_PROBE"]
+        assert harness.inspector.view_sources("CT_SCHEMA_PROBE") is None
+        assert harness.inspector.view_sources(harness.missing_table()) is None
+
 
 class FakeSchemaInspectorHarness:
     def __init__(self) -> None:
@@ -88,7 +96,7 @@ class FakeSchemaInspectorHarness:
         self.inspector.add_table(table, columns, primary_key)
 
     def create_view(self, view: str, table: str) -> None:
-        self.inspector.add_view(view, list((self.inspector.columns(table) or {}).values()))
+        self.inspector.add_view(view, list((self.inspector.columns(table) or {}).values()), sources=[table])
 
     def missing_table(self) -> str:
         return "CT_NO_SUCH_TABLE"
