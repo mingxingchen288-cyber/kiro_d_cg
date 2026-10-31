@@ -9,7 +9,8 @@
 同一实体的同一种操作按写入的列分组，每组一条批量语句；主表写 0 或 1 条语句（每张单据）。
 
 实体配了 `updatedByColumn`（C06 第 2 节）时，新增、修改的行在同一条语句里另写这一列为当前用户的登录名（WP-20），
-不多出语句；它不是实体字段，不进命令结果和审计差异。
+不多出语句；它不是实体字段，不进命令结果和审计差异。配了 `createdByColumn`（C06 v28）时，新增的行同样另写这一列，
+修改不写（同旧系统 DynamicDataService.java 的 insert 写 CREATE_BY、update 不写）。
 """
 
 from __future__ import annotations
@@ -26,6 +27,8 @@ from .document_store import RowStore
 
 UPDATED_BY = "@updatedBy"
 """写给 `RowStore` 的修改人字段名：不是实体字段，只在写入时加到实体和变更计划的副本上。"""
+CREATED_BY = "@createdBy"
+"""写给 `RowStore` 的创建人字段名，同 `UPDATED_BY`，只用于新增。"""
 
 Write = Callable[[UnitOfWork, EntityConfig, list[RowChange]], None]
 
@@ -34,20 +37,29 @@ def _is_master(change: RowChange) -> bool:
     return change.entity == change.document.entity
 
 
-def _stamped(entity: EntityConfig, changes: list[RowChange], username: str) -> tuple[EntityConfig, list[RowChange]]:
-    """WP-20：实体配了 `updatedByColumn` 时，返回带修改人字段的实体副本和变更计划副本（每行加上当前用户的登录名）；
-    没配时原样返回。同旧系统 DynamicDataService.java 的 insert、update 每次写 UPDATE_BY = 当前用户名。"""
-    column = entity.updated_by_column
-    if column is None:
+def _stamped(entity: EntityConfig, changes: list[RowChange], username: str,
+             adding: bool) -> tuple[EntityConfig, list[RowChange]]:
+    """WP-20：实体配了 `updatedByColumn`（新增、修改）或 `createdByColumn`（只新增）时，返回带这些字段的实体副本和
+    变更计划副本（每行加上当前用户的登录名）；都没配时原样返回。同旧系统 DynamicDataService.java 的 insert 写
+    CREATE_BY、UPDATE_BY，update 写 UPDATE_BY，值为当前用户名。"""
+    extras = []
+    if entity.updated_by_column is not None:
+        extras.append(EntityField(name=UPDATED_BY, column=entity.updated_by_column, label="修改人", type="text",
+                                  source="own", role="system"))
+    if adding and entity.created_by_column is not None:
+        extras.append(EntityField(name=CREATED_BY, column=entity.created_by_column, label="创建人", type="text",
+                                  source="own", role="system"))
+    if not extras:
         return entity, changes
-    extra = EntityField(name=UPDATED_BY, column=column, label="修改人", type="text", source="own", role="system")
-    target = entity.model_copy(update={"fields": [*entity.fields, extra]})
-    return target, [dataclasses.replace(c, values={**c.values, UPDATED_BY: username}) for c in changes]
+    target = entity.model_copy(update={"fields": [*entity.fields, *extras]})
+    stamp = {f.name: username for f in extras}
+    return target, [dataclasses.replace(c, values={**c.values, **stamp}) for c in changes]
 
 
-def _write_stamped(write: Write, uow: UnitOfWork, entity: EntityConfig, changes: list[RowChange], username: str) -> None:
+def _write_stamped(write: Write, uow: UnitOfWork, entity: EntityConfig, changes: list[RowChange], username: str,
+                   adding: bool) -> None:
     """新增、修改：按 `_stamped` 写；新增行取得的主键写回原来的 `RowChange`。"""
-    target, rows = _stamped(entity, changes, username)
+    target, rows = _stamped(entity, changes, username, adding)
     write(uow, target, rows)
     for original, written in zip(changes, rows, strict=True):
         original.row_key = written.row_key
@@ -75,7 +87,7 @@ class ChangeWriter:
         details = [c for c in plan if not _is_master(c)]
         username = ctx.identity.username
         for code, group in by_entity([c for c in masters if c.op == "add"]).items():
-            _write_stamped(self._store.insert, uow, entity(code), group, username)
+            _write_stamped(self._store.insert, uow, entity(code), group, username, adding=True)
             for change in group:
                 self._master_added(state, ctx, change, plan)
 
@@ -99,7 +111,7 @@ class ChangeWriter:
                 if op == "delete":
                     write(uow, entity(code), group)
                 else:
-                    _write_stamped(write, uow, entity(code), group, username)
+                    _write_stamped(write, uow, entity(code), group, username, adding=op == "add")
                 if op == "add":
                     for change in group:
                         self._detail_added(state, ctx, change)
@@ -108,7 +120,7 @@ class ChangeWriter:
                 if op == "delete":
                     write(uow, entity(code), group)
                 else:
-                    _write_stamped(write, uow, entity(code), group, username)
+                    _write_stamped(write, uow, entity(code), group, username, adding=False)
 
     @staticmethod
     def _master_added(state: CommandState, ctx: ExecutionContext, change: RowChange, plan: list[RowChange]) -> None:

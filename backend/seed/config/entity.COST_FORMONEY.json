@@ -1,0 +1,90 @@
+{
+  "type": "entity",
+  "key": "COST_FORMONEY",
+  "name": "外币管理",
+  "content": {
+    "table": "T_COST_FORMONEY",
+    "primaryKey": "FMID",
+    "freezable": true,
+    "readView": "T_COST_FORMONEY_V",
+    "createdByColumn": "CREATE_BY",
+    "fields": [
+      {
+        "name": "FMID",
+        "column": "FMID",
+        "label": "外币ID",
+        "type": "number",
+        "source": "own",
+        "role": "system"
+      },
+      {
+        "name": "FMOPCODE",
+        "column": "FMOPCODE",
+        "label": "外币编码",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "FMNAME",
+        "column": "FMNAME",
+        "label": "外币名称",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "FMSIGN",
+        "column": "FMSIGN",
+        "label": "外币符号",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "FMUNIT",
+        "column": "FMUNIT",
+        "label": "外币单位",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "FMRATE",
+        "column": "FMRATE",
+        "label": "汇率",
+        "type": "number",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "USESTATUS",
+        "column": "USESTATUS",
+        "label": "使用状态",
+        "type": "number",
+        "source": "own",
+        "role": "input"
+      }
+    ],
+    "fieldDefaults": {
+      "FMOPCODE": {
+        "editable": false
+      },
+      "FMNAME": {
+        "editable": false
+      },
+      "FMSIGN": {
+        "editable": false
+      },
+      "FMUNIT": {
+        "editable": false
+      },
+      "FMRATE": {
+        "editable": false
+      },
+      "USESTATUS": {
+        "editable": false
+      }
+    }
+  }
+}

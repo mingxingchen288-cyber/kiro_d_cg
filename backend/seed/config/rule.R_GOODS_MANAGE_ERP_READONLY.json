@@ -1,0 +1,26 @@
+{
+  "type": "rule",
+  "key": "R_GOODS_MANAGE_ERP_READONLY",
+  "name": "ERP产品整行不能改",
+  "content": {
+    "layer": "page",
+    "target": "GOODS_MANAGE",
+    "category": "ui",
+    "field": null,
+    "order": 2,
+    "when": {
+      "logic": "AND",
+      "conditions": [
+        {
+          "source": "row",
+          "field": "ISERP",
+          "op": "eq",
+          "value": "1"
+        }
+      ]
+    },
+    "effect": {
+      "editable": false
+    }
+  }
+}

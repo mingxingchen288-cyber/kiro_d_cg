@@ -1,0 +1,83 @@
+{
+  "type": "page",
+  "key": "GOODS_MANAGE",
+  "name": "产品信息维护",
+  "content": {
+    "title": "产品信息维护",
+    "layout": "single",
+    "detailMode": "tabs",
+    "audit": true,
+    "saveOperation": "GOODS_MANAGE.save",
+    "master": {
+      "entity": "COST_GOODS",
+      "fields": {
+        "GOODSID": {
+          "searchable": true
+        },
+        "GOODSNO": {
+          "searchable": true
+        },
+        "GOODSNAME": {
+          "searchable": true
+        },
+        "GOODSTYPE": {
+          "searchable": true
+        },
+        "PACKTYPE": {
+          "searchable": true
+        },
+        "TRANPOSID": {
+          "searchable": true
+        },
+        "TRANPOSNAME": {
+          "searchable": true
+        },
+        "ZX_CUSTOMERID": {
+          "lookup": {
+            "code": "costCustomer",
+            "fill": {
+              "ZX_CUSTOMERID": "CUSTOMID",
+              "CUSTOMNAME": "CUSTOMNAME",
+              "ZONE": "COUNTRY",
+              "TRANPOSID": "TRANPOSID",
+              "TRANPOSNAME": "LIVERY"
+            }
+          },
+          "searchable": true
+        },
+        "CUSTOMNAME": {
+          "searchable": true
+        },
+        "ZONE": {
+          "searchable": true
+        },
+        "CREATE_BY": {
+          "searchable": true
+        }
+      },
+      "buttons": [
+        {
+          "action": "addRow",
+          "label": "新增"
+        },
+        {
+          "action": "copyRow",
+          "label": "复制"
+        },
+        {
+          "action": "deleteRow",
+          "label": "删除"
+        },
+        {
+          "action": "saveGridConfig",
+          "label": "保存列配置"
+        }
+      ],
+      "grid": {
+        "sideBar": true,
+        "cellSelection": false,
+        "groupBy": []
+      }
+    }
+  }
+}

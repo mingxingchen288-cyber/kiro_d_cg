@@ -92,6 +92,28 @@
 - 状态与证据：进行中（模拟验证和浏览器业务例子通过，待独立复核）。2026-10-31 第 7 批 CF 组，提交 fd1f3b1（`batch7/cost-config`），报告 `.reports/batch7-20261030/cf-cost-config/报告.md`。合并后主代理执行 `platform db copy-business-tables`，只新建了 `T_COST_FORMONEY_V`（4 列、4 行，其余对象"已存在，未改动"，`.reports/batch7-20261030/merge/copy-business-tables.txt`），再经配置接口写进 d_cg（`save_config.out.txt`）；整套端到端 42 passed，其中本卡 2 条（`e2e-6.txt`）。
   - d_cg 现有 700 张成本单中 256 张的状态不在这 5 个值里（自主 125、委托研发 43、委托转移 40、"0" 24 等，另有 21 张为空，cmx 分布相同，是旧数据本来就有的）：照常显示原值，打开下拉时列表里没有它们的原值，选了才会改；保存不按字典校验。
 
+### T-CF-8 产品信息维护、客户信息（含分销商）、外币管理三个页面
+
+- 归属与目标：实现 CF-15（第 8 批 G1）。来源：盘点乙第 1、2 节的旧页面 goods-manage、customer-manage、formoney-manage；用户 2026-10-30 对"外币管理（含同步ERP汇率）"回复"要"，2026-10-31 回复"开始"。只做配置，配置做不到的另立 T-CF-9、T-DB-4、T-OP-5。
+- 前置输入：T-DB-4（d_cg 的表、序列和视图）；T-CF-9（`createdByColumn`、有 `readView` 时只锁表）。
+- 负责范围：seed 新增 17 条：`entity.COST_GOODS`、`entity.COST_CUSTOMER`、`entity.COST_TRANPOSER`、`entity.COST_FORMONEY`，`page.GOODS_MANAGE`、`page.CUSTOMER_MANAGE`、`page.FORMONEY_MANAGE`，`operation.GOODS_MANAGE.save`、`operation.CUSTOMER_MANAGE.save`、`operation.FORMONEY_MANAGE.save`、`operation.FORMONEY_MANAGE.syncErpRate`（T-OP-5），`rule.R_GOODS_MANAGE_ERP_GREEN/READONLY`、`rule.R_CUSTOMER_ERP_GREEN/READONLY`、`rule.R_TRANPOSER_ERP_GREEN/READONLY`；`role.ADMIN` 加三个页面 `["*"]`。
+- 交付物：三个页面由通用页面按页面编码打开（`/page/GOODS_MANAGE`、`/page/CUSTOMER_MANAGE`、`/page/FORMONEY_MANAGE`）。菜单项由主代理加在"基础信息"（`basic`）下：产品信息维护（排序 2，`mdi:package-variant`）、客户信息（3，`mdi:account-box`）、外币管理（10，`mdi:currency-usd`）。
+- 接入责任：主代理合并后执行 `.reports/batch8-20261031/g1-basic-pages/save_g1_config.py after-merge`（经 8080 写外币管理的 4 项、把产品实体换成带 `createdByColumn` 的内容、ADMIN 加外币管理），再加菜单项。
+- 验收标准：业务例子（浏览器、d_cg，`frontend/tests/e2e/basic-pages-1031.spec.ts` 第一个用例）：客户信息新增客户和一个分销商；产品信息维护新增产品，客户 ID 经客户 Lookup 选这个客户，带出客户名称、国家、分销商；保存后华益代码为 `OV` 加产品ID、创建人为 admin；成本核算的客户选择、产品选择能选到它们（产品的 BOM 状态为"ERP未搭建BOM"）；ERP 产品 392、ERP 客户 86 和它的分销商整行绿底、不能改。真实验证：同一流程经真实写入管道在 d_cg 上执行（`tests/operations/test_basic_pages_oracle.py`）。
+- 状态与证据：进行中（模拟验证、真实验证通过；浏览器用例已写好，待主代理合并后运行；待独立复核）。2026-10-31 第 8 批 G1，分支 `batch8/basic-pages`，报告 `.reports/batch8-20261031/g1-basic-pages/报告.md`。
+  - 模拟验证：后端 `pytest -m "not oracle and not redis"` 1311 passed（`pytest-all-3.txt`），其中 `tests/config` 的 seed 整体校验、页面视图和规则包生成（新增 3 个页面视图、3 个规则包）、seed 条数 62（原 45 条加本组 17 条）。
+  - 真实验证：`tests/operations/test_basic_pages_oracle.py` 2 passed（`pytest-real-basic-2.txt`）：客户和分销商一次保存、改客户名称后两个 Lookup 视图都是新名称、删除客户连同分销商；产品经视图带出客户名称、国家、分销商名称，创建人、修改人为 admin。
+  - d_cg：产品信息维护、客户信息的 13 项已在 2026-10-31 13:46 经 8080 保存（`save-now.log`），第三位代理经 8080 只读核对 12 项与 seed 相同，产品实体只差 `createdByColumn`（`check-d_cg-config.log`）。外币管理 4 项没有保存（8080 的代码只锁一行时对读取视图 FOR UPDATE，会落到 ERP 链接上）。
+
+### T-CF-9 实体的创建人列；读取视图可以关联别的表
+
+- 归属与目标：实现 C06 v28 第 2 节的两处改动和 CF-16；write-pipeline 的 WP-03 例外、WP-20 的创建人（第 8 批 G1）。来源：旧系统新增写 CREATE_BY（`DynamicDataService.java` 第 290–293 行）、旧产品信息维护显示"创建人"；旧产品、外币页面的查询视图关联客户、分销商表和 ERP 的外币（`q03-视图定义.out.txt`）。
+- 前置输入：T-CF-1、T-WP-2。
+- 负责范围：`contracts/types.py` 的 `EntityConfig.created_by_column`；`config/validation.py`（CF-16）；`pipeline/writer.py`（新增时写创建人）、`pipeline/document_store.py` 的 `lock_load`（有 `readView` 时只锁表）；前端 `config/core/types.ts`、配置页"表信息"的"创建人列"（`TableFieldsCard.vue`）。
+- 交付物：上述功能。
+- 接入责任：主代理合并即可，不改插件清单。
+- 验收标准：模拟验证：新增的行同一条 INSERT 写创建人和修改人，修改只写修改人（`tests/pipeline/test_updated_by.py`）；有 `readView` 的实体只锁一行时，先锁表的这一行、再普通读视图（`tests/pipeline/test_document_store_sql.py`）。真实验证：外币管理"同步ERP汇率"的加锁语句都锁 T_COST_FORMONEY，不对经 ERP 链接的视图 FOR UPDATE；物料清单页保存的 SQL 条数（`tests/pipeline/test_oracle_goods_save_sql_count.py`）。
+- 状态与证据：进行中（模拟验证、真实验证通过；物料清单页保存由 7 条变为 8 条，按 WP-10 待用户确认；待独立复核）。模拟 1311 passed（`pytest-all-3.txt`）；真实 `tests/db_core`、`tests/pipeline`、`tests/operations/test_sql_actions_oracle.py`、`test_basic_pages_oracle.py` 91 passed（`pytest-real-3.txt`）；`lint-imports` 5 kept。
 ### T-CF-11 只读页面和审计追踪页的配置
 
 - 归属与目标：实现 CF-18（C06 v29、C05 v10），按旧系统审计追踪页 auditLog 配一个只读通用页。来源：盘点 `.reports/inventory-20261030/乙-旧系统功能对照.md` 第 1 节（审计追踪 auditLog）、第 4 节；用户 2026-10-30 对第 4 节回复"要"、2026-10-31 回复"开始"。旧系统的依据见 CF-18。

@@ -20,6 +20,21 @@
         "buttons": [
           "*"
         ]
+      },
+      "GOODS_MANAGE": {
+        "buttons": [
+          "*"
+        ]
+      },
+      "CUSTOMER_MANAGE": {
+        "buttons": [
+          "*"
+        ]
+      },
+      "FORMONEY_MANAGE": {
+        "buttons": [
+          "*"
+        ]
       }
     }
   }

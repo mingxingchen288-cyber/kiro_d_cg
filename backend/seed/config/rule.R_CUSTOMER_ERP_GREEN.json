@@ -1,0 +1,28 @@
+{
+  "type": "rule",
+  "key": "R_CUSTOMER_ERP_GREEN",
+  "name": "ERP客户整行绿底",
+  "content": {
+    "layer": "page",
+    "target": "CUSTOMER_MANAGE",
+    "category": "ui",
+    "field": null,
+    "order": 1,
+    "when": {
+      "logic": "AND",
+      "conditions": [
+        {
+          "source": "row",
+          "field": "ISERP",
+          "op": "eq",
+          "value": "1"
+        }
+      ]
+    },
+    "effect": {
+      "rowStyle": {
+        "backgroundColor": "#e6ffed"
+      }
+    }
+  }
+}

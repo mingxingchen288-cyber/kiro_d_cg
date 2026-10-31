@@ -53,19 +53,28 @@
     ]
   },
   "T_COST_GOODS": {
-    "source": "旧物料清单页 goods-price-manage 的列元数据（CMX.T_COST_COLUMN_METADATA，TABLE_METADATA_ID=132）VISIBLE=1 的 10 列，加上成本核算两个明细视图从物料表读的 SUQTY、GOODSNAME_EN，和物料清单视图 T_COST_GOODS_PRICE_V 算行样式标记 ROW_CLASS_FLAG 要读的 UPDATE_BY（旧页面 GRID_STYLE 按它给 ERP 行上色，.reports/modules/db-core/02、03 号；2026-10-29 加入）；没有虚拟列。已删除的物料不复制：未删除单据的明细视图行没有落在已删除物料上的（.reports/chain1/02 号，液体成本见 .reports/modules/db-core/02 号）",
+    "source": "旧物料清单页 goods-price-manage 的列元数据（CMX.T_COST_COLUMN_METADATA，TABLE_METADATA_ID=132）VISIBLE=1 的 10 列，加上成本核算两个明细视图从物料表读的 SUQTY、GOODSNAME_EN，和物料清单视图 T_COST_GOODS_PRICE_V 算行样式标记 ROW_CLASS_FLAG 要读的 UPDATE_BY（旧页面 GRID_STYLE 按它给 ERP 行上色，.reports/modules/db-core/02、03 号；2026-10-29 加入）；没有虚拟列。已删除的物料不复制：未删除单据的明细视图行没有落在已删除物料上的（.reports/chain1/02 号，液体成本见 .reports/modules/db-core/02 号）。2026-10-31 用 --add-columns 补上旧产品信息维护页 goods-manage（TABLE_METADATA_ID=131）和产品 Lookup 视图 V_COST_GOODS_LOOKUP 用到的 GOODSNO、ZX_PL、ZX_MINIMUM、APPROVEDOCNO、BASEUNITQTY、ZX_CUSTOMERID、HOLDERSNAME、TRANPOSID、CREATE_BY（.reports/batch8-20261031/g1-basic-pages/q02、q03 号）；不删表重建：物料清单在 d_cg 改过单价",
     "excludeDeleted": true,
     "columns": [
       "GOODSID",
+      "GOODSNO",
       "GOODSNAME",
       "PRICE",
       "SUQTY",
       "USEFLAG",
       "FACTORYNAME",
       "STANDARDTYPE",
+      "ZX_PL",
+      "ZX_MINIMUM",
+      "APPROVEDOCNO",
+      "BASEUNITQTY",
+      "ZX_CUSTOMERID",
+      "HOLDERSNAME",
       "ISERP",
       "GOODSTYPE",
       "PACKTYPE",
+      "TRANPOSID",
+      "CREATE_BY",
       "UPDATE_BY",
       "GOODSNAME_EN",
       "ZX_PRICE"
@@ -183,19 +192,54 @@
     "source": "CMX.V_COST_PINGGU_PACKAGE_LQ（液体包材明细 CostPackageLq 的查询视图）：改法同上",
     "sql": "SELECT d.DTLID, d.DOCID, d.GOODSID, d.PER_HL, d.EXADD_MATER, d.PRICE, d.BATCH_QTY, d.COST_BATCH, d.MEMO, f.GOODSNAME_EN, f.PRICE BASE_PRICE, f.SUQTY, f.GOODSNAME, f.USEFLAG DTL_USEFLAG, f.STANDARDTYPE, f.FACTORYNAME, f.GOODSTYPE FROM T_COST_PINGGU_DTL_LQ d, T_COST_GOODS f WHERE f.USEFLAG IN ('非印字包材', '印字包材') AND d.GOODSID = f.GOODSID"
   },
+  "T_COST_CUSTOMER": {
+    "source": "旧客户信息页 customer-manage 主表 masterGrid（CMX.T_COST_COLUMN_METADATA，TABLE_METADATA_ID=70）的 4 列；ISERP 在旧列元数据中是虚拟列（不写入），这里是表本身的列（是否 ERP 行，平台按 erpRow 维护）。DELETED、CREATE_*/UPDATE_* 页面不显示，不复制。已删除的客户不复制（cmx 的 T_COST_CUSTOMER_V 只过滤 DELETED = 0，d_cg 不建这个视图，实体直接读表；.reports/batch8-20261031/g1-basic-pages/q02、q03 号）",
+    "excludeDeleted": true,
+    "columns": [
+      "CUSTOMID",
+      "CUSTOMNAME",
+      "ZONE",
+      "ISERP"
+    ]
+  },
+  "T_COST_TRANPOSER": {
+    "source": "旧客户信息页的明细分销商 tranposer（TABLE_METADATA_ID=71，外键 CUSTOMID）的 4 列；ISERP 同客户表。已删除的分销商不复制；不按客户过滤：产品视图 T_COST_GOODS_V 按 TRANPOSID 关联分销商表（cmx 也是关联表本身），未删除的 318 个分销商中有 3 个不属于未删除的客户（q08 号）",
+    "excludeDeleted": true,
+    "columns": [
+      "TRANPOSID",
+      "CUSTOMID",
+      "TRANPOSNAME",
+      "ISERP"
+    ]
+  },
+  "T_COST_FORMONEY": {
+    "source": "旧外币管理页 formoney-manage（TABLE_METADATA_ID=41）的 7 列，加上\"同步ERP汇率\"按钮按它选行的 CREATE_BY（旧按钮 SQL：UPDATE T_COST_FORMONEY SET FMRATE = NULL, CREATE_TIME = NULL, UPDATE_TIME = NULL WHERE CREATE_BY = 'system'，CMX.T_COST_PAGE_COMPONENT 第 62 行）；CREATE_TIME、UPDATE_TIME 页面不显示，不复制。已删除的不复制",
+    "excludeDeleted": true,
+    "columns": [
+      "FMID",
+      "FMOPCODE",
+      "FMNAME",
+      "FMSIGN",
+      "FMUNIT",
+      "FMRATE",
+      "USESTATUS",
+      "CREATE_BY"
+    ]
+  },
+  "T_COST_GOODS_V": {
+    "kind": "view",
+    "source": "CMX.T_COST_GOODS_V（旧产品信息维护页 goods-manage、表元数据 131 CostGoods 的查询视图）：只取产成品；华益代码 GOODSNO 的写法与 cmx 相同（本地产品为 'OV' || GOODSID）；客户名称、国家按 ZX_CUSTOMERID 关联客户表，分销商名称按 TRANPOSID 关联分销商表（外连接，同 cmx）。去掉不复制的列和 DELETED 条件，留下页面和产品 Lookup 用到的列",
+    "sql": "SELECT a.GOODSID, CASE WHEN a.ISERP = 0 THEN 'OV' || a.GOODSID ELSE a.GOODSNO END GOODSNO, a.GOODSNAME, a.USEFLAG, a.ZX_PL, a.ZX_MINIMUM, a.APPROVEDOCNO, a.BASEUNITQTY, a.ZX_CUSTOMERID, b.CUSTOMNAME, a.HOLDERSNAME, a.ISERP, a.GOODSTYPE, a.PACKTYPE, c.TRANPOSNAME, a.TRANPOSID, b.ZONE, a.CREATE_BY, a.GOODSNAME_EN FROM T_COST_GOODS a, T_COST_CUSTOMER b, T_COST_TRANPOSER c WHERE a.USEFLAG = '产成品' AND a.ZX_CUSTOMERID = b.CUSTOMID(+) AND a.TRANPOSID = c.TRANPOSID(+)"
+  },
   "V_COST_GOODS_LOOKUP": {
     "kind": "view",
-    "readsCmx": true,
-    "source": "CMX.V_COST_GOODS_LOOKUP（成本核算主表产品 Lookup costGoods 的数据源，旧 T_COST_LOOKUP_CONFIG）：列取旧 Lookup 的显示列，加旧查询固定的 DELETED = 0",
-    "reason": "产品的 BOM 状态（MEMO）由 cmx 视图经 ERP 数据库链接 mpcs_pr_bom_doc@hyerp 算出，d_cg 的表做不出来；由BOM生成明细的 SQL 同样直接读 CMX.T_COST_BOM_GOODS_TREE_V",
-    "sql": "SELECT GOODSID, GOODSNAME, MA_NO, APEX_PL, MAH, P_PERPACK, S_PERBACK, CUSTOMID, CUSTOMNAME, MEMO, STRENGTH, LIVERY, GOODSNAME_EN FROM CMX.V_COST_GOODS_LOOKUP WHERE DELETED = 0"
+    "source": "CMX.V_COST_GOODS_LOOKUP（成本核算主表产品 Lookup costGoods 的数据源，旧 T_COST_LOOKUP_CONFIG）：列取旧 Lookup 的显示列，读 d_cg 的 T_COST_GOODS_V（2026-10-31 起产品在 d_cg 维护，原来直接读 cmx）。BOM 状态 MEMO：cmx 写法为 CASE WHEN a.ISERP = 0 AND b.PGOODSID IS NULL THEN 'ERP未搭建BOM' ELSE 'ERP已搭建BOM' END，而 ERP BOM 表 b 的连接条件含 a.ISERP = 1，ISERP 为 0 时 b 一定为空，结果只取决于 ISERP，所以这里不读 ERP；cmx 视图 1339 行、1339 个产品，没有因 BOM 表重复的行（q07 号）",
+    "sql": "SELECT GOODSID, GOODSNAME, APPROVEDOCNO AS MA_NO, ZX_PL AS APEX_PL, HOLDERSNAME AS MAH, ZX_MINIMUM AS P_PERPACK, BASEUNITQTY AS S_PERBACK, ZX_CUSTOMERID AS CUSTOMID, CUSTOMNAME, CASE WHEN ISERP = 0 THEN 'ERP未搭建BOM' ELSE 'ERP已搭建BOM' END AS MEMO, GOODSTYPE AS STRENGTH, TRANPOSNAME AS LIVERY, GOODSNAME_EN FROM T_COST_GOODS_V"
   },
   "V_COST_CUSTOMER_LOOKUP": {
     "kind": "view",
-    "readsCmx": true,
-    "source": "CMX.V_COST_CUSTOMER_LOOKUP（成本核算主表客户 Lookup costCustomer 的数据源）：列取旧 Lookup 的显示列，加 DELETED = 0",
-    "reason": "客户和分销商在 d_cg 没有对应的表，与产品 Lookup 一起直接读 cmx",
-    "sql": "SELECT CUSTOMID, CUSTOMNAME, COUNTRY, LIVERY, TRANPOSID FROM CMX.V_COST_CUSTOMER_LOOKUP WHERE DELETED = 0"
+    "source": "CMX.V_COST_CUSTOMER_LOOKUP（成本核算主表、产品信息维护客户 Lookup costCustomer 的数据源）：客户外连接分销商，列取旧 Lookup 的显示列；读 d_cg 的客户表和分销商表（2026-10-31 起在 d_cg 维护，原来直接读 cmx）",
+    "sql": "SELECT a.CUSTOMID, a.CUSTOMNAME, a.ZONE AS COUNTRY, b.TRANPOSNAME AS LIVERY, b.TRANPOSID FROM T_COST_CUSTOMER a, T_COST_TRANPOSER b WHERE a.CUSTOMID = b.CUSTOMID(+)"
   },
   "V_COST_USER": {
     "kind": "view",
@@ -207,8 +251,8 @@
   "T_COST_FORMONEY_V": {
     "kind": "view",
     "readsCmx": true,
-    "source": "CMX.T_COST_FORMONEY_V（成本核算主表币种 Lookup formoney 的数据源，旧 T_COST_LOOKUP_CONFIG 第 79 行）：列取旧 Lookup 的显示列 FMID、FMNAME、FMSIGN、FMRATE，加旧查询固定的 DELETED = 0",
-    "reason": "汇率 FMRATE 由 cmx 视图经 ERP 数据库链接 pub_formoney_v@hyerp 取出，cmx 表 T_COST_FORMONEY 的 FMRATE 全为空（2026-10-31 只读查询，.reports/batch7-20261030/cf-cost-config/02 号），d_cg 的表做不出来",
-    "sql": "SELECT FMID, FMNAME, FMSIGN, FMRATE FROM CMX.T_COST_FORMONEY_V WHERE DELETED = 0"
+    "source": "CMX.T_COST_FORMONEY_V（旧外币管理页 formoney-manage 的查询视图，也是成本核算主表币种 Lookup formoney 的数据源）：写法同 cmx，以外币表为主外连接 ERP 的外币，各列本地值为空时取 ERP 的值（NVL）。2026-10-31 起外币表在 d_cg 维护，本地部分读 d_cg 的 T_COST_FORMONEY（原来整个视图直接读 cmx）",
+    "reason": "ERP 的外币和汇率 pub_formoney_v@hyerp 只能经 cmx 的 ERP 数据库链接读，d_cg 没有数据库链接（q04 号）；这里读 cmx 视图 ERP_FORMONEY_V（以 ERP 为主外连接 cmx 外币表，cmx 本地值优先），cmx 外币表 FMRATE 全为空，取到的就是 ERP 汇率（2026-10-31：人民币 1、欧元 7.5404、英镑 8.8972、美元 6.7367，q08 号）。只读，不经链接写入",
+    "sql": "SELECT a.FMID, NVL(a.FMOPCODE, b.FMOPCODE) AS FMOPCODE, NVL(a.FMNAME, b.FMNAME) AS FMNAME, NVL(a.FMSIGN, b.FMSIGN) AS FMSIGN, NVL(a.FMUNIT, b.FMUNIT) AS FMUNIT, NVL(a.FMRATE, b.FMRATE) AS FMRATE, a.USESTATUS, a.CREATE_BY FROM T_COST_FORMONEY a LEFT JOIN CMX.ERP_FORMONEY_V b ON a.FMID = b.FMID"
   }
 }

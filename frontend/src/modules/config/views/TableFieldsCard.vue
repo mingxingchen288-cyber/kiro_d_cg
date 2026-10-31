@@ -52,6 +52,17 @@ const updatedByColumn = computed({
     else delete c.updatedByColumn;
   }
 });
+/** 写入创建人的列（C06 v28 第 2 节 `createdByColumn`）：同修改人的列，清空时去掉这一项 */
+const createdByColumn = computed({
+  get: () => content.value?.createdByColumn ?? '',
+  set: (value: string) => {
+    const c = content.value;
+    if (!c) return;
+    const column = value.trim();
+    if (column) c.createdByColumn = column;
+    else delete c.createdByColumn;
+  }
+});
 
 /** 显示、编辑、必填：不能改的格子显示实际结果、不能勾，悬停显示原因 */
 function flagColumn(flag: Flag, headerName: string): ColDef {
@@ -227,6 +238,12 @@ onMounted(load);
         <NSpace size="small" align="center">
           <NInput v-model:value="updatedByColumn" size="small" placeholder="可空，如 UPDATE_BY" class="updated-by-input" />
           <span class="hint">目标表中的列（不是字段），新增、修改时写当前用户的登录名，审批通过时写审批人</span>
+        </NSpace>
+      </NDescriptionsItem>
+      <NDescriptionsItem label="创建人列" :span="3">
+        <NSpace size="small" align="center">
+          <NInput v-model:value="createdByColumn" size="small" placeholder="可空，如 CREATE_BY" class="updated-by-input" />
+          <span class="hint">目标表中的列（不是字段），只在新增时写当前用户的登录名</span>
         </NSpace>
       </NDescriptionsItem>
     </NDescriptions>

@@ -1,0 +1,28 @@
+{
+  "type": "rule",
+  "key": "R_TRANPOSER_ERP_GREEN",
+  "name": "ERP分销商整行绿底",
+  "content": {
+    "layer": "entity",
+    "target": "COST_TRANPOSER",
+    "category": "ui",
+    "field": null,
+    "order": 1,
+    "when": {
+      "logic": "AND",
+      "conditions": [
+        {
+          "source": "row",
+          "field": "ISERP",
+          "op": "eq",
+          "value": "1"
+        }
+      ]
+    },
+    "effect": {
+      "rowStyle": {
+        "backgroundColor": "#e6ffed"
+      }
+    }
+  }
+}

@@ -29,8 +29,8 @@ def test_after_warm_up_first_request_needs_no_oracle_and_no_compile(env: Env) ->
     assert runtime.ready is False
     report = runtime.warm_up()
     assert runtime.ready is True
-    # 角色：seed 的 ADMIN、技术中心和 R；规则包：成本核算、物料清单、审计追踪
-    assert (report.roles, report.packs, report.generation) == (3, 3, env.generation())
+    # 角色：seed 的 ADMIN、技术中心和 R；规则包：成本核算、物料清单、审计追踪、产品信息维护、客户信息、外币管理
+    assert (report.roles, report.packs, report.generation) == (3, 6, env.generation())
     compiled = reader.parsed.compiled
     env.cache.calls.clear()
     begins = len(env.uow.calls_to("begin"))
@@ -39,7 +39,7 @@ def test_after_warm_up_first_request_needs_no_oracle_and_no_compile(env: Env) ->
         snapshot.page_view("COST_PINGGU")
         snapshot.rules_pack("COST_PINGGU")
     assert env.cache.calls == ["read", "read"] and reader.oracle_reads == 0
-    assert len(env.uow.calls_to("begin")) == begins and reader.parsed.compiled == compiled == 3
+    assert len(env.uow.calls_to("begin")) == begins and reader.parsed.compiled == compiled == 6
 
 
 def test_newer_redis_version_is_not_overwritten(env: Env) -> None:

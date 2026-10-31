@@ -1,8 +1,8 @@
 """业务表的加锁读取、明细读取和写入（WP-03、WP-06、WP-09）。
 
 - 读取：有 readView 时经视图按字段名读取，否则按 `column` 读表（C06 第 2 节）。
-- 加锁（加锁的顺序和 SQL 见 `locks.py`）：只锁一张单据时一条 `SELECT … FOR UPDATE WAIT n` 加锁并读出主表行；一个实体
-  锁多行时按主键顺序每行一条加锁语句，再一条普通查询读出数据。用户发起时把行权限条件作为判断列一起查出（C08 第 7 节）。
+- 加锁（加锁的顺序和 SQL 见 `locks.py`）：只锁一张单据、实体没有 readView 时一条 `SELECT … FOR UPDATE WAIT n` 加锁并
+  读出主表行；一个实体锁多行，或实体有 readView 时，按主键顺序每行一条锁表的语句，再一条普通查询读出数据（`lock_load`）。用户发起时把行权限条件作为判断列一起查出（C08 第 7 节）。
   推迟加锁的单据锁住后核对（`lock_document`）用同一条加锁并读出的语句，不另外重读。
 - 明细：一次读出若干张单据在若干个明细实体中的全部行，一条语句（多个明细实体用 UNION ALL），不加锁：
   单据锁在主表行上；多表视图加 FOR UPDATE 会锁住关联表的行（C08 第 5a 节）。
@@ -127,13 +127,16 @@ class OracleDocumentStore:
 
     def lock_load(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, row_keys: list[str],
                   row_condition: SqlCondition | None = None) -> dict[str, Row]:
-        """加锁并读出主表行（WP-03），顺序已由 `locks.LockBook` 检查。只有一个主键时一条 `SELECT … FOR UPDATE WAIT n`，
-        加锁、读数据和行权限判断列同一条（普通保存的 SQL 条数不变）；多个主键时按主键顺序每行一条加锁语句
-        （`locks.lock_key_sql`，锁 `table` 的行），再一条普通查询读出数据和判断列。给出 `row_condition` 时有一行不满足就
-        拒绝整个命令（403 PERMISSION_DENIED）。不存在的主键不在结果中。"""
+        """加锁并读出主表行（WP-03），顺序已由 `locks.LockBook` 检查。只有一个主键、实体没有 readView 时一条
+        `SELECT … FOR UPDATE WAIT n`，加锁、读数据和行权限判断列同一条（普通保存的 SQL 条数不变）；多个主键，或实体有
+        readView 时，按主键顺序每行一条加锁语句（`locks.lock_key_sql`，锁 `table` 的行），再一条普通查询读出数据和判断列。
+        readView 可以关联别的表或视图取显示列（C06 v28 第 2 节），例如产品的 T_COST_GOODS_V 关联客户、分销商表，外币的
+        T_COST_FORMONEY_V 关联 cmx 经 ERP 数据库链接读的视图：对视图 FOR UPDATE 会锁住关联的行、把锁请求带到链接上，
+        所以只锁 `table`（2026-10-31，DB-06 的配套）。给出 `row_condition` 时有一行不满足就拒绝整个命令
+        （403 PERMISSION_DENIED）。不存在的主键不在结果中。"""
         pk = _field(entity, entity.primary_key)
         keys = _sorted_keys(pk, row_keys)
-        if len(keys) == 1:
+        if len(keys) == 1 and not entity.read_view:
             return self._masters(uow, entity_code, entity, keys, row_condition, lock=True)
         for key in keys:
             uow.connection.execute(text(lock_key_sql(entity.table, str(pk.column), self._wait)), {"k": key})

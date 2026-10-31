@@ -10,6 +10,11 @@
 例如成本核算主表的产品 Lookup：产品的"BOM状态"由 cmx 视图经 ERP 数据库链接算出（2026-10-30）；币种 Lookup 的汇率
 同样经 ERP 数据库链接取出（T_COST_FORMONEY_V，2026-10-31）。
 已存在的表和视图不动；`refresh` 中的先删除（视图为替换）再建。cmx 只读。
+
+补列（`add_columns`，DB-06，2026-10-31）：已存在的表中没有、清单里有的列，按 cmx 的类型和默认值补上（`ALTER TABLE … ADD`），
+再按主键从 cmx 取这些列的值（`MERGE`，只更新 d_cg 和 cmx 都有的行；d_cg 新增的行为列默认值或空）；已有的列和行不动，
+序列不动。用于已在 d_cg 维护、不能删表重建的表，例如 T_COST_GOODS：物料清单在 d_cg 改过单价，产品信息维护要用到
+ZX_CUSTOMERID 等列。补上的列排在原有列之后。
 """
 
 from __future__ import annotations
@@ -119,6 +124,64 @@ def _copy(conn: Connection, table: str, spec: TableSpec, specs: Mapping[str, Tab
             f"列注释 {len(kept_comments)} 个，主键 {pk_name}({', '.join(pk_columns)})，序列 {sequence} 从 {int(max_key) + 1} 开始")
 
 
+_TEXT_TYPES = {"VARCHAR2", "CHAR"}
+_NATIONAL_TYPES = {"NVARCHAR2", "NCHAR"}
+
+
+def _column_type(data_type: str, precision: object, scale: object, char_used: object, char_length: object) -> str:
+    """cmx 列的类型写法（补列用）：字符列按字节或字符的长度，数值列按精度和小数位，日期和时间戳原样。"""
+    if data_type in _TEXT_TYPES:
+        return f"{data_type}({int(str(char_length))} {'CHAR' if char_used == 'C' else 'BYTE'})"
+    if data_type in _NATIONAL_TYPES:
+        return f"{data_type}({int(str(char_length))})"
+    if data_type == "NUMBER":
+        if precision is None:
+            return "NUMBER" if scale is None else f"NUMBER(*, {int(str(scale))})"
+        return f"NUMBER({int(str(precision))}, {int(str(scale or 0))})"
+    if data_type == "FLOAT":
+        return f"FLOAT({int(str(precision))})" if precision is not None else "FLOAT"
+    if data_type == "DATE" or data_type.startswith("TIMESTAMP"):
+        return data_type
+    raise ValueError(f"补列不支持的类型：{data_type}")
+
+
+def _add_columns(conn: Connection, table: str, spec: TableSpec) -> str:
+    """已存在的表补上清单中有、表中没有的列（见文件说明）。"""
+    present = {r[0] for r in conn.execute(text(
+        "SELECT column_name FROM user_tab_cols WHERE table_name = :t AND hidden_column = 'NO'"), {"t": table})}
+    source = conn.execute(text(
+        "SELECT column_name, data_type, data_precision, data_scale, char_used, char_length, virtual_column, data_default "
+        "FROM all_tab_cols WHERE owner = 'CMX' AND table_name = :t AND hidden_column = 'NO' ORDER BY column_id"),
+        {"t": table}).all()
+    missing = sorted(set(spec.columns) - {c[0] for c in source})
+    if missing:
+        raise ValueError(f"{table} 在 cmx 中没有这些列：{', '.join(missing)}")
+    adding = [c for c in source if c[0] in set(spec.columns) and c[0] not in present]
+    if not adding:
+        return f"{table}: 已存在，没有要补的列，未改动"
+    for column, data_type, precision, scale, char_used, char_length, virtual, default in adding:
+        expression = str(default).strip() if default is not None else ""
+        clause = f" DEFAULT {expression}" if virtual == "NO" and expression and "NEXTVAL" not in expression.upper() else ""
+        conn.exec_driver_sql(
+            f"ALTER TABLE {table} ADD ({column} {_column_type(data_type, precision, scale, char_used, char_length)}{clause})")
+    names = [c[0] for c in adding]
+    _, pk_columns = _primary_key(conn, table)
+    on = " AND ".join(f"t.{k} = s.{k}" for k in pk_columns)
+    merged = conn.execute(text(
+        f"MERGE INTO {table} t USING (SELECT {', '.join([*pk_columns, *names])} FROM CMX.{table}) s ON ({on}) "
+        f"WHEN MATCHED THEN UPDATE SET {', '.join(f't.{n} = s.{n}' for n in names)}")).rowcount
+    conn.commit()
+    comments = conn.execute(text(
+        "SELECT column_name, comments FROM all_col_comments WHERE owner = 'CMX' AND table_name = :t AND comments IS NOT NULL"),
+        {"t": table}).all()
+    for column, comment in comments:
+        if column in names:
+            conn.exec_driver_sql(f"COMMENT ON COLUMN {table}.{column} IS '{str(comment).replace(chr(39), chr(39) * 2)}'")
+    rows = conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
+    return (f"{table}: 补上 {len(names)} 列（{', '.join(names)}），按主键从 cmx 取值 {merged} 行，表共 {rows} 行；"
+            f"已有的列、行和序列未改动")
+
+
 def _create_view(conn: Connection, view: str, spec: ViewSpec) -> str:
     conn.exec_driver_sql(f"CREATE OR REPLACE VIEW {view} AS {spec.sql}")
     columns = conn.execute(text("SELECT COUNT(*) FROM user_tab_cols WHERE table_name = :t"), {"t": view}).scalar()
@@ -126,9 +189,14 @@ def _create_view(conn: Connection, view: str, spec: ViewSpec) -> str:
     return f"{view}: 视图已建，{columns} 列，{rows} 行"
 
 
-def copy_business_tables(engine: Engine, specs: Mapping[str, TableSpec | ViewSpec], refresh: Iterable[str] = ()) -> list[str]:
-    """按清单的顺序处理（视图写在它引用的表之后），返回每项的处理结果。"""
+def copy_business_tables(engine: Engine, specs: Mapping[str, TableSpec | ViewSpec], refresh: Iterable[str] = (),
+                         add_columns: Iterable[str] = ()) -> list[str]:
+    """按清单的顺序处理（视图写在它引用的表之后），返回每项的处理结果。`add_columns` 中已存在的表补列（见文件说明）。"""
     refresh_set = {t.upper() for t in refresh}
+    add_set = {t.upper() for t in add_columns}
+    unknown = sorted(add_set - {n for n, s in specs.items() if isinstance(s, TableSpec)})
+    if unknown or add_set & refresh_set:
+        raise ValueError(f"补列只用于清单中的表，且不能同时 refresh：{', '.join(unknown or sorted(add_set & refresh_set))}")
     report: list[str] = []
     with engine.connect() as conn:
         for name, spec in specs.items():
@@ -141,6 +209,9 @@ def copy_business_tables(engine: Engine, specs: Mapping[str, TableSpec | ViewSpe
                     report.append(_create_view(conn, name, spec))
                 continue
             if _exists(conn, "user_tables", "table_name", name):
+                if name in add_set:
+                    report.append(_add_columns(conn, name, spec))
+                    continue
                 if name not in refresh_set:
                     report.append(f"{name}: 已存在，未改动")
                     continue

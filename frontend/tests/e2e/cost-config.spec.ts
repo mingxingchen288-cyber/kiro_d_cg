@@ -2,7 +2,8 @@
  * 第 7 批 CF 组（2026-10-31）：成本核算主表的币种 Lookup 和状态下拉，对照旧系统 cost-pinggu 的列配置
  * （cmx T_COST_COLUMN_METADATA：FMNAME 的 Lookup formoney 回填 FMNAME、FMRATE；USESTATUS 的 agSelectCellEditor 5 个值）。
  * 配置在 backend/seed/config 的 lookup.formoney、dict.COST_PINGGU.USESTATUS、page/entity/operation 的 COST_PINGGU；
- * 币种的数据源 T_COST_FORMONEY_V 由 `platform db copy-business-tables` 建（直接读 cmx 的同名视图）。
+ * 币种的数据源 T_COST_FORMONEY_V 由 `platform db copy-business-tables` 建（2026-10-31 起读 d_cg 的外币表，本地汇率为空时
+ * 取 cmx 经 ERP 数据库链接读的汇率，第 8 批 G1）。
  * 写数据的用自己的测试成本单（data.copyDoc('2550')：2550 的币种是人民币、汇率 1、状态商业化），用例结束时删除。
  */
 import { formatScale } from '../../src/modules/page/fields';

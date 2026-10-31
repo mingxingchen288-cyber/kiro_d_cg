@@ -1,0 +1,54 @@
+{
+  "type": "entity",
+  "key": "COST_TRANPOSER",
+  "name": "分销商信息",
+  "content": {
+    "table": "T_COST_TRANPOSER",
+    "primaryKey": "TRANPOSID",
+    "freezable": true,
+    "erpRow": {
+      "column": "ISERP",
+      "value": "1",
+      "localValue": "0"
+    },
+    "fields": [
+      {
+        "name": "TRANPOSID",
+        "column": "TRANPOSID",
+        "label": "分销商ID",
+        "type": "number",
+        "source": "own",
+        "role": "system"
+      },
+      {
+        "name": "CUSTOMID",
+        "column": "CUSTOMID",
+        "label": "客户ID",
+        "type": "number",
+        "source": "own",
+        "role": "system"
+      },
+      {
+        "name": "TRANPOSNAME",
+        "column": "TRANPOSNAME",
+        "label": "分销商名称",
+        "type": "text",
+        "source": "erp",
+        "role": "input"
+      },
+      {
+        "name": "ISERP",
+        "column": "ISERP",
+        "label": "是否ERP",
+        "type": "number",
+        "source": "own",
+        "role": "input"
+      }
+    ],
+    "fieldDefaults": {
+      "ISERP": {
+        "editable": false
+      }
+    }
+  }
+}

@@ -62,7 +62,8 @@ def test_columns_label_is_column_comment(env: Env) -> None:
 def test_schema_objects_by_keyword(env: Env) -> None:
     """CF-20：向导里输入"t_cost_goods"，列出名称含它的表和视图，先表后视图（同旧系统 `listDbObjects`）。"""
     found = env.service.schema_objects("t_cost_goods")
-    assert [(o.name, o.type) for o in found.objects] == [("T_COST_GOODS", "table"), ("T_COST_GOODS_PRICE_V", "view")]
+    assert [(o.name, o.type) for o in found.objects] == [("T_COST_GOODS", "table"), ("T_COST_GOODS_PRICE_V", "view"),
+                                                         ("T_COST_GOODS_V", "view")]
 
 
 def test_generate_single_page(env: Env) -> None:
@@ -75,8 +76,9 @@ def test_generate_single_page(env: Env) -> None:
                                     ("operation", "GOODS_WIZARD.save"), ("menu", "main"), ("role", "ADMIN")}
     entity = env.stored("entity", "COST_GOODS_WIZARD")
     fields = {f["name"]: f for f in entity["fields"]}
-    # d_cg 的 T_COST_GOODS 有 UPDATE_BY 列（.reports/batch3-20261030/h5-goods-page/q04），它不算视图独有的列
-    view_only = {"DELETED", "CREATE_TIME", "UPDATE_TIME", "CREATE_BY", "ROW_CLASS_FLAG"}
+    # d_cg 的 T_COST_GOODS 有 UPDATE_BY 列（.reports/batch3-20261030/h5-goods-page/q04），2026-10-31 补上 CREATE_BY 等列
+    # （产品信息维护，DB-06），它们不算视图独有的列
+    view_only = {"DELETED", "CREATE_TIME", "UPDATE_TIME", "ROW_CLASS_FLAG"}
     assert len(fields) == 17 and {n for n, f in fields.items() if f["column"] is None} == view_only
     assert (entity["primaryKey"], fields["GOODSID"]["role"], fields["ZX_PRICE"]["label"]) == ("GOODSID", "system", "执行价")
     page = env.stored("page", "GOODS_WIZARD")

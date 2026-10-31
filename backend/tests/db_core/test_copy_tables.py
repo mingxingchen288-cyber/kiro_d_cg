@@ -33,7 +33,11 @@ def test_table_follows_the_list(engine: Engine, name: str) -> None:  # noqa: F81
                             {"t": name}).scalar_one()
     columns = inspector.columns(name)
     assert inspector.object_type(name) == "table" and columns is not None
-    assert list(columns) == [c for c in cmx_order if c in set(spec.columns)] and set(columns) == set(spec.columns)
+    assert set(columns) == set(spec.columns)
+    # 列按 cmx 的顺序；`--add-columns` 补上的列（DB-06）排在原有列之后，两段各自按 cmx 的顺序
+    order = [cmx_order.index(c) for c in columns]
+    breaks = [i for i in range(1, len(order)) if order[i] < order[i - 1]]
+    assert len(breaks) <= 1, list(columns)
     assert virtual == 0
     assert inspector.primary_key(name) is not None
     assert inspector.sequence_exists(f"{name}_SEQ")

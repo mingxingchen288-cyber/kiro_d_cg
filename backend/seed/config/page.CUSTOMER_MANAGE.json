@@ -1,0 +1,95 @@
+{
+  "type": "page",
+  "key": "CUSTOMER_MANAGE",
+  "name": "客户信息",
+  "content": {
+    "title": "客户信息",
+    "layout": "masterDetail",
+    "detailMode": "tabs",
+    "audit": true,
+    "saveOperation": "CUSTOMER_MANAGE.save",
+    "master": {
+      "entity": "COST_CUSTOMER",
+      "fields": {
+        "CUSTOMID": {
+          "searchable": true
+        },
+        "CUSTOMNAME": {
+          "searchable": true
+        },
+        "ZONE": {
+          "searchable": true
+        },
+        "ISERP": {
+          "searchable": true
+        }
+      },
+      "buttons": [
+        {
+          "action": "addRow",
+          "label": "新增"
+        },
+        {
+          "action": "copyRow",
+          "label": "复制"
+        },
+        {
+          "action": "deleteRow",
+          "label": "删除"
+        },
+        {
+          "action": "saveGridConfig",
+          "label": "保存列配置"
+        }
+      ],
+      "grid": {
+        "sideBar": true,
+        "cellSelection": false,
+        "groupBy": []
+      }
+    },
+    "details": [
+      {
+        "entity": "COST_TRANPOSER",
+        "title": "分销商",
+        "fields": {
+          "TRANPOSID": {
+            "searchable": true
+          },
+          "CUSTOMID": {
+            "searchable": true
+          },
+          "TRANPOSNAME": {
+            "searchable": true
+          },
+          "ISERP": {
+            "searchable": true
+          }
+        },
+        "buttons": [
+          {
+            "action": "addRow",
+            "label": "新增"
+          },
+          {
+            "action": "copyRow",
+            "label": "复制"
+          },
+          {
+            "action": "deleteRow",
+            "label": "删除"
+          },
+          {
+            "action": "saveGridConfig",
+            "label": "保存列配置"
+          }
+        ],
+        "grid": {
+          "sideBar": true,
+          "cellSelection": false,
+          "groupBy": []
+        }
+      }
+    ]
+  }
+}

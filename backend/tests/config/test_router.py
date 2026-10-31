@@ -62,7 +62,8 @@ def test_config_items_admin_only(client: TestClient) -> None:
     items = client.get("/api/config/items", params={"type": "page"})
     assert items.status_code == 200
     assert [(i["type"], i["key"], i["version"]) for i in items.json()["items"]] == [
-        ("page", "AUDIT_LOG", 1), ("page", "COST_PINGGU", 1), ("page", "GOODS_PRICE_MANAGE", 1)]
+        ("page", "AUDIT_LOG", 1), ("page", "COST_PINGGU", 1), ("page", "CUSTOMER_MANAGE", 1), ("page", "FORMONEY_MANAGE", 1),
+        ("page", "GOODS_MANAGE", 1), ("page", "GOODS_PRICE_MANAGE", 1)]
     denied = client.get("/api/config/items", headers={"X-Test-Role": "R"})
     assert denied.status_code == 403 and denied.json()["code"] == "PERMISSION_DENIED"
     item = client.get("/api/config/items/page/COST_PINGGU")
@@ -97,7 +98,8 @@ def test_wizard_and_schema_endpoints(client: TestClient, env: Env) -> None:
     # C09 v16：向导按关键字搜表和视图
     objects = client.post("/api/config/schema/objects", json={"keyword": "T_COST_GOODS"})
     assert objects.status_code == 200 and objects.json() == {"objects": [
-        {"name": "T_COST_GOODS", "type": "table"}, {"name": "T_COST_GOODS_PRICE_V", "type": "view"}]}
+        {"name": "T_COST_GOODS", "type": "table"}, {"name": "T_COST_GOODS_PRICE_V", "type": "view"},
+        {"name": "T_COST_GOODS_V", "type": "view"}]}
     # seed 已有物料清单页 GOODS_PRICE_MANAGE，向导用另外的编码在同一张表上新建一页
     generated = client.post("/api/config/wizard/generate", json={
         "parentMenu": "cost", "pageCode": "GOODS_WIZARD", "title": "物料清单（向导）", "layout": "single",

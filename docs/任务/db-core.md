@@ -51,6 +51,19 @@
     - 命令输出：`05-copy.log`（新建 5 项、重建物料表）、`07-copy-again.log`（再执行一次，10 项都"已存在，未改动"）。`tests/db_core/test_copy_tables.py` 每次检查各表的列和顺序、虚拟列、主键、序列，各视图有效且不引用 cmx，以及重复执行不改动（包含在上面 T-DB-1 的 39 passed 中）。行数和逐行内容只在复制当时核对：cmx 还在使用、数据在变，平台不做持续同步。
   - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：状态由"进行中"改为"完成"：本条 2026-10-29 的子条目已逐条核对验收标准（列、顺序、虚拟列、行数、视图、序列、重复执行），`tests/db_core/test_copy_tables.py`（第 18 行标 oracle）照常通过（第 7 批合并后 `-m "oracle or redis"` 196 passed、0 failed、0 skipped，`.reports/batch7-20261030/merge/pytest-real-1.txt`）；剩下的只有独立复核，`.reports/review/` 中没有本卡的复核记录，状态里补写"待独立复核"；按用户规则（`.kiro/steering/测试范围.md`）不阻断完成。
 
+### T-DB-4 已有的表补列；客户、分销商、外币表和改读 d_cg 的视图
+
+- 归属与目标：实现 DB-06（第 8 批 G1）。产品信息维护、客户信息、外币管理（T-CF-8）要用的表和视图；读这几张表的 Lookup 视图改读 d_cg。
+- 前置输入：T-DB-3。
+- 负责范围：`db_core/copy_tables.py` 的 `--add-columns`、`assembly/cli.py`；`db_core/business_tables.json` 的 T_COST_GOODS（补 9 列）、T_COST_CUSTOMER、T_COST_TRANPOSER、T_COST_FORMONEY、T_COST_GOODS_V、V_COST_GOODS_LOOKUP、V_COST_CUSTOMER_LOOKUP、T_COST_FORMONEY_V。
+- 交付物：补列命令；d_cg 中的上述表、序列和视图。
+- 接入责任：d_cg 已执行（2026-10-31 13:44），主代理合并后不用再执行；以后切换时按 MG-06 `--refresh`。
+- 验收标准（真实验证）：补列后 T_COST_GOODS 的行数、原有列的值和序列不变，补的列与 cmx 相同；新表的行数等于 cmx 未删除的行数、序列为 cmx 最大主键加一；三个 Lookup 视图与 cmx 的对应视图行数和内容相同（cmx 复制之后新增的数据除外）。
+- 状态与证据：进行中（真实验证通过，待独立复核）。命令：`uv run --with <wheel> platform db copy-business-tables --add-columns T_COST_GOODS --refresh V_COST_GOODS_LOOKUP V_COST_CUSTOMER_LOOKUP T_COST_FORMONEY_V`（`.reports/batch8-20261031/g1-basic-pages/copy.log`；`--refresh` 只用于这三个视图，前后行数核对见 q09、q11）。
+  - T_COST_GOODS：14419 行，原 13 列逐列哈希与补列前相同，补的 9 列与 cmx 双向 MINUS 为 0，序列不变。
+  - 新表：T_COST_CUSTOMER 355 行、T_COST_TRANPOSER 318 行、T_COST_FORMONEY 4 行；序列从 1210182、2708、23 开始。
+  - 视图：V_COST_CUSTOMER_LOOKUP 535 → 535 行，与 cmx 双向 MINUS 为 0；T_COST_FORMONEY_V 4 → 4 行，汇率人民币 1、欧元 7.5404、英镑 8.8972、美元 6.7367，与 ERP 相同；V_COST_GOODS_LOOKUP 1339 → 1335 行，只少 cmx 在 10-29 之后由 ERP 同步新增的 4 个产品（19278、19283、19314、19315），其余与 cmx 相同；T_COST_GOODS_V 与 cmx 只差同样 4 行；成本核算、物料清单、液体成本的 5 个视图行数不变；全部 VALID。
+  - 模拟验证：`tests/db_core/test_copy_add_columns.py`（补列生成的 DDL 和 MERGE）；真实 `tests/db_core` 通过（含在 `pytest-real-3.txt` 的 91 passed 中）。
 ### T-DB-5 列注释、按关键字列出表和视图
 
 - 归属与目标：实现 DB-07（盘点 `.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B14、B15；用户 2026-10-31 回复"开始"）。契约 C08 v21。来源：旧系统 `MetaConfigService.listDbObjects` 第 621–645 行、`listViewColumns`（DBA_COL_COMMENTS）。

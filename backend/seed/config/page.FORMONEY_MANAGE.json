@@ -1,0 +1,67 @@
+{
+  "type": "page",
+  "key": "FORMONEY_MANAGE",
+  "name": "外币管理",
+  "content": {
+    "title": "外币管理",
+    "layout": "single",
+    "detailMode": "tabs",
+    "audit": true,
+    "saveOperation": "FORMONEY_MANAGE.save",
+    "master": {
+      "entity": "COST_FORMONEY",
+      "fields": {
+        "FMID": {
+          "searchable": true
+        },
+        "FMOPCODE": {
+          "searchable": true
+        },
+        "FMNAME": {
+          "searchable": true
+        },
+        "FMSIGN": {
+          "searchable": true
+        },
+        "FMUNIT": {
+          "searchable": true
+        },
+        "FMRATE": {
+          "searchable": true
+        },
+        "USESTATUS": {
+          "searchable": true
+        }
+      },
+      "buttons": [
+        {
+          "action": "addRow",
+          "label": "新增"
+        },
+        {
+          "action": "copyRow",
+          "label": "复制"
+        },
+        {
+          "action": "deleteRow",
+          "label": "删除"
+        },
+        {
+          "action": "saveGridConfig",
+          "label": "保存列配置"
+        },
+        {
+          "action": "syncErpRate",
+          "label": "同步ERP汇率",
+          "operation": "FORMONEY_MANAGE.syncErpRate",
+          "requiresSelection": false
+        }
+      ],
+      "grid": {
+        "sideBar": true,
+        "cellSelection": false,
+        "groupBy": []
+      }
+    }
+  }
+}
