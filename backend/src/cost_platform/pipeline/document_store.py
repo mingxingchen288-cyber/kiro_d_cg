@@ -1,10 +1,11 @@
 """业务表的加锁读取、明细读取和写入（WP-03、WP-06、WP-09）。
 
 - 读取：有 readView 时经视图按字段名读取，否则按 `column` 读表（C06 第 2 节）。
-- 加锁（加锁的顺序和 SQL 见 `locks.py`）：只锁一张单据时一条 `SELECT … FOR UPDATE WAIT n` 加锁并读出主表行；一个实体
-  锁多行，或实体的读取视图关联了别的表（`locks.ReadViews`）时，按主键顺序每行一条锁表的语句，再一条普通查询读出数据
-  （`lock_load`）。用户发起时把行权限条件作为判断列一起查出（C08 第 7 节）。
-  推迟加锁的单据锁住后核对（`lock_document`）用同一条加锁并读出的语句，不另外重读。
+- 加锁（加锁的顺序和 SQL 见 `locks.py`）：只锁实体表，FOR UPDATE 不落在视图上（用户 2026-11-01："我从来没要求过你锁定
+  视图，我自始至终的口径都是要求你锁定实体表"）。只锁一张单据、实体没有 readView 时一条 `SELECT … FROM 表 … FOR UPDATE
+  WAIT n` 加锁并读出主表行；一个实体锁多行，或实体有 readView 时，按主键顺序每行一条锁 `table` 的语句，再一条普通查询
+  （有 readView 时经视图）读出数据（`lock_load`）。用户发起时把行权限条件作为判断列一起查出（C08 第 7 节）。
+  推迟加锁的单据锁住后核对（`lock_document`）用同一种加锁读取，不另外重读。
   主从单据锁住主表行后，每张明细表一条语句锁住这些单据的全部明细行（`lock_details`，`locks.py` 规则 5）。
 - 明细：一次读出若干张单据在若干个明细实体中的全部行，一条语句（多个明细实体用 UNION ALL），本身不加锁：
   明细行已由 `lock_details` 按表锁住；读取视图可以关联别的表，加 FOR UPDATE 会锁住关联表的行（C08 第 5a 节）。
@@ -43,7 +44,7 @@ from cost_platform.contracts.types import (
 )
 from cost_platform.contracts.values import from_db, from_wire, to_db, to_wire
 
-from .locks import ReadViews, lock_children_sql, lock_key_sql, lock_select_sql
+from .locks import lock_children_sql, lock_key_sql, lock_select_sql
 
 _ALLOWED = "WP_ALLOWED"
 
@@ -124,36 +125,27 @@ def _sorted_keys(field: EntityField, keys: Iterable[str]) -> list[Any]:
 
 
 class OracleDocumentStore:
-    def __init__(self, lock_wait_seconds: int, views: ReadViews | None = None) -> None:
-        """`views`：读取视图读取哪些表（插件传入，与预读共用一份）；没有时有 readView 的实体一律先锁表、再读视图。"""
+    def __init__(self, lock_wait_seconds: int) -> None:
         self._wait = int(lock_wait_seconds)
-        self._views = views
 
     # ---------------------------------------------------------------- 读取
 
     def lock_load(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, row_keys: list[str],
                   row_condition: SqlCondition | None = None) -> dict[str, Row]:
-        """加锁并读出主表行（WP-03），顺序已由 `locks.LockBook` 检查。只有一个主键时一条 `SELECT … FOR UPDATE WAIT n`，
-        加锁、读数据和行权限判断列同一条（普通保存的 SQL 条数不变）；多个主键时按主键顺序每行一条加锁语句
-        （`locks.lock_key_sql`，锁 `table` 的行），再一条普通查询读出数据和判断列。
-        readView 可以关联别的表或视图取显示列（C06 v28 第 2 节），例如产品的 T_COST_GOODS_V 关联客户、分销商表，外币的
-        T_COST_FORMONEY_V 关联 cmx 经 ERP 数据库链接读的视图：对视图 FOR UPDATE 会锁住关联的行、把锁请求带到链接上，
-        所以这种视图只锁一行时也按多个主键的做法（只锁 `table`）；只读本表的视图（物料清单的 T_COST_GOODS_PRICE_V）仍是
-        一条（`locks.ReadViews`）。给出 `row_condition` 时有一行不满足就拒绝整个命令（403 PERMISSION_DENIED）。
-        不存在的主键不在结果中。"""
+        """加锁并读出主表行（WP-03），顺序已由 `locks.LockBook` 检查。只锁实体的 `table`（用户 2026-11-01，`locks.py`
+        规则 3）：只有一个主键、实体没有 readView 时一条 `SELECT … FROM 表 … FOR UPDATE WAIT n`，加锁、读数据和行权限
+        判断列同一条（普通保存的 SQL 条数不变）；多个主键，或实体有 readView 时，按主键顺序每行一条加锁语句
+        （`locks.lock_key_sql`，锁 `table` 的行），再一条普通查询读出数据和判断列（有 readView 时经视图）。例如物料清单
+        先锁 T_COST_GOODS 的行、再读 T_COST_GOODS_PRICE_V，产品信息维护先锁 T_COST_GOODS、再读 T_COST_GOODS_V，外币管理
+        先锁 T_COST_FORMONEY、再读 T_COST_FORMONEY_V。给出 `row_condition` 时有一行不满足就拒绝整个命令
+        （403 PERMISSION_DENIED）。不存在的主键不在结果中。"""
         pk = _field(entity, entity.primary_key)
         keys = _sorted_keys(pk, row_keys)
-        if len(keys) == 1 and self._lock_reads(entity):
+        if len(keys) == 1 and not entity.read_view:
             return self._masters(uow, entity_code, entity, keys, row_condition, lock=True)
         for key in keys:
             uow.connection.execute(text(lock_key_sql(entity.table, str(pk.column), self._wait)), {"k": key})
         return self._masters(uow, entity_code, entity, keys, row_condition, lock=False)
-
-    def _lock_reads(self, entity: EntityConfig) -> bool:
-        """只锁一行时能否用一条语句加锁并读出：没有 readView，或 readView 只读 `table`。"""
-        if not entity.read_view:
-            return True
-        return self._views is not None and self._views.only_table(entity.read_view, entity.table)
 
     def read_masters(self, uow: UnitOfWork, entity_code: str, entity: EntityConfig, row_keys: list[str],
                      row_condition: SqlCondition | None = None) -> dict[str, Row]:
@@ -168,8 +160,8 @@ class OracleDocumentStore:
     def lock_document(self, uow: UnitOfWork, ctx: ExecutionContext, ref: DocumentRef,
                       details: Collection[str]) -> DocumentData | None:
         """锁住一张单据的主表行并读出数据（`BusinessLocker.lock` 核对加锁前读到的本命令单据，规则 4）：与普通保存的加锁读取
-        同一条语句（`lock_load` 只有一个主键时）；再锁住它的全部明细行（`lock_details`，每张明细表一条），`details` 中的
-        明细实体再一条普通查询读出。单据已不存在时为 None。"""
+        相同（`lock_load` 只有一个主键时：没有 readView 时一条锁表并读出，有 readView 时先锁表、再普通读视图）；再锁住它的
+        全部明细行（`lock_details`，每张明细表一条），`details` 中的明细实体再一条普通查询读出。单据已不存在时为 None。"""
         entity = ctx.config.entity(ref.entity)
         master = self.lock_load(uow, ref.entity, entity, [ref.record_key]).get(ref.record_key)
         if master is None:

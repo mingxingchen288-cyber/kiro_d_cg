@@ -117,16 +117,6 @@ def test_objects_on_d_cg(engine: Engine) -> None:  # noqa: F811
     assert 0 < len(inspector.objects("")) <= 100
 
 
-def test_view_sources_on_d_cg(engine: Engine) -> None:  # noqa: F811
-    """DB-08（只读，只查数据字典）：物料清单的读取视图只读 T_COST_GOODS（加锁读取一条语句）；产品信息维护的读取视图
-    关联客户、分销商表，外币管理的关联 cmx 经 ERP 链接读的视图（先锁表、再读视图，WP-03）。"""
-    inspector = OracleSchemaInspector(engine)
-    assert inspector.view_sources("T_COST_GOODS_PRICE_V") == ["T_COST_GOODS"]
-    assert inspector.view_sources("T_COST_GOODS_V") == ["T_COST_CUSTOMER", "T_COST_GOODS", "T_COST_TRANPOSER"]
-    assert inspector.view_sources("T_COST_FORMONEY_V") == ["CMX.ERP_FORMONEY_V", "T_COST_FORMONEY"]
-    assert inspector.view_sources("T_COST_GOODS") is None
-
-
 # ---------------------------------------------------------------- UnitOfWorkFactory、UnitOfWork
 
 UOW_TABLE = "CT_DB_UOW_PROBE"

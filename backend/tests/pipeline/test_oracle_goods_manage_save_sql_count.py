@@ -1,9 +1,9 @@
 """产品信息维护页保存的 SQL 条数（WP-10、WP-03 的例外）的真实验证（d_cg），用 SQL 追踪统计（计数口径同
 `test_oracle_goods_save_sql_count.py`）。
 
-产品信息维护的读取视图 T_COST_GOODS_V 关联客户、分销商表（`SchemaInspector.view_sources`），所以只锁一行时也先锁
-T_COST_GOODS 的这一行、再普通读视图，比没有读取视图的保存多 1 条（T-WP-15 复核建议 1：这一条原来只由代码推算）。
-页面没有审批流，不推迟加锁。
+产品信息维护的实体有读取视图 T_COST_GOODS_V（关联客户、分销商表），加锁只锁实体表（用户 2026-11-01，WP-03），所以只锁
+一行时也先锁 T_COST_GOODS 的这一行、再普通读视图，比没有读取视图的保存多 1 条（T-WP-15 复核建议 1：这一条原来只由代码
+推算）。页面没有审批流，不推迟加锁。
 
 组装同 `test_oracle_updated_by.py` 的 `Platform`：配置取 `backend/seed/config`（内存中的配置库，不写 PF_CONFIG_ITEM）。
 数据自己建、自己删：新增一个本地产品（产成品，ISERP = 0），结束时删掉这个产品和本测试的命令记录。
@@ -57,8 +57,7 @@ def test_goods_manage_save_6_statements(engine: Engine, local_product: str) -> N
     platform = Platform(engine)
     try:
         ctx = platform.ctx("admin")
-        # 先保存一次：进程内第一次写 T_COST_GOODS 时读列定义、第一次用 T_COST_GOODS_V 时读它读取的表（插件 start 时预读，
-        # 这里没有预读），不计入
+        # 先保存一次：进程内第一次写 T_COST_GOODS 时读列定义（插件 start 时预读，这里没有预读），不计入
         assert platform.executor.execute(_save(platform, local_product, {"GOODSTYPE": "S-1"}), ctx).outcome == "saved"
         with _tracer.capture() as trace:
             result = platform.executor.execute(_save(platform, local_product, {"GOODSTYPE": "S-2"}), ctx)

@@ -38,7 +38,7 @@
 - DB-07：`SchemaInspector` 的 `column_comments`、`objects`（C08 v21，2026-10-31 第 8 批，盘点 B14、B15），都只查 d_cg 当前用户的数据字典：
   - `column_comments(名称)`：USER_TAB_COLUMNS 左连 USER_COL_COMMENTS，表或视图的每一列按列顺序给出注释，没有注释的为 None，不存在时为 None。
   - `objects(关键字)`：USER_OBJECTS 中 `OBJECT_TYPE IN ('TABLE', 'VIEW')`、`OBJECT_NAME LIKE '%关键字%'`（关键字去掉首尾空白、转大写，作绑定变量；`_`、`%` 照样是通配符），`ORDER BY OBJECT_TYPE, OBJECT_NAME`，最多 100 个；关键字为空时不按名称筛选。同旧系统 `MetaConfigService.listDbObjects` 第 621–645 行，差别：旧系统查 DBA_OBJECTS 并指定 OWNER、关键字拼进 SQL，这里查当前用户的 USER_OBJECTS、用绑定变量。
-- DB-08：`SchemaInspector.view_sources`（C08 v22，2026-10-31 第 8 批合并）：查 d_cg 当前用户的 USER_VIEWS 左连 USER_DEPENDENCIES，列出视图直接依赖的表、视图和同义词（函数、包、类型、序列等不算），当前用户的只写名称，别的用户写"用户.名称"，经数据库链接的加"@链接名"，按名称排列；不是视图时为 None。只读数据字典。例：物料清单的 T_COST_GOODS_PRICE_V 为 `["T_COST_GOODS"]`，产品信息维护的 T_COST_GOODS_V 为 `["T_COST_CUSTOMER", "T_COST_GOODS", "T_COST_TRANPOSER"]`，外币管理的 T_COST_FORMONEY_V 为 `["CMX.ERP_FORMONEY_V", "T_COST_FORMONEY"]`。使用方 write-pipeline（WP-03）。
+- DB-08：已去掉（2026-11-01，C08 v24）。原来的 `SchemaInspector.view_sources`（C08 v22）列出视图读取的表，只供 write-pipeline 判断读取视图是否只读实体自己的表；用户要求加锁只锁实体表（"我从来没要求过你锁定视图，我自始至终的口径都是要求你锁定实体表"），write-pipeline 不再做这个判断（WP-03），没有别的使用方，编号不再使用。
 
 ## 4. 依赖
 

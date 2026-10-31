@@ -40,7 +40,7 @@ from .command_log import OracleCommandRecorder
 from .copies import OracleCopySources
 from .document_store import OracleDocumentStore
 from .loader import DocumentLoader, PageSaveInvolved
-from .locks import LockBook, PipelineLocks, ReadViews
+from .locks import LockBook, PipelineLocks
 from .merge import DocumentMerger, IntentMerger
 from .review import RedisCommandMonitor, RedisCommandReview, command_review_router
 from .stages import LockStage, MergeIntentsStage, MergePatchesStage, RecalculateStage, WriteChangesStage
@@ -77,10 +77,9 @@ class PipelinePlugin:
         engine = reg.get(RulesEngine)
         inspector = reg.get(SchemaInspector)
         scales = ColumnScales(inspector)
-        views = ReadViews(inspector)  # 读取视图读取哪些表：加锁读取用，start 时预读（WP-03）
-        self._warmup = SchemaWarmup(scales, reg.get(EntityDirectory), views=views)
+        self._warmup = SchemaWarmup(scales, reg.get(EntityDirectory))
         book = LockBook()  # 加锁读取、TableWriter、BusinessLocker 共用：同一事务的锁按同一顺序检查（locks.py）
-        store = OracleDocumentStore(self._lock_wait, views)
+        store = OracleDocumentStore(self._lock_wait)
         loader = DocumentLoader(store, permission, book)
         tables = OracleTableWriter(self._lock_wait, inspector, book)
         reg.provide(TableWriter, tables)

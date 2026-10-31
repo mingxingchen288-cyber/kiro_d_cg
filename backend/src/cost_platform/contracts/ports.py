@@ -93,13 +93,6 @@ class SchemaInspector(Protocol):
         同旧系统 `MetaConfigService.listDbObjects`（向导、"表与列"填视图名和目标表时搜索）。"""
         ...
 
-    def view_sources(self, view: str) -> list[str] | None:
-        """C08 v22：视图直接读取的表、视图和同义词，按名称排列：当前用户的只写名称，别的用户的写 `用户.名称`，经数据库
-        链接的另加 `@链接名`；视图里调用的函数、包不算。不是视图时为 None。write-pipeline 据此判断实体的读取视图是否只读
-        实体自己的表（WP-03）：例如物料清单的 T_COST_GOODS_PRICE_V 为 `["T_COST_GOODS"]`，外币管理的 T_COST_FORMONEY_V 为
-        `["CMX.ERP_FORMONEY_V", "T_COST_FORMONEY"]`。"""
-        ...
-
 
 class ConnectionFactory(Protocol):
     def legacy_readonly(self) -> AbstractContextManager[Connection]:
@@ -224,11 +217,6 @@ class EntityDirectory(Protocol):
     def tables(self) -> list[str]:
         """已发布的实体写入的表（实体的 `table`），去重，按名称排列。2026-10-30 由使用方 write-pipeline 提出：启动时和
         配置变更后，把这些表的列定义预读进缓存（WP-15），第一次保存不再多读一次列定义。"""
-        ...
-
-    def read_views(self) -> list[str]:
-        """C08 v22：已发布的实体的读取视图（实体的 `readView`），去重，按名称排列。由使用方 write-pipeline 提出：启动时和
-        配置变更后预读这些视图读取的表（`SchemaInspector.view_sources`，WP-03），第一次保存不多一条 SQL（WP-10）。"""
         ...
 
 

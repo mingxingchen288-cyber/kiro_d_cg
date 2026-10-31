@@ -7,14 +7,16 @@
    （物料清单 T_COST_GOODS）。
 2. 一个事务中新加的锁必须排在已持有的全部锁之后（往后找，可以执行到一半再锁）；排在前面或同层时，调用方先用普通查询找出
    范围，再和自己的单据合在一起一次锁完。违反时 `LockBook.claim` 返回 500：这是实现错误，用户操作触发不了。
-3. 一次锁多行时按顺序一行一条 `SELECT … FOR UPDATE WAIT n`，不依赖一条 SQL 内部的加锁顺序（没有核实过）；只锁一行时
-   （普通保存只锁一张单据）加锁和读数据仍是一条语句，SQL 条数不变。例外：实体的读取视图关联了别的表、视图或经数据库
-   链接读的（`ReadViews`），只锁一行时也先锁 `table` 的行、再普通读视图，FOR UPDATE 不落到关联的行和链接上
-   （`document_store.lock_load`）；只读本表的视图（物料清单）仍是一条。
+3. 只锁实体表（用户 2026-11-01："我从来没要求过你锁定视图，我自始至终的口径都是要求你锁定实体表"）：所有 FOR UPDATE
+   都落在实体的 `table`（写入的表，含明细实体的表，规则 5）或没注册的表上，不落在视图上。一次锁多行时按顺序一行一条 `SELECT … FOR UPDATE WAIT n`，
+   不依赖一条 SQL 内部的加锁顺序（没有核实过）；只锁一行、实体没有读取视图时（普通保存只锁一张单据，例如成本核算）
+   加锁和读数据仍是一条语句；实体有读取视图时（物料清单、产品信息维护、外币管理），只锁一行也先按主键锁 `table` 的行
+   （`lock_key_sql`）、再一条普通查询经视图读出（`document_store.lock_load`）。
 4. 加锁前普通读到的本命令单据，锁住后核对；不同时抛 `LockScopeChanged`，编排回滚整个事务、整条命令重来。核对用的数据由
-   加锁语句本身读出：这些单据按顺序轮到时用"锁一行并读出数据"的语句（`lock_select_sql`，与普通保存的加锁读取同一条），
-   仍是一行一条；其余对象只锁不读（`lock_key_sql`）。有明细的单据另用一条普通查询读明细。
-   这样往前冻结的页面（物料清单）保存只比普通保存多 1 条加锁前的普通读取。
+   加锁读取本身读出：这些单据按顺序轮到时用与普通保存相同的加锁读取（`document_store.lock_load`：没有读取视图时一条
+   `lock_select_sql` 锁表并读出，有读取视图时先 `lock_key_sql` 锁表、再普通读视图）；其余对象只锁不读（`lock_key_sql`）。
+   有明细的单据另用一条普通查询读明细。这样往前冻结的页面（物料清单）保存只比同一页面不推迟加锁的保存多 1 条加锁前的
+   普通读取。
 5. 主从单据连明细一起锁（用户 2026-10-31："如果是主从保存，那么主从都要锁"）：保存、按钮、审批处理锁住本命令的单据
    （`DocumentLoader.lock`、`document_store.lock_document`）时，锁住主表行之后，每张明细表再一条 `lock_children_sql`，
    锁住这些单据在这张明细表中的全部行，不读数据（明细另用一条普通查询读，见上）；两个明细实体在同一张表上时只锁一次
@@ -56,7 +58,8 @@ def lock_key_sql(table: str, key_column: str, wait: int) -> str:
 
 
 def lock_select_sql(select: str, source: str, key_column: str, wait: int) -> str:
-    """锁一行并读出数据（只锁一张单据时，加锁读取一条语句）。绑定变量为 `:k0`，与多行时读数据的写法一致。"""
+    """锁一行并读出数据（只锁一张单据、实体没有读取视图时，加锁读取一条语句）。`source` 只能是实体的 `table`，不传视图
+    （规则 3）。绑定变量为 `:k0`，与多行时读数据的写法一致。"""
     return f"SELECT {select} FROM {source} WHERE {key_column} IN (:k0) ORDER BY {key_column} FOR UPDATE WAIT {wait}"
 
 
@@ -71,41 +74,6 @@ def lock_children_sql(table: str, key_column: str, parent_column: str, binds: Se
     keys = ", ".join(":" + b for b in binds)
     return (f"SELECT {key_column} FROM {table} WHERE {parent_column} IN ({keys}) "
             f"ORDER BY {key_column} FOR UPDATE WAIT {wait}")
-
-
-# ---------------------------------------------------------------- 读取视图读取哪些表（只锁一行时用哪种加锁语句）
-
-class ReadViews:
-    """实体的读取视图读取哪些表（WP-03），经 `SchemaInspector.view_sources` 读取，每个视图在进程内只读一次（视图变更随
-    部署重启生效，同 `ColumnScales`）。
-
-    只读实体自己的表的视图（例如物料清单的 T_COST_GOODS_PRICE_V 只读 T_COST_GOODS），只锁一行时仍一条
-    `SELECT … FOR UPDATE` 加锁并读出（SQL 条数同 WP-10）；关联了别的表、视图或经数据库链接读的（产品信息维护的
-    T_COST_GOODS_V、外币管理的 T_COST_FORMONEY_V），先锁 `table` 的行、再普通读视图，FOR UPDATE 不落到关联的行和链接上
-    （`document_store.lock_load`）。插件 start 时和配置变更后由 `warmup.SchemaWarmup` 预读已发布实体的读取视图。"""
-
-    def __init__(self, inspector: SchemaInspector) -> None:
-        self._inspector = inspector
-        self._views: dict[str, tuple[str, ...]] = {}
-
-    def only_table(self, view: str, table: str) -> bool:
-        """视图只读 `table` 这一张表（当前用户的）。"""
-        key = view.upper()
-        if key not in self._views:
-            self._read(view)
-        return self._views[key] == (table.upper(),)
-
-    def preload(self, views: Iterable[str]) -> list[str]:
-        """把还没读过的视图读进来，每个视图一次 `view_sources`；返回这次读了的视图。"""
-        done = []
-        for view in views:
-            if view.upper() not in self._views:
-                self._read(view)
-                done.append(view)
-        return done
-
-    def _read(self, view: str) -> None:
-        self._views[view.upper()] = tuple(s.upper() for s in self._inspector.view_sources(view) or [])
 
 
 # ---------------------------------------------------------------- 锁对象

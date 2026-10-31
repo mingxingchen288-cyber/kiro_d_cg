@@ -285,7 +285,7 @@ class FakeConfigSnapshotReader(Scripted):
 class FakeEntityDirectory(Scripted):
     """`EntityDirectory`：实体由构造参数给出；明细所属的主表和按表找实体由实体的 `details` 和 `table` 推出。"""
 
-    scriptable = ('entity', 'master_of', 'entities_on_table', 'tables', 'read_views')
+    scriptable = ('entity', 'master_of', 'entities_on_table', 'tables')
 
     def __init__(self, entities: Mapping[str, EntityConfig] | None = None) -> None:
         super().__init__()
@@ -315,10 +315,6 @@ class FakeEntityDirectory(Scripted):
     def tables(self) -> list[str]:
         self._record("tables")
         return sorted({e.table for e in self._entities.values()})
-
-    def read_views(self) -> list[str]:
-        self._record("read_views")
-        return sorted({e.read_view for e in self._entities.values() if e.read_view})
 
     def add(self, code: str, entity: EntityConfig) -> None:
         """模拟发布了一个新实体（配置变更新增实体）。"""

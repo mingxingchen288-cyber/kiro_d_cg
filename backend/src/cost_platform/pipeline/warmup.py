@@ -1,15 +1,12 @@
-"""启动时和配置变更后预读已发布实体的表的列定义和读取视图读取的表（WP-15、WP-03、WP-10）。
+"""启动时和配置变更后预读已发布实体的表的列定义（WP-15、WP-10）。
 
 保存时按列的小数位处理数值（`values.ColumnScales`），每张表第一次用到时读一次 USER_TAB_COLUMNS。原来这一条落在进程启动后
 第一次写这张表的命令里，使第一次保存的 SQL 条数比 WP-10 多 1 条。现在插件 start 时先把已发布实体写入的表
 （`EntityDirectory.tables`）读进来，读完平台才开始接受请求；之后后台线程每 `interval` 秒取一次已发布实体的表（配置代号
 没变时只有一次 Redis 读取，见 config 的 `PublishedEntities`），配置变更新增了实体、有新的表就读进来。
 
-读取视图同样处理（`locks.ReadViews`，C08 v22 `EntityDirectory.read_views`、`SchemaInspector.view_sources`）：只锁一行时
-用哪种加锁语句取决于视图读取哪些表，预读后第一次保存也不多一条。
-
 后台线程执行的 SQL 不在任何命令的追踪范围内（`tracing.py` 只记同一上下文的语句），不计入命令的 SQL 条数。发布新实体后
-`interval` 秒之内就保存它的，那次保存照旧在第一次用到时读一次列定义（和读取视图读取的表）。
+`interval` 秒之内就保存它的，那次保存照旧在第一次用到时读一次列定义。
 """
 
 from __future__ import annotations
@@ -19,7 +16,6 @@ import threading
 
 from cost_platform.contracts.ports import EntityDirectory
 
-from .locks import ReadViews
 from .values import ColumnScales
 
 WARMUP_SECONDS = 5.0
@@ -29,22 +25,18 @@ _log = logging.getLogger(__name__)
 
 
 class SchemaWarmup:
-    def __init__(self, scales: ColumnScales, entities: EntityDirectory, interval: float = WARMUP_SECONDS,
-                 views: ReadViews | None = None) -> None:
+    def __init__(self, scales: ColumnScales, entities: EntityDirectory, interval: float = WARMUP_SECONDS) -> None:
         self._scales = scales
         self._entities = entities
-        self._views = views
         self.interval = interval
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
     def run_once(self) -> list[str]:
-        """读还没读过的已发布实体的表（和读取视图），返回这次读了的表和视图。"""
+        """读还没读过的已发布实体的表，返回这次读了的表。"""
         done = self._scales.preload(self._entities.tables())
-        if self._views is not None:
-            done += self._views.preload(self._entities.read_views())
         if done:
-            _log.info("已预读列定义和读取视图：%s", "、".join(done))
+            _log.info("已预读列定义：%s", "、".join(done))
         return done
 
     def _safe_run(self) -> None:
