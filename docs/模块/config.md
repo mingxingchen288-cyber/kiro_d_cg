@@ -78,6 +78,13 @@
   - 保存操作的编码为 `<页面编码>.save`，页面的 `saveOperation` 引用它；`kind` 为 `save`，`propagation` 为 `continue`，`rowNotFound` 取默认的 `skip`，`impact` 为主表实体和各明细实体。
   - 保存操作的 `writableFields` 按生成的实体和页面配置逐个实体列出，不放开全部字段：只包含 `role` 为 `input`、`column` 不为 null、实体的 `fieldDefaults` 和页面都没有设为不可编辑的字段，不包含主键、主从关联字段和 `erpRow.column`；没有 `erpRow` 的实体不包含 ERP 列（C06 第 10 节）。
   - 已有实体可以从视图重新导入列：新列加入，已有列的设置不变，视图中已删除的列列出来，由管理员处理。
+- CF-15：seed 带三个基础资料页（第 8 批 G1，2026-10-31；用户 2026-10-30 对"外币管理（含同步ERP汇率）"等回复"要"，2026-10-31 回复"开始"）。来源是旧系统 cmx 中 goods-manage、customer-manage、formoney-manage 的表元数据、列元数据、页面组件和页面规则（`.reports/batch8-20261031/g1-basic-pages/q01`～`q03`），页面由通用页面按页面编码打开：
+  - 产品信息维护 `GOODS_MANAGE`：实体 `COST_GOODS`，写 `T_COST_GOODS`，经 `T_COST_GOODS_V` 读（只取产成品，外连接客户、分销商取名称）。它和物料清单的 `COST_GOODS_PRICE` 是同一张表上的两个主表实体，同旧系统 CostGoods、CostGoodsPrice 都写 T_COST_GOODS；两个视图的行不重叠（产成品；非产成品、半成品）。客户 ID 经客户 Lookup `costCustomer` 选，回填客户 ID、客户名称、国家、分销商 ID、分销商名称（旧列元数据 ZX_CUSTOMERID 的 cellEditorParams）；华益代码、分销商名称、客户名称、国家、创建人只在视图中；新增时写创建人、修改人（C06 v28 `createdByColumn`、`updatedByColumn`）。
+  - 客户信息 `CUSTOMER_MANAGE`：主表 `COST_CUSTOMER`（T_COST_CUSTOMER），明细"分销商" `COST_TRANPOSER`（T_COST_TRANPOSER，关联 CUSTOMID）。
+  - 外币管理 `FORMONEY_MANAGE`：实体 `COST_FORMONEY`（T_COST_FORMONEY，经 `T_COST_FORMONEY_V` 读，本地汇率为空时显示 ERP 的汇率）；各列都不能编辑（旧列元数据 EDITABLE 全为 0）；工具栏按钮"同步ERP汇率"（operations OP-11）。
+  - 按钮同旧系统：新增、复制、删除、保存列配置、保存（客户信息的明细同样）；旧客户信息的"导出"按钮没有动作，不做（盘点乙第 3 节）。ERP 行（ISERP = 1）整行绿底 `#e6ffed`、整行不能改（旧 GRID_STYLE 和 EDITABLE 规则）；分销商是明细，这两条写成实体层的界面规则（页面层 `field` 为 null 的规则只作用于主表）。
+  - 权限：ADMIN 三个页面 `["*"]`（旧系统管理员 `["*"]`）；旧系统技术中心在这三个页面没有权限（cmx T_COST_ROLE_PAGE 没有行），seed 的技术中心不授。菜单项由主代理加在"基础信息"（`basic`）下。
+- CF-16：保存实体时，`createdByColumn`（C06 v28）与 `updatedByColumn` 的要求相同：是 `table` 中的列，不是任何实体字段写入的列；另外不能与 `updatedByColumn` 相同（C06 第 10 节）。`readView` 照旧只校验视图存在、包含主键和实体的全部字段；视图可以关联别的表或视图（C06 v28 第 2 节），不另校验。
 
 ## 4. 依赖
 

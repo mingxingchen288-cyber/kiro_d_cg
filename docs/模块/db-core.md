@@ -28,9 +28,13 @@
   - 明细表在清单中写 `parent`（主表名和关联列），只复制主表中未删除的行的明细：已删除单据的明细不复制。
   - 去掉方案名；补上保留列的默认值和主键（cmx 中主键约束是系统生成的 `SYS_` 名称时改名为 `PK_<表名>`）；为每张表建序列 `<表名>_SEQ`，起始值为 cmx 中最大主键加一（含已删除的行，不重用旧主键）；不复制名称以 `BP_T09_` 或 `PF_` 开头的对象；可以重复执行，已存在的表和视图不动，`--refresh <名称>` 才重建。
   - 视图：清单中登记为 `"kind": "view"` 的项，写明来源视图和 d_cg 版本的 SQL（去掉方案名、引用 d_cg 的表、去掉不复制的列和 `DELETED` 条件），写在它引用的表之后，按这条 SQL 建视图。例如成本核算的两个明细视图 V_COST_PINGGU_MATERIAL、V_COST_PINGGU_PACKAGE 从 d_cg 的 T_COST_PINGGU_DTL 和 T_COST_GOODS 取数。核对：d_cg 视图查出的行与 cmx 视图（按未删除单据过滤）逐行相同。
-  - 例外：清单中标 `"readsCmx": true` 的视图直接读 cmx 的同名视图，`reason` 写明 d_cg 的表为什么做不出来（2026-10-30 起）：成本核算主表四个 Lookup 的数据源 V_COST_GOODS_LOOKUP（产品，BOM 状态由 cmx 视图经 ERP 数据库链接算出）、V_COST_CUSTOMER_LOOKUP（客户）、V_COST_USER（人员，只留工号、姓名）、T_COST_FORMONEY_V（币种，汇率由 cmx 视图经 ERP 数据库链接取出，2026-10-31 加入）。与"由BOM生成明细"的 SQL 直接读 `CMX.T_COST_BOM_GOODS_TREE_V` 相同，数据随 cmx 变化。
+  - 例外：清单中标 `"readsCmx": true` 的视图读 cmx 的视图，`reason` 写明 d_cg 的表为什么做不出来（2026-10-30 起）：人员 Lookup 的 V_COST_USER（只留工号、姓名）；T_COST_FORMONEY_V 的 ERP 部分（外币和汇率只能经 cmx 的 ERP 数据库链接读，d_cg 没有数据库链接；本地部分读 d_cg 的外币表，DB-06）。与"由BOM生成明细"的 SQL 直接读 `CMX.T_COST_BOM_GOODS_TREE_V` 相同，数据随 cmx 变化，只读，不经链接写入。产品 Lookup V_COST_GOODS_LOOKUP、客户 Lookup V_COST_CUSTOMER_LOOKUP 原来也直接读 cmx，2026-10-31 起改读 d_cg（DB-06）。
 - DB-04：`platform db upgrade` 用 Alembic 执行各模块的平台表迁移脚本；`platform db check` 核对平台表是否齐全、迁移是否为最新版本，不一致时以非零退出码结束。
 - DB-05：不修改 d_cg 中已有的 `BP_T09_*` 对象；cmx 只读。
+- DB-06：已在 d_cg 维护、不能删表重建的表，要多用几列时用 `platform db copy-business-tables --add-columns <表名>`（第 8 批 G1，2026-10-31）：清单里有、表中没有的列，按 cmx 的类型、长度、精度和默认值补上（`ALTER TABLE … ADD`），再按主键从 cmx 取这些列的值（`MERGE`，只更新 d_cg 和 cmx 都有的行，d_cg 自己新增的行为列默认值或空），补上的列复制 cmx 的列注释；已有的列、行和序列不动，补上的列排在原有列之后。同一张表不能同时 `--refresh`。例如 T_COST_GOODS：物料清单在 d_cg 改过单价，产品信息维护和产品 Lookup 要用 GOODSNO、ZX_PL、ZX_MINIMUM、APPROVEDOCNO、BASEUNITQTY、ZX_CUSTOMERID、HOLDERSNAME、TRANPOSID、CREATE_BY，补这 9 列后原 13 列逐列哈希与补列前相同，补的 9 列与 cmx 双向 MINUS 为 0（`.reports/batch8-20261031/g1-basic-pages/q09`、`q11`）。同批的清单改动：
+  - 新表 T_COST_CUSTOMER（客户，355 行）、T_COST_TRANPOSER（分销商，318 行，不按客户过滤：产品视图按 TRANPOSID 关联分销商表，cmx 也一样）、T_COST_FORMONEY（外币，4 行，加上"同步ERP汇率"选行用的 CREATE_BY）；新视图 T_COST_GOODS_V（产品信息维护的读取视图，写法同 cmx，去掉不复制的列和 DELETED 条件）。cmx 的 T_COST_CUSTOMER_V、T_COST_TRANPOSER_V 只过滤 DELETED，不建，实体直接读表。
+  - V_COST_CUSTOMER_LOOKUP 改为客户表外连接分销商表；V_COST_GOODS_LOOKUP 改读 T_COST_GOODS_V。BOM 状态 MEMO 不再读 ERP：cmx 的写法中 ERP BOM 表的连接条件含 `ISERP = 1`，ISERP 为 0 时一定没连上，结果只取决于 ISERP（0 为"ERP未搭建BOM"，其余为"ERP已搭建BOM"）。T_COST_FORMONEY_V 以 d_cg 的外币表为主，外连接 `CMX.ERP_FORMONEY_V`，各列本地值为空时取 ERP 的值，写法同 cmx 的 T_COST_FORMONEY_V。
+  - 核对（`q11`）：V_COST_CUSTOMER_LOOKUP 535 行，与 cmx 双向 MINUS 为 0；T_COST_FORMONEY_V 4 行，汇率与 ERP 相同；V_COST_GOODS_LOOKUP 1335 行，比 cmx 少 4 个产品（cmx 在 10-29 复制之后由 ERP 同步新增的 19278、19283、19314、19315，d_cg 的物料表没有），其余与 cmx 相同；全部表和视图 VALID。
 
 ## 4. 依赖
 

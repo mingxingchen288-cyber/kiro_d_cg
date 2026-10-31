@@ -48,3 +48,13 @@
 - 验收标准：选中成本单 D 点"同步单价"（测试里的按钮），找到的同层成本单 A、B、E 和 D 在动作之前一次锁完；查找和加锁之间新冒出来的 F 不写；D 在加锁前读取之后被改时整个回滚。
 - 状态与证据：进行中（2026-10-30，L 组，`batch4/lock-order`），模拟验证通过，待独立复核。`tests/operations/test_lock_order.py` 3 个，`tests/operations` 其余用例照常通过。真实验证：d_cg 的种子配置里已经没有找别的单据的按钮（"同步采购价"已删），按钮找到同层单据的并发没有在 d_cg 上重放；`tests/operations` 的 oracle 用例照常通过。
   - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：状态由"进行中"改为"完成"：验收标准用测试里的按钮"同步单价"，由 `tests/operations/test_lock_order.py` 3 个覆盖（第 7 批合并后模拟全量 1309 passed，`.reports/batch7-20261030/merge/pytest-1.txt`）；按钮找到同层单据的并发没有在 d_cg 上重放：seed 已没有找别的单据的按钮（"同步采购价"已去掉），前台没有这条路径，按用户规则（`.kiro/steering/测试范围.md`）不另做。`.reports/review/` 中没有本卡的复核记录，状态里补写"待独立复核"；按用户规则（`.kiro/steering/测试范围.md`）不阻断完成。
+
+### T-OP-5 外币管理"同步ERP汇率"
+
+- 归属与目标：实现 OP-11（第 8 批 G1）。来源：旧系统 formoney-manage 的工具栏按钮 SYNC_ERP_RATE（cmx T_COST_PAGE_COMPONENT ID=62），用户 2026-10-30 对"外币管理（含同步ERP汇率）"回复"要"。
+- 前置输入：T-OP-3（`updateRows`）；T-CF-9（有 `readView` 时只锁表）；T-DB-4（T_COST_FORMONEY、T_COST_FORMONEY_V）。
+- 负责范围：seed `operation.FORMONEY_MANAGE.syncErpRate.json`、`page.FORMONEY_MANAGE.json` 的按钮。没有改 operations 的代码。
+- 交付物：外币管理工具栏"同步ERP汇率"。
+- 接入责任：主代理合并后执行 `save_g1_config.py after-merge`。
+- 验收标准：业务例子（浏览器、d_cg，`frontend/tests/e2e/basic-pages-1031.spec.ts` 第二个用例；真实验证 `tests/operations/test_basic_pages_oracle.py`）：两行测试外币（system 建的本地汇率 9.99，PF_TEST 建的 2.5），点按钮后 system 的那行本地汇率清空，PF_TEST 的不变；人民币、欧元、英镑、美元显示 ERP 的汇率；加锁只锁 T_COST_FORMONEY，不对经 ERP 链接的视图 FOR UPDATE；本地汇率本来为空的 4 行没有被写。
+- 状态与证据：进行中（真实验证通过；浏览器用例待主代理合并后运行；待独立复核）。`tests/operations/test_basic_pages_oracle.py` 2 passed（`.reports/batch8-20261031/g1-basic-pages/pytest-real-basic-2.txt`）。
