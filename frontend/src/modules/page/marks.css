@@ -1,6 +1,6 @@
 /*
- * 改动标记和错误标记的样式（marks.ts）：表格的单元格（PageGrid.vue，根元素 .page-grid）和原地表单的字段（RecordForm.vue，
- * 根元素 .record-form）共用。颜色沿用旧系统 MasterDetailPageV3.vue。
+ * 改动标记、错误标记和行的标记的样式（marks.ts）：表格的单元格和行（PageGrid.vue，根元素 .page-grid）和原地表单的字段和
+ * 表单主体（RecordForm.vue，根元素 .record-form）共用。颜色沿用旧系统 MasterDetailPageV3.vue。
  */
 .page-grid .cell-user-changed,
 .record-form .cell-user-changed {
@@ -29,4 +29,21 @@
 .page-grid .cell-error,
 .record-form .cell-error {
   box-shadow: inset 0 0 0 2px #d03050;
+}
+
+/* 行的标记：表格加在行上，表单加在表单主体上 */
+.page-grid .row-deleted,
+.record-form .row-deleted {
+  opacity: 0.5;
+}
+
+.page-grid .row-new,
+.record-form .row-new {
+  font-style: italic;
+}
+
+/* 表单主体自己有标签的默认颜色（RecordForm.vue），这里多一级选择器盖过它 */
+.page-grid .row-frozen,
+.record-form .record-form__body.row-frozen {
+  color: #8a8a8a;
 }

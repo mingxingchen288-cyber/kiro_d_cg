@@ -27,6 +27,7 @@ import type { JsonValue } from '../../../contracts/schema';
 import type { PersonalColumn } from '../../../contracts/http';
 import { EXPORT_MENU } from '../export';
 import { fieldOf } from '../fields';
+import { ROW_MARKS, ruleRowStyle } from '../marks';
 import type { GridPort, GridRow, PageRuntime } from '../page-runtime';
 import { messageOf } from '../page-runtime';
 import { SUMMARY_ROW_ID } from '../summary';
@@ -95,20 +96,19 @@ function getRowId(params: GetRowIdParams<GridRow>) {
   return params.data.__id;
 }
 
-const rowClassRules = {
-  'row-deleted': (params: RowClassParams<GridRow>) =>
-    Boolean(params.data && runtime.model.buffer.isDeleted(props.entity, runtime.model.rowIdOf(params.data.__id))),
-  'row-new': (params: RowClassParams<GridRow>) =>
-    Boolean(params.data && runtime.model.buffer.isNew(props.entity, runtime.model.rowIdOf(params.data.__id))),
-  'row-frozen': (params: RowClassParams<GridRow>) =>
-    Boolean(params.data && runtime.frozenBy(props.entity, params.data.__id))
-};
+/** 行的标记（删除、新增、冻结）：与原地表单同一组判断和样式（marks.ts、marks.css） */
+const rowClassRules = Object.fromEntries(
+  Object.entries(ROW_MARKS).map(([name, test]) => [
+    name,
+    (params: RowClassParams<GridRow>) =>
+      Boolean(params.data && test(runtime.model, props.entity, runtime.model.rowIdOf(params.data.__id)))
+  ])
+);
 
 function getRowStyle(params: RowClassParams<GridRow>) {
   if (!params.data) return undefined;
-  // 界面规则的行样式：有修改时取预览，否则取页面加载时的显示求值（旧系统 GRID_STYLE 加载即显示）
-  const style = runtime.model.ruleView(props.entity, runtime.model.rowIdOf(params.data.__id))?.style.row;
-  return style && typeof style === 'object' && !Array.isArray(style) ? (style as Record<string, string>) : undefined;
+  // 界面规则的行样式：有修改时取预览，否则取页面加载时的显示求值（旧系统 GRID_STYLE 加载即显示）；与原地表单共用（marks.ts）
+  return ruleRowStyle(runtime.model, props.entity, runtime.model.rowIdOf(params.data.__id));
 }
 
 const datasource: IServerSideDatasource<GridRow> = {
@@ -359,22 +359,10 @@ function getContextMenuItems(params: GetContextMenuItemsParams<GridRow>): Array<
   />
 </template>
 
-<!-- 单元格的改动标记和错误标记：与原地表单共用（marks.ts） -->
+<!-- 单元格的改动标记和错误标记、行的标记：与原地表单共用（marks.ts） -->
 <style src="../marks.css"></style>
 
 <style scoped>
-:deep(.row-deleted) {
-  opacity: 0.5;
-}
-
-:deep(.row-new) {
-  font-style: italic;
-}
-
-:deep(.row-frozen) {
-  color: #8a8a8a;
-}
-
 :deep(.cell-lookup) {
   cursor: pointer;
 }

@@ -5,7 +5,7 @@
  * - 列宽、固定用 initialWidth、initialPinned：查询和配置替换后不重置用户调整过的列（FP-08、FP-09）。
  * - 可编辑、样式、标记都用回调，每次从页面运行时取最新状态（配置替换和预览后立即生效）。
  * - 改动标记沿用旧系统（MasterDetailPageV3.vue）：改过的格绿色、计算带出变化的格黄色、新增行深蓝底白字、删除行半透明加删除线；
- *   判断和样式与原地表单共用（marks.ts、marks.css）。
+ *   判断和样式与原地表单共用（marks.ts、marks.css）。对比、错误提示、界面规则的单元格样式也与原地表单共用（marks.ts）。
  * - 主表区和每个明细区的每行最前面都有原地表单的展开列（FP-03）。
  */
 import type {
@@ -17,8 +17,8 @@ import type {
 } from 'ag-grid-community';
 import type { FieldValue } from '../../../contracts/command';
 import type { ViewField, ViewRegion } from '../../../contracts/page-view';
-import { compareDisplay, displayText, optionValues, parseInput } from '../fields';
-import { CELL_MARKS } from '../marks';
+import { displayText, optionValues, parseInput } from '../fields';
+import { CELL_MARKS, cellCompare, cellTooltip, ruleCellStyle } from '../marks';
 import type { GridRow, PageRuntime } from '../page-runtime';
 
 export const FORM_COLUMN = '__form';
@@ -38,16 +38,20 @@ function idOf(params: { data?: GridRow | undefined }) {
   return params.data?.__id ?? '';
 }
 
-/** 对比显示：值后面跟箭头和差值（与旧系统 renderCompareValue 相同的样式） */
-function compareRenderer(runtime: PageRuntime, entity: string, field: ViewField, dict?: Map<string, string>) {
+/**
+ * 对比显示：值后面跟箭头和差值（与旧系统 renderCompareValue 相同的样式）。显示什么由 marks.ts 的 cellCompare 决定，
+ * 原地表单的字段用同一个（样式名都是 cell-compare）。
+ */
+function compareRenderer(runtime: PageRuntime, region: ViewRegion, field: ViewField, dict?: Map<string, string>) {
   return (params: { value: FieldValue; data?: GridRow }) => {
     const span = document.createElement('span');
     span.textContent = displayText(field, params.value ?? null, dict);
     const id = params.data ? runtime.model.rowIdOf(params.data.__id) : '';
-    const shown = compareDisplay(field, runtime.model.compare(entity, id)?.[field.name]);
+    const shown = cellCompare(runtime.model, { region, id, field: field.name });
     if (!shown) return span;
     const wrapper = document.createElement('span');
     const diff = document.createElement('span');
+    diff.className = 'cell-compare';
     diff.style.cssText = `color:${shown.color};font-size:11px;margin-left:4px`;
     diff.textContent = `${shown.arrow}${shown.text}`;
     wrapper.append(span, diff);
@@ -121,13 +125,13 @@ export function buildColumns(runtime: PageRuntime, region: ViewRegion): ColDef<G
       },
       valueFormatter: (params: ValueFormatterParams<GridRow>) =>
         displayText(field, (params.value as FieldValue) ?? null, dict),
-      tooltipValueGetter: params => {
-        const id = idOf(params as { data?: GridRow });
-        const errors = runtime.model
-          .errorsOf(entity, runtime.model.rowIdOf(id))
-          .filter(e => e.field === field.name || e.field === null);
-        return errors.length ? errors.map(e => e.message).join('；') : undefined;
-      },
+      // 错误提示、单元格样式与原地表单的字段同一组判断（marks.ts）
+      tooltipValueGetter: params =>
+        cellTooltip(runtime.model, {
+          region,
+          id: runtime.model.rowIdOf(idOf(params as { data?: GridRow })),
+          field: field.name
+        }),
       cellClassRules: {
         // 改动标记和错误标记与原地表单的字段同一组判断（marks.ts）
         ...Object.fromEntries(
@@ -139,13 +143,12 @@ export function buildColumns(runtime: PageRuntime, region: ViewRegion): ColDef<G
         ),
         'cell-lookup': () => Boolean(field.lookup)
       },
-      cellStyle: params => {
-        const style = runtime.model.ruleView(entity, runtime.model.rowIdOf(idOf(params as { data?: GridRow })))?.style
-          .cells[field.name];
-        return style && typeof style === 'object' && !Array.isArray(style)
-          ? (style as Record<string, string>)
-          : undefined;
-      }
+      cellStyle: params =>
+        ruleCellStyle(runtime.model, {
+          region,
+          id: runtime.model.rowIdOf(idOf(params as { data?: GridRow })),
+          field: field.name
+        })
     };
     if (field.type === 'number') {
       column.type = 'rightAligned';
@@ -178,7 +181,7 @@ export function buildColumns(runtime: PageRuntime, region: ViewRegion): ColDef<G
       column.cellEditorParams = { values: options };
     }
     // 行中可能带对比值（C09 DataRow.compare），文本列和数值列都用同一个渲染器
-    if (field.type !== 'boolean') column.cellRenderer = compareRenderer(runtime, entity, field, dict);
+    if (field.type !== 'boolean') column.cellRenderer = compareRenderer(runtime, region, field, dict);
     columns.push(column);
   }
   return columns;
