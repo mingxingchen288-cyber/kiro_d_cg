@@ -2,7 +2,7 @@
 
 模块说明：[config](../模块/config.md)。状态和证据的写法见[工程约定第 4 节](../工程约定.md)。
 
-相关业务例子：E18（[业务例子](../业务例子.md)）。测试先行、真实约束证据和完成前复核见[工程约定](../工程约定.md)第 5–7 节。
+相关业务例子：E18、E43、E44（[业务例子](../业务例子.md)）。测试先行、真实约束证据和完成前复核见[工程约定](../工程约定.md)第 5–7 节。
 
 ### T-CF-1 配置模型与保存校验
 
@@ -157,3 +157,15 @@
 - 接入责任：frontend-config 的 T-FC-5 使用。
 - 验收标准：模拟验证：液体成本核算主表 T_COST_PINGGU_LQ 导入列时 COST_PERBOX、M_PERPACK 的标题为"每盒成本""每中盒小盒数"，没有注释的列为列名，有视图时取视图的注释；输入"t_cost_goods"列出物料表和物料清单视图、先表后视图；接口返回同样的结果；写了 `dataItems` 的规则保存时拒绝，提示不允许出现 dataItems。真实验证（只读，只查 d_cg 的数据字典）：输入"T_COST_GOODS"列出 T_COST_GOODS（表）、T_COST_GOODS_PRICE_V（视图），名称都含关键字、先表后视图；T_COST_PINGGU_LQ 导入列的主键 DOCID、序列已存在，两列标题为列注释。
 - 状态与证据：进行中（模拟验证、只读真实验证和浏览器用例通过；待独立复核）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`。模拟验证：`tests/config/test_wizard.py` 新增 2 条、`test_router.py::test_wizard_and_schema_endpoints` 加 `schema/objects`、`test_validation.py::test_rule_with_data_items_rejected`；`pytest -m "not oracle and not redis"` 1316 passed。真实验证：`tests/config/test_wizard_schema_oracle.py` 1 条，连同 T-DB-5 的 4 条只读用例 5 passed（`pytest-real-readonly.txt`）；`test_oracle.py::test_wizard_on_d_cg` 会写 d_cg 配置，没有跑。只读核对：d_cg `PF_CONFIG_ITEM` 中含 `dataItems` 的配置 0 行（`01-规则数据项.out.txt`），seed 也没有；审批流的数据项不是这一项，没有动（新平台审批流 C06 第 7 节本来没有数据项字段）。浏览器见 T-FC-5。
+
+### T-CF-14 旧系统的 7 个业务角色迁到 seed 和 d_cg
+
+- 归属与目标：实现 CF-21。依据用户 2026-10-31 原话"角色你迁移过来"。来源：cmx `T_COST_ROLE` 121～127（001、002、003、005、006、007、008）和它们在 `T_COST_ROLE_PAGE` 中的 56 行（只读查询 `.reports/batch9-20261031/a-roles/q02-角色页面内容.out.txt`），旧区域名取 `T_COST_PAGE_COMPONENT`、`T_COST_TABLE_METADATA`（`q06-旧区域名.out.txt`）。转换规则同 seed 的 `role.技术中心.json`（C06 v24 第 8 节），契约不改。
+- 前置输入：开始前 T-CF-10（液体成本核算页）、T-CF-11；第 8 批 G1 的产品信息维护、客户信息、外币管理三个页面；导出配置 cost-pinggu-export、goods-price-pgoods-export。
+- 负责范围：seed `role.001.json`、`role.002.json`、`role.003.json`、`role.005.json`、`role.006.json`、`role.007.json`、`role.008.json`；`tests/config` 中按 seed 枚举的断言（seed 89 → 96 项，页面视图多 39 份）和 `tests/config/support.py` 物料清单测试实体补 4 个 ERP 列。不改代码。不迁测试角色"普通用户""test11"，不迁账号。
+- 交付物：7 个角色在 seed 中、在 d_cg 中；每一项旧权限迁成了什么、没迁的原因见 `.reports/batch9-20261031/a-roles/迁移对照.md`。
+- 验收标准：模拟验证：整份 seed 能保存；每个角色读到的菜单与旧系统授给它的页面相同；采购在成本核算、物料清单、外币管理的按钮、列、导出与旧策略一致；7 个角色的行权限与旧系统相同（003 成本核算去掉一条不成立的条件，见 CF-21）。真实验证：经 8080 在 d_cg 新建这 7 个角色，回读内容与 seed 相同；admin、chengben01、jishu01 读成本核算页面视图仍是 200。浏览器（正式用例 `frontend/tests/e2e/roles-1031.spec.ts`）：业务例子 E44。
+- 状态与证据：进行中（模拟验证、d_cg 保存和浏览器用例通过，待独立复核）。2026-10-31 第 9 批 A 组，分支 `batch9/roles`，报告 `.reports/batch9-20261031/a-roles/报告.md`。
+  - 模拟验证：`tests/config/test_migrated_roles.py`（11 个用例）；`tests/config tests/authz` 189 passed（`pytest-03.txt`）；后端 `uv run --with <rules-core wheel> pytest -q -p no:cacheprovider -m "not oracle and not redis"` 1349 passed、217 deselected（`pytest-全量模拟.txt`）；`uv run lint-imports --no-cache` 5 kept。前端 `pnpm typecheck`、`pnpm test`（603 passed）、`pnpm lint:deps` 通过。
+  - 真实验证（d_cg，经用户的 8080，`save_roles.py`，输出 `save_roles.out.txt`）：role/001、002、003、005、006、007、008 新建，版本都是 1，回读与 seed 相同；admin、chengben01、jishu01 读 `GET /api/pages/COST_PINGGU/view` 都是 200。只读核对 `PF_CONFIG_ITEM`：7 个角色的代号 7671～7677，页面视图 39 份（007 三份，其余各六份，`q07-保存后核对.out.txt`）。
+  - 浏览器（本组 8091/9541，`run-e2e.ps1`）：`roles-1031.spec.ts` 3 passed（`e2e-2.txt`）：采购登录后菜单、物料清单的按钮和右键导出、成本核算的按钮、列和可编辑；生产登录后菜单。

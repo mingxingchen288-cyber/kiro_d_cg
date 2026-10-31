@@ -1,0 +1,172 @@
+{
+  "type": "role",
+  "key": "007",
+  "name": "生产",
+  "content": {
+    "name": "生产",
+    "admin": false,
+    "pages": {
+      "COST_PINGGU": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:generateFromBom",
+          "master:saveGridConfig",
+          "COST_MATERIAL:addRow",
+          "COST_MATERIAL:deleteRow",
+          "COST_MATERIAL:modify",
+          "COST_MATERIAL:copyRow",
+          "COST_MATERIAL:saveGridConfig",
+          "COST_PACKAGE:addRow",
+          "COST_PACKAGE:deleteRow",
+          "COST_PACKAGE:modify",
+          "COST_PACKAGE:copyRow",
+          "COST_PACKAGE:saveGridConfig",
+          "export:cost-pinggu-export"
+        ],
+        "columns": {
+          "master": {
+            "CUSTOMNAME": {"visible": false},
+            "APEX_PL": {"editable": false},
+            "ANNUAL_QTY": {"visible": false, "editable": false},
+            "YIELD": {"editable": false},
+            "P_PERPACK": {"editable": false},
+            "S_PERBACK": {"editable": false},
+            "X_PERBACK": {"editable": false},
+            "TOTAL_YL": {"visible": false},
+            "TOTAL_FL": {"visible": false},
+            "TOTAL_BC": {"visible": false},
+            "TOTAL_COST": {"visible": false},
+            "OUT_PRICE_RMB": {"visible": false, "editable": false},
+            "SALEMONEY": {"visible": false},
+            "JGF_BATCH": {"visible": false},
+            "COST_PERQP": {"visible": false, "editable": false},
+            "JGF_PERQP": {"visible": false},
+            "ML_PERQP": {"visible": false},
+            "Y_JG_RE": {"visible": false},
+            "Y_ML": {"visible": false},
+            "Y_SALE": {"visible": false},
+            "FMRATE": {"editable": false},
+            "COST_PERBOX": {"visible": false},
+            "CUSTOMID": {"visible": false},
+            "USESTATUS": {"editable": false},
+            "OUT_PRICE_F": {"visible": false, "editable": false},
+            "MAH": {"visible": false},
+            "MA_NO": {"visible": false},
+            "M_PERPACK": {"editable": false},
+            "PINGGU_CLASS": {"editable": false},
+            "BUSINESS_USER": {"editable": false}
+          },
+          "COST_MATERIAL": {
+            "DTL_USEFLAG": {"editable": false},
+            "PER_HL": {"editable": false},
+            "EXADD_MATER": {"editable": false},
+            "PRICE": {"visible": false, "editable": false},
+            "COST_BATCH": {"visible": false, "editable": false},
+            "BASE_PRICE": {"visible": false},
+            "MEMO": {"editable": false}
+          },
+          "COST_PACKAGE": {
+            "DTL_USEFLAG": {"editable": false},
+            "PRICE": {"visible": false, "editable": false},
+            "BATCH_QTY": {"editable": false},
+            "COST_BATCH": {"visible": false},
+            "EXADD_MATER": {"editable": false},
+            "MEMO": {"editable": false},
+            "PER_HL": {"editable": false},
+            "BASE_PRICE": {"visible": false}
+          }
+        }
+      },
+      "COST_PINGGU_LQ": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:generateFromBom",
+          "master:saveGridConfig",
+          "COST_MATERIAL_LQ:addRow",
+          "COST_MATERIAL_LQ:deleteRow",
+          "COST_MATERIAL_LQ:modify",
+          "COST_MATERIAL_LQ:copyRow",
+          "COST_MATERIAL_LQ:saveGridConfig",
+          "COST_PACKAGE_LQ:addRow",
+          "COST_PACKAGE_LQ:deleteRow",
+          "COST_PACKAGE_LQ:modify",
+          "COST_PACKAGE_LQ:copyRow",
+          "COST_PACKAGE_LQ:saveGridConfig"
+        ],
+        "columns": {
+          "master": {
+            "CUSTOMID": {"visible": false},
+            "CUSTOMNAME": {"visible": false},
+            "APEX_PL": {"editable": false},
+            "ANNUAL_QTY": {"visible": false},
+            "YIELD": {"editable": false},
+            "S_PERBACK": {"editable": false},
+            "X_PERBACK": {"editable": false},
+            "TOTAL_YL": {"visible": false},
+            "TOTAL_FL": {"visible": false},
+            "TOTAL_BC": {"visible": false},
+            "TOTAL_COST": {"visible": false},
+            "OUT_PRICE_RMB": {"visible": false, "editable": false},
+            "SALEMONEY": {"visible": false},
+            "JGF_BATCH": {"visible": false},
+            "COST_PERQP": {"visible": false, "editable": false},
+            "COST_PERBOX": {"visible": false},
+            "JGF_PERQP": {"visible": false},
+            "ML_PERQP": {"visible": false},
+            "Y_JG_RE": {"visible": false},
+            "Y_ML": {"visible": false},
+            "Y_SALE": {"visible": false},
+            "MA_NO": {"visible": false},
+            "MAH": {"visible": false},
+            "OUT_PRICE_F": {"visible": false, "editable": false},
+            "M_PERPACK": {"editable": false}
+          },
+          "COST_MATERIAL_LQ": {
+            "DTL_USEFLAG": {"editable": false},
+            "PER_HL": {"editable": false},
+            "EXADD_MATER": {"editable": false},
+            "PRICE": {"visible": false, "editable": false},
+            "COST_BATCH": {"visible": false},
+            "BASE_PRICE": {"visible": false},
+            "SUQTY": {"visible": false}
+          },
+          "COST_PACKAGE_LQ": {
+            "SUQTY": {"visible": false},
+            "PRICE": {"visible": false, "editable": false},
+            "COST_BATCH": {"visible": false},
+            "BASE_PRICE": {"visible": false},
+            "PER_HL": {"editable": false},
+            "EXADD_MATER": {"editable": false},
+            "MEMO": {"editable": false}
+          }
+        }
+      },
+      "GOODS_MANAGE": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:saveGridConfig"
+        ],
+        "columns": {
+          "master": {
+            "GOODSNAME": {"editable": false},
+            "GOODSTYPE": {"editable": false},
+            "PACKTYPE": {"editable": false},
+            "GOODSNAME_EN": {"editable": false}
+          }
+        }
+      }
+    }
+  }
+}

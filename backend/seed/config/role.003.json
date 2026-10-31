@@ -1,0 +1,139 @@
+{
+  "type": "role",
+  "key": "003",
+  "name": "海外营销中心-项目维护",
+  "content": {
+    "name": "海外营销中心-项目维护",
+    "admin": false,
+    "pages": {
+      "COST_PINGGU": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:generateFromBom",
+          "master:saveGridConfig",
+          "COST_MATERIAL:addRow",
+          "COST_MATERIAL:deleteRow",
+          "COST_MATERIAL:modify",
+          "COST_MATERIAL:copyRow",
+          "COST_MATERIAL:saveGridConfig",
+          "COST_PACKAGE:addRow",
+          "COST_PACKAGE:deleteRow",
+          "COST_PACKAGE:modify",
+          "COST_PACKAGE:copyRow",
+          "COST_PACKAGE:saveGridConfig",
+          "export:cost-pinggu-export"
+        ],
+        "rows": {
+          "mode": "visual",
+          "logic": "OR",
+          "conditions": [
+            {"field": "USESTATUS", "fieldLabel": "状态", "op": "eq", "valueType": "static", "value": "委托研发"},
+            {"field": "USESTATUS", "fieldLabel": "状态", "op": "eq", "valueType": "static", "value": "评估中"}
+          ],
+          "sql": "USESTATUS = '委托研发' OR USESTATUS = '评估中'"
+        }
+      },
+      "COST_PINGGU_LQ": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:generateFromBom",
+          "master:saveGridConfig",
+          "COST_MATERIAL_LQ:addRow",
+          "COST_MATERIAL_LQ:deleteRow",
+          "COST_MATERIAL_LQ:modify",
+          "COST_MATERIAL_LQ:copyRow",
+          "COST_MATERIAL_LQ:saveGridConfig",
+          "COST_PACKAGE_LQ:addRow",
+          "COST_PACKAGE_LQ:deleteRow",
+          "COST_PACKAGE_LQ:modify",
+          "COST_PACKAGE_LQ:copyRow",
+          "COST_PACKAGE_LQ:saveGridConfig"
+        ],
+        "rows": {
+          "mode": "visual",
+          "logic": "OR",
+          "conditions": [
+            {"field": "USESTATUS", "fieldLabel": "状态", "op": "eq", "valueType": "static", "value": "委托研发"},
+            {"field": "USESTATUS", "fieldLabel": "状态", "op": "eq", "valueType": "static", "value": "委托转移"},
+            {"field": "USESTATUS", "fieldLabel": "状态", "op": "eq", "valueType": "static", "value": "评估中"}
+          ],
+          "sql": "USESTATUS = '委托研发' OR USESTATUS = '委托转移' OR USESTATUS = '评估中'"
+        }
+      },
+      "GOODS_MANAGE": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:saveGridConfig"
+        ],
+        "columns": {
+          "master": {
+            "GOODSNAME": {"editable": false},
+            "GOODSTYPE": {"editable": false},
+            "PACKTYPE": {"editable": false},
+            "GOODSNAME_EN": {"editable": false}
+          }
+        }
+      },
+      "CUSTOMER_MANAGE": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:saveGridConfig",
+          "COST_TRANPOSER:addRow",
+          "COST_TRANPOSER:deleteRow",
+          "COST_TRANPOSER:modify",
+          "COST_TRANPOSER:copyRow",
+          "COST_TRANPOSER:saveGridConfig"
+        ]
+      },
+      "GOODS_PRICE_MANAGE": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:saveGridConfig",
+          "export:goods-price-pgoods-export"
+        ],
+        "columns": {
+          "master": {
+            "GOODSNAME": {"editable": false},
+            "PRICE": {"editable": false},
+            "USEFLAG": {"editable": false},
+            "GOODSTYPE": {"editable": false},
+            "PACKTYPE": {"editable": false},
+            "FACTORYNAME": {"editable": false},
+            "STANDARDTYPE": {"editable": false}
+          }
+        }
+      },
+      "FORMONEY_MANAGE": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:addRow",
+          "master:modify",
+          "master:copyRow",
+          "master:saveGridConfig",
+          "master:syncErpRate"
+        ]
+      }
+    }
+  }
+}

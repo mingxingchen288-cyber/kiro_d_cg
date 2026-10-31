@@ -7,7 +7,7 @@ import pytest
 from cost_platform.config.records import item_id
 from cost_platform.contracts.types import ErrorCode, PlatformError
 
-from .support import Env, base_world, draft, flow_samples, seed_drafts
+from .support import MIGRATED_ROLE_PAGES, Env, base_world, draft, flow_samples, seed_drafts
 
 
 @pytest.fixture
@@ -38,7 +38,9 @@ def test_save_writes_new_version_views_and_packs_in_one_generation(env: Env) -> 
         "pageView/COST_PINGGU_LQ|ADMIN", "pageView/COST_PINGGU_LQ|技术中心", "rulesPack/COST_PINGGU_LQ",
         # 第 8 批 G1 的三个基础资料页：旧系统技术中心没有这三个页面的权限，只有 ADMIN 的页面视图
         "pageView/GOODS_MANAGE|ADMIN", "pageView/CUSTOMER_MANAGE|ADMIN", "pageView/FORMONEY_MANAGE|ADMIN",
-        "rulesPack/COST_GOODS", "rulesPack/COST_CUSTOMER", "rulesPack/COST_FORMONEY"}
+        "rulesPack/COST_GOODS", "rulesPack/COST_CUSTOMER", "rulesPack/COST_FORMONEY",
+        # 第 9 批迁来的 7 个角色：每个角色能访问的页面各一份
+        *(f"pageView/{p}|{r}" for r, pages in MIGRATED_ROLE_PAGES.items() for p in pages)}
     page = next(d for d in seed_drafts() if d.type == "page" and d.key == "COST_PINGGU")
     changed = page.content | {"title": "成本核算（改）"}
     result = env.save([draft("page", "COST_PINGGU", changed, "成本核算")])
@@ -49,7 +51,8 @@ def test_save_writes_new_version_views_and_packs_in_one_generation(env: Env) -> 
     assert view.content()["title"] == "成本核算（改）" and view.content()["version"] == result.generation
     # 规则包内容没变：不重写，版本不变
     assert after[item_id("rulesPack", "COST_PINGGU")] == records[item_id("rulesPack", "COST_PINGGU")]
-    assert sorted(result.changed) == ["page/COST_PINGGU", "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心"]
+    assert sorted(result.changed) == sorted(["page/COST_PINGGU", "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心",
+                                             *(f"pageView/COST_PINGGU|{r}" for r in MIGRATED_ROLE_PAGES)])
 
 
 def test_failed_validation_writes_nothing(env: Env) -> None:
