@@ -33,5 +33,5 @@
 - 负责范围：`admin/accounts.ts`、`departments.ts`、`renderers/AccountsPanel.vue`、`DepartmentsPanel.vue`，新文件 `admin/advanced-search.ts`、`renderers/AdvancedSearchDialog.vue`。
 - 交付物：人员管理的"用户名"列已有的行能改；人员管理、部门管理的"高级查询"对话框。
 - 验收标准：模拟验证（`tests/admin/accounts.test.ts`、`departments.test.ts`）：韩群 HY221020 改成 HY221021，保存的请求带 `username`、其余照旧；改成 HY090702 时提示"保存失败：账号名 HY090702 已存在"、这一行留着；高级查询预置人员 5 个、部门 2 个条件，姓名包含"韩"且部门为技术中心查出韩群，部门 IN（采购部、市场部）且状态启用查出程苏慧、汪春龙，重置后查全部；部门名称包含"部"查出采购部、市场部，保存后仍按条件读取。浏览器：admin 改测试账号的用户名并保存，用新用户名登录成功、旧用户名 401；按姓名、部门查出测试账号；按部门名称查出测试部门。
-- 状态与证据：进行中（模拟验证和浏览器业务例子通过，待独立复核）。2026-10-31，第 8 批 G4，`batch8/admin-shell`：前端单元全部 594 passed；`frontend/tests/e2e/batch8-admin-shell.spec.ts` 3 个 passed，回归 `admin.spec.ts`、`basic-1029.spec.ts` 场景 2、`batch-d.spec.ts` 停用账号、`e01.spec.ts` 4 个 passed（`.reports/batch8-20261031/g4-admin-shell/e2e-2.txt`、`e2e-regress-1.txt`）。
+- 状态与证据：完成（模拟验证和浏览器业务例子通过；独立复核通过，`.reports/review/T-FM-2.md`）。2026-10-31，第 8 批 G4，`batch8/admin-shell`：前端单元全部 594 passed；`frontend/tests/e2e/batch8-admin-shell.spec.ts` 3 个 passed，回归 `admin.spec.ts`、`basic-1029.spec.ts` 场景 2、`batch-d.spec.ts` 停用账号、`e01.spec.ts` 4 个 passed（`.reports/batch8-20261031/g4-admin-shell/e2e-2.txt`、`e2e-regress-1.txt`）。
   - 与旧系统的差别：旧人员页"部门ID"（Lookup）和"部门名称"两个条件在新表格合成"部门"一个条件（从部门列表中选）；旧页面的邮箱、电话、部门编码新平台没有，没有这三个条件。

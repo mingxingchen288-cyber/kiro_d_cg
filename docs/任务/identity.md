@@ -60,7 +60,7 @@
 - 负责范围：`identity/accounts.py`、`admin.py`、`router.py`、`service.py`、`sessions.py`，新文件 `identity/search.py`；`pipeline/entity_rules.py` 的 `currentDeptName` 一行（write-pipeline 的默认值，取执行上下文的部门名称）。
 - 交付物：`PUT /api/admin/accounts/{userId}` 可带 `username` 改账号名，重名 422；`GET /api/admin/accounts`、`/api/admin/departments` 可带 `advanced`；登录响应、`/api/me` 的当前用户和执行上下文带部门名称，默认值"当前部门名称"保存时取它。
 - 验收标准：模拟验证：韩群 HY221020 改成 HY221021 后新名字能登录、旧名字不能，已登录的会话换成新账号名；改成汪春龙的 HY090702 时 422、`field` 为 username、原名不变；按姓名包含"群"且部门为技术中心查出韩群，部门 IN（采购部、市场部）查出程苏慧、汪春龙，状态为停用查出朱文俊；部门名称包含"部"查出采购部、市场部；登录、`/api/me`、`authenticate` 都带"技术中心"，调到市场部后马上变，市场部改名后 `/api/me` 起用新名称；`currentDeptName` 默认值取"技术中心"。真实验证：d_cg 上改名、重名 422、按姓名和部门查人员、按名称查部门。
-- 状态与证据：进行中（模拟、真实、浏览器业务例子通过，待独立复核）。2026-10-31，第 8 批 G4，分支 `batch8/admin-shell`，原始输出在 `.reports/batch8-20261031/g4-admin-shell/`：
+- 状态与证据：完成（模拟、真实、浏览器业务例子通过；独立复核通过，`.reports/review/T-ID-4.md`）。2026-10-31，第 8 批 G4，分支 `batch8/admin-shell`，原始输出在 `.reports/batch8-20261031/g4-admin-shell/`：
   - 模拟：`tests/identity/test_rename_and_department_name.py` 5 个、`test_search.py` 4 个、`test_router.py::test_rename_account_search_and_department_name`、`tests/pipeline/test_default_dept_name.py`；后端模拟全部 1322 passed。
   - 真实：`tests/identity/test_oracle.py::test_rename_account_on_oracle`、`test_advanced_search_and_department_name_on_oracle`；`-m "oracle or redis" tests/identity` 16 passed（含 Redis 会话）。
   - 浏览器：`frontend/tests/e2e/batch8-admin-shell.spec.ts` 的"改已有账号的用户名"、"人员管理高级查询"、"部门管理高级查询"3 个 passed（`e2e-2.txt`）。"默认值'当前部门名称'"用例要临时改成本核算的实体配置，按 `共同约定.md` 第 3 节待主代理合并后运行；合并后运行时发现测试账号用的成本会计没有主表"新增"（第 7 批区域权限），改用测试角色（保存、主表新增、主表修改）后通过（`e2e-6.txt`）。

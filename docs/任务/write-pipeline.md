@@ -73,7 +73,7 @@
   - 已实现：WP-16（`entity_rules`：static、options 取第一个、builtin 按执行上下文；没有配置时数值 0、其他为空；不可编辑字段的 builtin 不用前端的值）；WP-17（`review.RedisCommandMonitor`，即端口 `CommandMonitor`，2026-10-29 起由 orchestration 包住整个命令事务；`RedisCommandReview`：`{ns}:cmdlog` 最多 10000 条、开关 `{ns}:cmdlog:enabled`、关闭时删除两者、写入失败只记日志）；C09 第 7a 节的 GET、PUT 接口（`review.command_review_router`，只给管理员）。
   - 模拟验证：`test_merge.py`、`test_flow.py` 的 E28；`test_review.py`（关闭时 Redis 中没有记录、开启后成功和失败的命令都有记录且含每条 SQL、关闭时删除、接口）。
   - 真实验证（待运行，标 redis 和 oracle）：`test_redis_review.py` 1 个。
-  - 缺口：builtin `currentDeptName` 取不到（C04 没有部门名称），见 contract-gaps.md 第 3 条。
+  - 缺口：builtin `currentDeptName` 取不到（C04 没有部门名称），见 contract-gaps.md 第 3 条。第 8 批已在 identity 的 T-ID-4 做了（C04 v2、C09 v15）。
   - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：状态由"进行中"改为"完成"。
     - 真实验证：`tests/pipeline/test_redis_review.py`（第 27 行标 redis、第 45 行标 oracle）在 d_cg + Redis 上通过，第 7 批合并后 `-m "oracle or redis"` 196 passed、0 failed、0 skipped，`.reports/batch7-20261030/merge/pytest-real-1.txt`。
     - 缺口 builtin `currentDeptName` 取不到（甲核对第四节 B10），以及命令审查里查询语句没有返回行数（B16，write-pipeline 缺口第 7 节）：未做，排在第 8 批。验收标准的 E28 不用部门名称。
@@ -154,9 +154,9 @@
 - 负责范围：`pipeline/migrations/wp_0003_audit_log_view.py`（`CREATE OR REPLACE VIEW PF_AUDIT_LOG_V`，依赖 id_0001、cf_0001）。审计差异中字段是对象的键，Oracle 19c 的 JSON_TABLE 取不到键名，先用正则改写成数组再展开（写法见迁移文件开头）。
 - 交付物：视图 `PF_AUDIT_LOG_V`。
 - 验收标准：真实验证（d_cg）：admin 在成本核算改了单据 200680 主表的备注（空 → PF_TEST审计）、原辅料一行的客户指定（否 → 是），又删了一行原辅料：视图给出每个字段一行，操作类型为 UPDATE、DELETE，字段标题、表名称取实体配置，用户为登录名 admin，时间为命令的开始、完成时间。
-- 状态与证据：进行中（真实验证通过；视图已在 d_cg（G3 起本分支后端时启动迁移建的，合并后 `platform db upgrade` 报已是最新），待独立复核）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`，报告 `.reports/batch8-20261031/g3-audit-export/报告.md`。
+- 状态与证据：完成（真实验证通过；视图已在 d_cg（G3 起本分支后端时启动迁移建的；合并后 `platform db upgrade` 报已是最新）；独立复核通过，`.reports/review/T-WP-13.md`）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`，报告 `.reports/batch8-20261031/g3-audit-export/报告.md`。
   - 真实验证：`tests/pipeline/test_oracle_audit_log_view.py`（测试自己插一条命令记录，审计差异按 `command_log.audit_rows` 生成，直接执行迁移中的查询，结束时删掉这条记录）1 passed，`.reports/batch8-20261031/g3-audit-export/pytest-wp22-oracle.txt`；本组相关真实测试合计 30 passed（`pytest-real-g3.txt`）。
-  - 没有在 d_cg 执行 `platform db upgrade`：执行后 `PF_ALEMBIC_VERSION` 多出 wp_0003，别的分支的代码找不到这个版本。
+  - G3 分支后端启动时的迁移已建视图、登记 wp_0003（14:38）；合并后 `platform db upgrade` 报已是最新（`.reports/batch8-20261031/merge/db-upgrade.log`）。
 
 ### T-WP-14 命令审查里查询语句的行数
 
@@ -165,7 +165,7 @@
 - 负责范围：`pipeline/tracing.py`（`_Counted`：包住执行上下文的 `cursor_fetch_strategy`，委托给原来的方式，`fetchone`、`fetchmany`、`fetchall` 时累加；要分批取的语句先换成分批的方式再包上，`yield_per` 换掉方式后再包一层）。
 - 交付物：命令审查（C09 第 7a 节 `CommandLog.sql[].rows`）中查询语句的行数。
 - 验收标准：模拟验证：一次取完、按批取（`yield_per`，导出用）都记取出的行数，没有结果的查询为 0，SQL 条数不变；真实验证（d_cg）：物料清单页保存（seed 的 GOODS_PRICE_MANAGE，测试自建本地物料）中加锁前的普通读取、加锁读取各为 1 行，改物料影响 1 行，SQL 条数仍是 7 条。
-- 状态与证据：进行中（模拟验证和真实验证通过，待独立复核）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`。模拟：`tests/pipeline/test_tracing.py` 的 `test_query_rows_are_rows_fetched`、原用例的查询行数改为 1。真实：`tests/pipeline/test_oracle_goods_save_sql_count.py` 加行数断言，连同 `test_oracle_sql_count.py`、`test_oracle_lock_order.py` 16 passed（`.reports/batch8-20261031/g3-audit-export/pytest-wp23-oracle.txt`）。前端命令审查面板照旧显示 `rows`，没有改。
+- 状态与证据：完成（模拟验证和真实验证通过；独立复核通过，`.reports/review/T-WP-14.md`）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`。模拟：`tests/pipeline/test_tracing.py` 的 `test_query_rows_are_rows_fetched`、原用例的查询行数改为 1。真实：`tests/pipeline/test_oracle_goods_save_sql_count.py` 加行数断言，连同 `test_oracle_sql_count.py`、`test_oracle_lock_order.py` 16 passed（`.reports/batch8-20261031/g3-audit-export/pytest-wp23-oracle.txt`）。前端命令审查面板照旧显示 `rows`，没有改。
 
 ### T-WP-15 只对关联了别的表的读取视图先锁表、再读视图
 
@@ -174,7 +174,7 @@
 - 负责范围：`pipeline/locks.py` 的 `ReadViews`、`pipeline/document_store.py` 的 `lock_load`、`pipeline/warmup.py`（预读已发布实体的读取视图）、`pipeline/plugin.py`；`db_core/schema.py` 的 `view_sources`；`config/entities.py` 的 `read_views`；`contracts/ports.py`、`contracts/fakes/db.py`、`contracts/fakes/config.py`。
 - 交付物：上述功能。
 - 验收标准：模拟验证：读取视图只读本表时只锁一行一条加锁读出，关联了别的表、经数据库链接或不知道读哪些表时先锁表、再读视图（`tests/pipeline/test_document_store_sql.py`）；插件 start 时预读已发布实体的读取视图（`tests/pipeline/test_warmup.py`）；`view_sources` 的契约测试（替代实现和 d_cg 共用）。真实验证（d_cg）：三个读取视图读取的表（`tests/db_core/test_ports.py::test_view_sources_on_d_cg`）；物料清单页保存 7 条（`tests/pipeline/test_oracle_goods_save_sql_count.py`）；外币管理"同步ERP汇率"仍只锁 T_COST_FORMONEY（`tests/operations/test_basic_pages_oracle.py`）。
-- 状态与证据：进行中（模拟验证和真实验证通过，待独立复核）。后端模拟 1338 passed；真实 `tests/db_core/test_ports.py`、`tests/pipeline`、`tests/operations/test_basic_pages_oracle.py`、`test_sql_actions_oracle.py`、`tests/approval/test_oracle_or_sign.py` 67 passed；`lint-imports` 5 kept。两个真实测试的组装（`test_oracle_updated_by.py`、`approval/test_oracle_or_sign.py`）和 `lock_order_support.py` 改成与插件相同，带上 `ReadViews`。
+- 状态与证据：进行中（模拟验证和真实验证通过；独立复核通过，`.reports/review/T-WP-15.md`；产品信息维护保存实测 6 条 SQL（`tests/pipeline/test_oracle_goods_manage_save_sql_count.py`，`.reports/batch9-20261031/pytest-goods-manage-sql.txt`），比 WP-10 的基准多 1 条，待用户确认）。后端模拟 1338 passed；真实 `tests/db_core/test_ports.py`、`tests/pipeline`、`tests/operations/test_basic_pages_oracle.py`、`test_sql_actions_oracle.py`、`tests/approval/test_oracle_or_sign.py` 67 passed；`lint-imports` 5 kept。两个真实测试的组装（`test_oracle_updated_by.py`、`approval/test_oracle_or_sign.py`）和 `lock_order_support.py` 改成与插件相同，带上 `ReadViews`。
 
 ### T-WP-16 复制出的行不取"不复制"的列的源行值
 
@@ -183,4 +183,4 @@
 - 负责范围：`pipeline/merge.py`（`DocumentMerger._copy_fields`、`_Rows.new_values`、`_Rows._copied_values`）。
 - 交付物：复制出的行中，页面视图 `copy` 为 false 的不可写字段不取源行的值、不写；可写的照常取命令中的值；都不补默认值。
 - 验收标准：模拟验证：成本核算页把创建人（不可写）、批量（可写）配成不复制，复制 1001 时命令带了源行的创建人"王五"（页面在改配置之前打开）、批量为 null：新单据创建人、批量为空，INSERT 不含创建人，产品名称照旧取源行的值、备注取命令中的值。
-- 状态与证据：进行中（模拟验证通过；待独立复核）。2026-10-31 第 9 批 B 组，分支 `batch9/copy-config`。模拟验证：`tests/pipeline/test_copy.py::test_not_copied_fields_are_left_empty`；`pytest -m "not oracle and not redis"` 1340 passed（`.reports/batch9-20261031/b-copy-config/pytest-1.txt`）。真实验证（d_cg + Redis，不写配置）：复制相关的 `tests/e2e/test_copy_approval.py`、`tests/pipeline/test_oracle_updated_by.py` 2 passed（`real-1.txt`），说明没有配 `copy` 时复制照旧；配了 `copy: false` 的真实保存在 T-FP-19 用例 2（合并后运行）。
+- 状态与证据：完成（模拟验证通过；独立复核通过，`.reports/review/T-WP-16.md`）。合并后（2026-10-31）主代理在 main 上运行：后端真实测试 217 passed（`.reports/batch9-20261031/pytest-real-1.txt`），浏览器用例全部运行（`.reports/batch9-20261031/e2e-1.txt` 61 passed；失败的 E45 修正后单独通过，`e2e-3.txt`）。2026-10-31 第 9 批 B 组，分支 `batch9/copy-config`。模拟验证：`tests/pipeline/test_copy.py::test_not_copied_fields_are_left_empty`；`pytest -m "not oracle and not redis"` 1340 passed（`.reports/batch9-20261031/b-copy-config/pytest-1.txt`）。真实验证（d_cg + Redis，不写配置）：复制相关的 `tests/e2e/test_copy_approval.py`、`tests/pipeline/test_oracle_updated_by.py` 2 passed（`real-1.txt`），说明没有配 `copy` 时复制照旧；配了 `copy: false` 的真实保存在 T-FP-19 用例 2（合并后运行）。

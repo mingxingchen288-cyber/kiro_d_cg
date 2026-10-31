@@ -59,7 +59,7 @@
 - 交付物：补列命令；d_cg 中的上述表、序列和视图。
 - 接入责任：d_cg 已执行（2026-10-31 13:44），主代理合并后不用再执行；以后切换时按 MG-06 `--refresh`。
 - 验收标准（真实验证）：补列后 T_COST_GOODS 的行数、原有列的值和序列不变，补的列与 cmx 相同；新表的行数等于 cmx 未删除的行数、序列为 cmx 最大主键加一；三个 Lookup 视图与 cmx 的对应视图行数和内容相同（cmx 复制之后新增的数据除外）。
-- 状态与证据：进行中（真实验证通过，待独立复核）。命令：`uv run --with <wheel> platform db copy-business-tables --add-columns T_COST_GOODS --refresh V_COST_GOODS_LOOKUP V_COST_CUSTOMER_LOOKUP T_COST_FORMONEY_V`（`.reports/batch8-20261031/g1-basic-pages/copy.log`；`--refresh` 只用于这三个视图，前后行数核对见 q09、q11）。
+- 状态与证据：完成（真实验证通过；独立复核通过，`.reports/review/T-DB-4.md`）。命令：`uv run --with <wheel> platform db copy-business-tables --add-columns T_COST_GOODS --refresh V_COST_GOODS_LOOKUP V_COST_CUSTOMER_LOOKUP T_COST_FORMONEY_V`（`.reports/batch8-20261031/g1-basic-pages/copy.log`；`--refresh` 只用于这三个视图，前后行数核对见 q09、q11）。
   - T_COST_GOODS：14419 行，原 13 列逐列哈希与补列前相同，补的 9 列与 cmx 双向 MINUS 为 0，序列不变。
   - 新表：T_COST_CUSTOMER 355 行、T_COST_TRANPOSER 318 行、T_COST_FORMONEY 4 行；序列从 1210182、2708、23 开始。
   - 视图：V_COST_CUSTOMER_LOOKUP 535 → 535 行，与 cmx 双向 MINUS 为 0；T_COST_FORMONEY_V 4 → 4 行，汇率人民币 1、欧元 7.5404、英镑 8.8972、美元 6.7367，与 ERP 相同；V_COST_GOODS_LOOKUP 1339 → 1335 行，只少 cmx 在 10-29 之后由 ERP 同步新增的 4 个产品（19278、19283、19314、19315），其余与 cmx 相同；T_COST_GOODS_V 与 cmx 只差同样 4 行；成本核算、物料清单、液体成本的 5 个视图行数不变；全部 VALID。
@@ -72,4 +72,4 @@
 - 交付物：上述两个方法。
 - 接入责任：config 的 T-CF-13 使用。
 - 验收标准：契约测试（替代实现和真实实现共用）：列注释每一列都在、按列顺序、没有注释的为 None、表不存在时为 None；关键字不分大小写、先表后视图。真实验证（只读，只查 d_cg 的数据字典，不建表）：T_COST_PINGGU_LQ 的 COST_PERBOX、M_PERPACK 注释为"每盒成本""每中盒小盒数"，DOCID 为 None；"t_cost_goods"列出 T_COST_GOODS（表）和 T_COST_GOODS_PRICE_V（视图），名称都含关键字、先表后视图；空关键字时最多 100 个。
-- 状态与证据：进行中（模拟验证和只读真实验证通过；待独立复核）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`。模拟验证：`tests/contracts/test_schema_inspector.py` 的 `test_column_comments`、`test_objects_by_keyword`（替代实现），包含在 `pytest -m "not oracle and not redis"` 1316 passed 中。真实验证：`tests/db_core/test_ports.py` 的 `test_column_comments`、`test_objects_on_d_cg`（连同同文件的 `test_business_tables_and_views`、`test_sequence_exists`）只读通过，`pytest-real-readonly.txt` 5 passed。同文件 `TestOracleSchemaInspector`（真实实现的契约测试，会在 d_cg 建、删 `CT_SCHEMA_PROBE` 表和视图）新增的两条没有跑，合并后随 `-m "oracle or redis" tests/db_core` 一起跑。
+- 状态与证据：完成（模拟验证和只读真实验证通过；独立复核通过，`.reports/review/T-DB-5.md`）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`。模拟验证：`tests/contracts/test_schema_inspector.py` 的 `test_column_comments`、`test_objects_by_keyword`（替代实现），包含在 `pytest -m "not oracle and not redis"` 1316 passed 中。真实验证：`tests/db_core/test_ports.py` 的 `test_column_comments`、`test_objects_on_d_cg`（连同同文件的 `test_business_tables_and_views`、`test_sequence_exists`）只读通过，`pytest-real-readonly.txt` 5 passed。同文件 `TestOracleSchemaInspector`（真实实现的契约测试，会在 d_cg 建、删 `CT_SCHEMA_PROBE` 表和视图）新增的两条没有跑，合并后随 `-m "oracle or redis" tests/db_core` 一起跑。

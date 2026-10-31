@@ -62,69 +62,36 @@ def lock_row_sql(table: str, key_column: str, wait: int) -> str:
 # ---------------------------------------------------------------- 读取视图读取哪些表（只锁一行时用哪种加锁语句）
 
 class ReadViews:
-
     """实体的读取视图读取哪些表（WP-03），经 `SchemaInspector.view_sources` 读取，每个视图在进程内只读一次（视图变更随
-
     部署重启生效，同 `ColumnScales`）。
 
-
-
     只读实体自己的表的视图（例如物料清单的 T_COST_GOODS_PRICE_V 只读 T_COST_GOODS），只锁一行时仍一条
-
     `SELECT … FOR UPDATE` 加锁并读出（SQL 条数同 WP-10）；关联了别的表、视图或经数据库链接读的（产品信息维护的
-
     T_COST_GOODS_V、外币管理的 T_COST_FORMONEY_V），先锁 `table` 的行、再普通读视图，FOR UPDATE 不落到关联的行和链接上
-
     （`document_store.lock_load`）。插件 start 时和配置变更后由 `warmup.SchemaWarmup` 预读已发布实体的读取视图。"""
 
-
-
     def __init__(self, inspector: SchemaInspector) -> None:
-
         self._inspector = inspector
-
         self._views: dict[str, tuple[str, ...]] = {}
 
-
-
     def only_table(self, view: str, table: str) -> bool:
-
         """视图只读 `table` 这一张表（当前用户的）。"""
-
         key = view.upper()
-
         if key not in self._views:
-
             self._read(view)
-
         return self._views[key] == (table.upper(),)
 
-
-
     def preload(self, views: Iterable[str]) -> list[str]:
-
         """把还没读过的视图读进来，每个视图一次 `view_sources`；返回这次读了的视图。"""
-
         done = []
-
         for view in views:
-
             if view.upper() not in self._views:
-
                 self._read(view)
-
                 done.append(view)
-
         return done
 
-
-
     def _read(self, view: str) -> None:
-
         self._views[view.upper()] = tuple(s.upper() for s in self._inspector.view_sources(view) or [])
-
-
-
 
 
 # ---------------------------------------------------------------- 锁对象
