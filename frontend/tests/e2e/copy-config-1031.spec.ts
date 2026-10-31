@@ -178,10 +178,15 @@ test(
       expect(copied.details[DISTRIBUTOR].map(r => [r.values.TRANPOSNAME, r.values.CUSTOMID])).toEqual([
         [source.names.distributor, newId]
       ]);
-      // 页面上新客户的区域也是空的（保存后的行可能还用临时编号，也可能已换成主键）
+      // 页面上新客户的区域也是空的。保存后表格按原来的筛选（源客户的ID）刷新，新客户不在其中：按新客户的ID 重新筛选
+      expect(clientRowId).not.toBe(newId);
+      await filterColumn(page, 'CUSTOMID', newId);
       const grid = masterGrid(page);
-      const row = grid.locator(`.ag-row[row-id="${newId}"], .ag-row[row-id="${clientRowId}"]`).first();
-      await expect(row.locator('[col-id="ZONE"]')).toHaveText('');
+      // 本页保存过的行仍用临时编号作 row-id（表格只换了值），所以按筛出的这一行取格子
+      const shown = grid.locator('.ag-center-cols-container .ag-row');
+      await expect(shown).toHaveCount(1);
+      await expect(shown.locator('[col-id="CUSTOMID"]')).toHaveText(newId);
+      await expect(shown.locator('[col-id="ZONE"]')).toHaveText('');
     } finally {
       await adminApi.ok('PUT', `/api/config/items/page/${PAGE}`, { name: item.name, content: item.content });
     }
