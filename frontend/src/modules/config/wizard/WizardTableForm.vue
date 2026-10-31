@@ -2,13 +2,15 @@
 /**
  * 向导第 2 步中的一张表（同旧系统 WizardStep2.vue 的主表 / 从表区）：视图名、目标表、表名称、实体编码、"导入列"，
  * 导入后的列表格（字段名、标题、数据类型、真实/虚拟、显示、编辑、ERP 列）；明细另有区域标题和关联字段。
+ * 视图名、目标表输入两个字符起列出名称含它的表和视图（FC-14，同旧系统 SectionTables.vue 第 587–601 行的 NAutoComplete），
+ * 也可以直接输入完整名称；导入后的标题预填列注释，没有注释时为列名。
  */
 import { computed } from 'vue';
-import { NAlert, NButton, NForm, NFormItem, NInput, NSelect } from 'naive-ui';
+import { NAlert, NAutoComplete, NButton, NForm, NFormItem, NInput, NSelect, type SelectOption } from 'naive-ui';
 import type { ColDef } from 'ag-grid-community';
 import ConfigGrid from '../components/ConfigGrid.vue';
 import { booleanColumn } from '../components/grid-columns';
-import type { WizardState, WizardTable } from './wizard-state';
+import type { ObjectOption, WizardState, WizardTable } from './wizard-state';
 
 const props = defineProps<{ wizard: WizardState; table: WizardTable; detail: boolean }>();
 const columns: ColDef[] = [
@@ -22,13 +24,20 @@ const columns: ColDef[] = [
 ];
 const keyOptions = computed(() => props.table.columns.map(c => ({ label: `${c.label} · ${c.name}`, value: c.name })));
 const rowStyle = (p: { data?: { inTable: boolean } }) => (p.data && !p.data.inTable ? { background: '#fffbe6' } : undefined);
+const search = (value: string | null) => void props.wizard.searchObjects(value ?? '');
+/** 下拉中显示"名称（表）""名称（视图）"；选中后输入框里只填名称 */
+const renderLabel = (option: SelectOption) => `${option.label}（${(option as unknown as ObjectOption).kind}）`;
 </script>
 
 <template>
   <div>
     <NForm inline label-placement="left" size="small" :show-feedback="false">
-      <NFormItem label="视图名"><NInput v-model:value="table.readView" :placeholder="detail ? '从表视图' : '如 T_COST_GOODS_PRICE_V'" style="width: 200px" /></NFormItem>
-      <NFormItem label="目标表"><NInput v-model:value="table.table" :placeholder="detail ? '从表目标表' : '如 T_COST_GOODS'" style="width: 200px" /></NFormItem>
+      <NFormItem label="视图名">
+        <NAutoComplete v-model:value="table.readView" :options="wizard.state.objectOptions" :render-label="renderLabel" :placeholder="detail ? '搜索从表视图...' : '搜索视图...'" style="width: 240px" @update:value="search" />
+      </NFormItem>
+      <NFormItem label="目标表">
+        <NAutoComplete v-model:value="table.table" :options="wizard.state.objectOptions" :render-label="renderLabel" :placeholder="detail ? '搜索从表目标表...' : '搜索表...'" style="width: 240px" @update:value="search" />
+      </NFormItem>
       <NFormItem label="表名称"><NInput v-model:value="table.name" placeholder="中文名" style="width: 150px" /></NFormItem>
       <NFormItem label="实体编码"><NInput v-model:value="table.entity" placeholder="导入后按目标表预填" style="width: 170px" /></NFormItem>
       <NFormItem v-if="detail" label="区域标题"><NInput v-model:value="table.title" placeholder="明细区标题，如 原辅料" style="width: 150px" /></NFormItem>

@@ -3,8 +3,10 @@
 
 - 读结构：视图（没有视图时为表）的每一列生成一个实体字段；表中也有的列 `column` 为同名列，表中没有的列 `column` 为 null，
   只读显示（旧系统的虚拟列）。类型按 Oracle 的数据类型：NUMBER、FLOAT、INTEGER 等为 number，DATE 为 date，TIMESTAMP 为
-  datetime，其余为 text（旧系统把 TIMESTAMP 也当日期，这里保留时间）。标题取列名：`ColumnInfo` 没有列注释（旧系统取注释，
-  没有注释时取列名；cmx 的这些表都没有注释），见 contract-gaps。
+  datetime，其余为 text（旧系统把 TIMESTAMP 也当日期，这里保留时间）。标题取读结构的那个视图或表的列注释，没有注释时取列名
+  （CF-20，同旧系统 `MetaConfigService.listViewColumns` 读 DBA_COL_COMMENTS、`useWizardState.ts` 第 103 行
+  `headerText: vc.comment || vc.columnName`）。
+- 列出表和视图（CF-20，C09 `schema/objects`）：名称含关键字的表和视图，最多 100 个，同旧系统 `listDbObjects`。
 - 主键取表的主键；序列 `<表名>_SEQ` 必须已经存在，不存在时 422，平台不执行 DDL（旧系统会自动建序列，新平台改为由用户建）。
 - 生成：实体（主表和明细）、页面、页面的保存操作 `<页面编码>.save`，在 `parentMenu` 分组下加菜单项，在 ADMIN 角色中加
   这个页面的 `*` 权限；同一个事务写入，配置代号只加一。默认按钮与旧系统相同：主表区"新增、删除、保存列配置"，
@@ -32,6 +34,8 @@ from cost_platform.contracts.types import (
     PlatformError,
     SchemaColumn,
     SchemaColumnsResponse,
+    SchemaObject,
+    SchemaObjectsResponse,
     WizardColumn,
     WizardColumnsRequest,
     WizardColumnsResponse,
@@ -74,6 +78,17 @@ def schema_columns(schema: SchemaInspector, name: str) -> SchemaColumnsResponse:
                                  columns=[SchemaColumn(name=c.name, type=column_type(c)) for c in columns.values()])
 
 
+def schema_objects(schema: SchemaInspector, keyword: str) -> SchemaObjectsResponse:
+    """名称含关键字的表和视图，最多 100 个（CF-20）；只读。"""
+    return SchemaObjectsResponse(objects=[SchemaObject(name=o.name, type=o.type) for o in schema.objects(keyword)])
+
+
+def column_labels(schema: SchemaInspector, name: str) -> dict[str, str]:
+    """视图或表的列标题（CF-20）：列注释，没有注释的列取列名（同旧系统 `comment || columnName`）。"""
+    comments = schema.column_comments(name) or {}
+    return {column: comment or column for column, comment in comments.items()}
+
+
 def _structure(schema: SchemaInspector, table: str, read_view: str | None, path: str) -> tuple[dict[str, ColumnInfo], dict[str, ColumnInfo], str]:
     if schema.object_type(table) != "table":
         raise _invalid(f"表 {table} 在数据库中不存在（或不是表）", f"{path}.table")
@@ -95,9 +110,10 @@ def wizard_columns(schema: SchemaInspector, sequences: SequenceChecker, uow: Uni
     """读取视图和表的结构，只读，不写任何东西（C09 第 3 节）。"""
     table_columns, source, key = _structure(schema, request.table, request.read_view, "")
     sequence = f"{request.table}_SEQ"
+    labels = column_labels(schema, request.read_view or request.table)
     return WizardColumnsResponse(
         primary_key=key, sequence=WizardSequence(name=sequence, exists=sequences.exists(uow, sequence)),
-        columns=[WizardColumn(name=c.name, type=column_type(c), label=c.name, in_table=c.name in table_columns)
+        columns=[WizardColumn(name=c.name, type=column_type(c), label=labels.get(c.name, c.name), in_table=c.name in table_columns)
                  for c in source.values()])
 
 

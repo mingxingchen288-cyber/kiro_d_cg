@@ -94,6 +94,10 @@ def test_wizard_and_schema_endpoints(client: TestClient, env: Env) -> None:
     assert schema.json()["objectType"] == "view" and schema.json()["primaryKey"] is None
     assert client.post("/api/config/schema/columns", json={"name": "T_NO"}).json() == {
         "objectType": None, "primaryKey": None, "columns": []}
+    # C09 v16：向导按关键字搜表和视图
+    objects = client.post("/api/config/schema/objects", json={"keyword": "T_COST_GOODS"})
+    assert objects.status_code == 200 and objects.json() == {"objects": [
+        {"name": "T_COST_GOODS", "type": "table"}, {"name": "T_COST_GOODS_PRICE_V", "type": "view"}]}
     # seed 已有物料清单页 GOODS_PRICE_MANAGE，向导用另外的编码在同一张表上新建一页
     generated = client.post("/api/config/wizard/generate", json={
         "parentMenu": "cost", "pageCode": "GOODS_WIZARD", "title": "物料清单（向导）", "layout": "single",

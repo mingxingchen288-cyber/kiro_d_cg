@@ -85,6 +85,12 @@ describe('C09 每个接口的模拟实现', () => {
       s.schemaColumnsResponseSample
     ],
     [
+      '搜表和视图',
+      () => api.schemaObjects('T_COST_GOODS'),
+      'POST /api/config/schema/objects',
+      s.schemaObjectsResponseSample
+    ],
+    [
       '向导生成',
       () =>
         api.wizardGenerate({

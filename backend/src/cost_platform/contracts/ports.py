@@ -20,6 +20,7 @@ from .types import (
     CommandResult,
     CommandState,
     ConfigDraft,
+    DbObject,
     Department,
     DictConfig,
     DocumentData,
@@ -80,6 +81,16 @@ class SchemaInspector(Protocol):
 
     def primary_key(self, table: str) -> str | None:
         """表的单列主键列名；没有主键、主键多于一列或不是表时为 None（C06 7.5 的 keyColumn 省略时用）。"""
+        ...
+
+    def column_comments(self, table: str) -> dict[str, str | None] | None:
+        """C08 v21：表或视图每一列的注释，按列的顺序，没有注释的为 None；不存在时为 None。
+        新建页面向导的列标题取注释，没有注释时取列名（同旧系统 `MetaConfigService.listViewColumns`）。"""
+        ...
+
+    def objects(self, keyword: str) -> list[DbObject]:
+        """C08 v21：名称中含关键字的表和视图（不分大小写），最多 100 个，先表后视图、各按名称排列；关键字为空时不按名称筛选。
+        同旧系统 `MetaConfigService.listDbObjects`（向导、"表与列"填视图名和目标表时搜索）。"""
         ...
 
 

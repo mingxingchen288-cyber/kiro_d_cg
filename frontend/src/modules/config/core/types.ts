@@ -222,12 +222,6 @@ export interface VisualCondition {
 
 export type Condition = string | VisualCondition;
 
-export interface DataItem {
-  name: string;
-  sql: string;
-  binds?: Record<string, string>;
-}
-
 export interface CellStyle {
   backgroundColor?: string;
   color?: string;
@@ -241,7 +235,6 @@ export interface RuleContent {
   category: 'calc' | 'validate' | 'ui';
   field: string | null;
   order: number;
-  dataItems?: DataItem[];
   when?: Condition | null;
   expression?: string | null;
   branches?: Array<{ when?: Condition | null; expression: string }> | null;

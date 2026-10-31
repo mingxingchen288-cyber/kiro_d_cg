@@ -197,7 +197,7 @@ def test_pack_compile_failure_rejected(env: Env) -> None:
     assert_rejected(found, None, "规则包 COST_PINGGU 不能编译：计算规则的依赖成环")
 
 
-# ---------------------------------------------------------------- 关联 SQL、数据项 SQL、导出 SQL
+# ---------------------------------------------------------------- 关联 SQL、导出 SQL；规则的数据项
 
 def _sync_price(sql: str, rows: str | None = None, find: dict[str, Any] | None = None) -> ConfigDraft:
     """物料清单页的按钮：按关联 SQL 找含这个物料的成本单明细，写单价（C06 6.1 的例子）。"""
@@ -239,11 +239,10 @@ DATA_RULE = {"layer": "entity", "target": "COST_MATERIAL", "category": "calc", "
                                                        "WHERE GOODSID = :goodsId", "binds": {"goodsId": "GOODSID"}}]}
 
 
-def test_data_item_sql(env: Env) -> None:
-    assert problems(env, draft("rule", "R_PRICE", DATA_RULE)) == []
-    broken = copy.deepcopy(DATA_RULE)
-    broken["dataItems"][0]["sql"] = "UPDATE T_COST_GOODS SET PRICE = 0"
-    assert_rejected(problems(env, draft("rule", "R_PRICE", broken)), "dataItems[0].sql", "只能是一条查询语句")
+def test_rule_with_data_items_rejected(env: Env) -> None:
+    """C06 v27：规则没有"数据项"（旧系统的规则没有这一项，配了也不执行，配置页的入口已去掉）；写了 `dataItems`
+    的规则拒绝保存，提示不允许出现这一项。"""
+    assert_rejected(problems(env, draft("rule", "R_PRICE", DATA_RULE)), "dataItems", "不允许出现 dataItems")
 
 
 def test_export_sql(env: Env) -> None:

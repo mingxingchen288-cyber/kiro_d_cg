@@ -212,8 +212,9 @@ export interface CompareDisplay {
 }
 
 /**
- * 字段的 `compare.format` 为 value 时只显示差值，percent 时只显示百分比，both 时都显示（"0.30 (8.57%)"）；
- * 页面视图没有给出 format 时按 both（契约缺口第 2 项）。差值为 0 或没有差值时不显示箭头和差值。
+ * 字段的 `compare.format`（C05 v9，FP-24）为 value 时只显示差值，percent 时只显示百分比，both 时都显示（"0.30 (8.57%)"），
+ * 同旧系统 useMetaColumns.ts 的 renderCompareValue；v9 之前生成的页面视图没有 format，按 both。
+ * 差值为 0 或没有差值时不显示箭头和差值。
  */
 export function compareDisplay(field: ViewField, compare: CompareResult | undefined): CompareDisplay | null {
   if (!compare?.diff || /^-?0+(\.0+)?$/.test(compare.diff)) return null;

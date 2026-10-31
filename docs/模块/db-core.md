@@ -31,6 +31,9 @@
   - 例外：清单中标 `"readsCmx": true` 的视图直接读 cmx 的同名视图，`reason` 写明 d_cg 的表为什么做不出来（2026-10-30 起）：成本核算主表四个 Lookup 的数据源 V_COST_GOODS_LOOKUP（产品，BOM 状态由 cmx 视图经 ERP 数据库链接算出）、V_COST_CUSTOMER_LOOKUP（客户）、V_COST_USER（人员，只留工号、姓名）、T_COST_FORMONEY_V（币种，汇率由 cmx 视图经 ERP 数据库链接取出，2026-10-31 加入）。与"由BOM生成明细"的 SQL 直接读 `CMX.T_COST_BOM_GOODS_TREE_V` 相同，数据随 cmx 变化。
 - DB-04：`platform db upgrade` 用 Alembic 执行各模块的平台表迁移脚本；`platform db check` 核对平台表是否齐全、迁移是否为最新版本，不一致时以非零退出码结束。
 - DB-05：不修改 d_cg 中已有的 `BP_T09_*` 对象；cmx 只读。
+- DB-07：`SchemaInspector` 的 `column_comments`、`objects`（C08 v21，2026-10-31 第 8 批，盘点 B14、B15），都只查 d_cg 当前用户的数据字典：
+  - `column_comments(名称)`：USER_TAB_COLUMNS 左连 USER_COL_COMMENTS，表或视图的每一列按列顺序给出注释，没有注释的为 None，不存在时为 None。
+  - `objects(关键字)`：USER_OBJECTS 中 `OBJECT_TYPE IN ('TABLE', 'VIEW')`、`OBJECT_NAME LIKE '%关键字%'`（关键字去掉首尾空白、转大写，作绑定变量；`_`、`%` 照样是通配符），`ORDER BY OBJECT_TYPE, OBJECT_NAME`，最多 100 个；关键字为空时不按名称筛选。同旧系统 `MetaConfigService.listDbObjects` 第 621–645 行，差别：旧系统查 DBA_OBJECTS 并指定 OWNER、关键字拼进 SQL，这里查当前用户的 USER_OBJECTS、用绑定变量。
 
 ## 4. 依赖
 

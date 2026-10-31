@@ -11,7 +11,7 @@ import pytest
 
 from cost_platform.contracts.types import ErrorCode, PlatformError, WizardColumnsRequest, WizardGenerateRequest, parse_wire
 
-from .support import Env, seed_drafts
+from .support import TABLES, Env, seed_drafts
 
 GOODS = {"entity": "COST_GOODS_WIZARD", "name": "物料清单", "table": "T_COST_GOODS", "readView": "T_COST_GOODS_PRICE_V",
          "erpRow": {"column": "ISERP", "value": "1", "localValue": "0"}, "erpColumns": ["GOODSNAME", "PRICE"],
@@ -42,6 +42,27 @@ def test_columns_reads_structure_only(env: Env) -> None:
     assert len(columns) == 17 and columns["ZX_PRICE"].in_table and columns["ZX_PRICE"].type == "number"
     assert not columns["ROW_CLASS_FLAG"].in_table and columns["CREATE_TIME"].type == "datetime"
     assert env.generation() == generation
+
+
+def test_columns_label_is_column_comment(env: Env) -> None:
+    """CF-20：导入列的标题取列注释，没有注释的列取列名（同旧系统 `useWizardState.ts` 第 103 行 `comment || columnName`）。
+    例：液体成本核算主表 T_COST_PINGGU_LQ 在 d_cg 中有两列注释，COST_PERBOX"每盒成本"、M_PERPACK"每中盒小盒数"
+    （只读查询 `.reports/batch8-20261031/g5-config-caps/03-*`）；有视图时取视图的注释，同旧系统读视图的列。"""
+    _, columns, key = TABLES["T_COST_PINGGU_LQ"]
+    env.schema.add_table("T_COST_PINGGU_LQ", columns, key, comments={"COST_PERBOX": "每盒成本", "M_PERPACK": "每中盒小盒数"})
+    found = env.service.wizard_columns(WizardColumnsRequest(read_view=None, table="T_COST_PINGGU_LQ"))
+    labels = {c.name: c.label for c in found.columns}
+    assert (labels["COST_PERBOX"], labels["M_PERPACK"], labels["GOODSNAME"]) == ("每盒成本", "每中盒小盒数", "GOODSNAME")
+    _, goods, goods_key = TABLES["T_COST_GOODS"]
+    env.schema.add_table("T_COST_GOODS", goods, goods_key, comments={"ZX_PRICE": "执行价"})
+    viewed = env.service.wizard_columns(WizardColumnsRequest(read_view="T_COST_GOODS_PRICE_V", table="T_COST_GOODS"))
+    assert {c.name: c.label for c in viewed.columns}["ZX_PRICE"] == "ZX_PRICE"
+
+
+def test_schema_objects_by_keyword(env: Env) -> None:
+    """CF-20：向导里输入"t_cost_goods"，列出名称含它的表和视图，先表后视图（同旧系统 `listDbObjects`）。"""
+    found = env.service.schema_objects("t_cost_goods")
+    assert [(o.name, o.type) for o in found.objects] == [("T_COST_GOODS", "table"), ("T_COST_GOODS_PRICE_V", "view")]
 
 
 def test_generate_single_page(env: Env) -> None:

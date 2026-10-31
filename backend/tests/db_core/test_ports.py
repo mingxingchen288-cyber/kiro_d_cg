@@ -1,7 +1,7 @@
 """C08 第 2 节端口的契约测试，用 db-core 的真实实现在 d_cg 上运行（C08 第 14 节、T-DB-1）。
 
-另有 `OracleSchemaInspector` 的两个额外方法（序列是否存在、列注释，C08 没有，见 `.reports/modules/db-core/contract-gaps.md`）
-和只读事务的检查。
+另有 `OracleSchemaInspector` 在 d_cg 现有对象上的只读检查（序列是否存在，C08 没有，见 `.reports/modules/db-core/contract-gaps.md`；
+列注释、按关键字列出表和视图，C08 v21）和只读事务的检查。
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import Engine, exc, text
 
 from cost_platform.contracts.ports import UnitOfWork
-from cost_platform.contracts.types import ColumnInfo
+from cost_platform.contracts.types import ColumnInfo, DbObject
 from cost_platform.db_core.engine import OracleUnitOfWorkFactory
 from cost_platform.db_core.legacy import OracleLegacyConnectionFactory
 from cost_platform.db_core.schema import OracleSchemaInspector
@@ -103,6 +103,18 @@ def test_column_comments(engine: Engine) -> None:  # noqa: F811
     assert comments is not None
     assert (comments["COST_PERBOX"], comments["M_PERPACK"], comments["DOCID"]) == ("每盒成本", "每中盒小盒数", None)
     assert inspector.column_comments("CT_SCHEMA_NO_SUCH_TABLE") is None
+
+
+def test_objects_on_d_cg(engine: Engine) -> None:  # noqa: F811
+    """DB-07（只读，只查数据字典）：向导输入"T_COST_GOODS"，列出物料表和物料清单视图，先表后视图；
+    关键字为空时最多 100 个（同旧系统 listDbObjects）。"""
+    inspector = OracleSchemaInspector(engine)
+    found = inspector.objects("t_cost_goods")
+    assert {DbObject("T_COST_GOODS", "table"), DbObject("T_COST_GOODS_PRICE_V", "view")} <= set(found)
+    assert all("T_COST_GOODS" in o.name for o in found)
+    kinds = [o.type for o in found]
+    assert kinds == sorted(kinds)
+    assert 0 < len(inspector.objects("")) <= 100
 
 
 # ---------------------------------------------------------------- UnitOfWorkFactory、UnitOfWork

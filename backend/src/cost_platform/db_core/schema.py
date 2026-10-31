@@ -5,11 +5,12 @@
 write-pipeline 的 `ColumnScales`）。名称按 Oracle 不加引号的写法转为大写。
 
 对照旧系统：`metadata/service/MetaConfigService.listViewColumns`（DBA_TAB_COLUMNS + DBA_COL_COMMENTS 读列名、类型、
-长度、精度、小数位和注释）、`WizardGenerateService.getPkColumn`（主键约束的列）、`ensureSequenceExists`（USER_SEQUENCES）。
+长度、精度、小数位和注释）、`listDbObjects`（DBA_OBJECTS 按关键字列出表和视图，最多 100 个）、
+`WizardGenerateService.getPkColumn`（主键约束的列）、`ensureSequenceExists`（USER_SEQUENCES）。
 
-C08 没有的两个方法（`.reports/modules/db-core/contract-gaps.md`）：
-- `sequence_exists`：config 检查 `<表名>_SEQ` 已存在（C06 第 10 节、CF-14、C09 wizard/columns 的 `sequence.exists`）；
-- `column_comments`：旧向导的列标题取列注释，没有注释时取列名。
+- `column_comments`、`objects`（C08 v21，DB-07）：新建页面向导的列标题取列注释，没有注释时取列名；按关键字搜表和视图。
+- `sequence_exists`：C08 没有（`.reports/modules/db-core/contract-gaps.md`），config 检查 `<表名>_SEQ` 已存在
+  （C06 第 10 节、CF-14、C09 wizard/columns 的 `sequence.exists`）。
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from typing import Literal
 
 from sqlalchemy import Engine, text
 
-from cost_platform.contracts.types import ColumnInfo
+from cost_platform.contracts.types import ColumnInfo, DbObject
 
 _CHARACTER = {"VARCHAR2", "NVARCHAR2", "CHAR", "NCHAR"}
 _NUMERIC = {"NUMBER", "FLOAT"}
@@ -34,6 +35,10 @@ _SEQUENCE = text("SELECT COUNT(*) FROM user_sequences WHERE sequence_name = :b_n
 _COMMENTS = text("SELECT c.column_name, m.comments FROM user_tab_columns c "
                  "LEFT JOIN user_col_comments m ON m.table_name = c.table_name AND m.column_name = c.column_name "
                  "WHERE c.table_name = :b_name ORDER BY c.column_id")
+# 同旧系统 listDbObjects：OBJECT_NAME LIKE '%关键字%'（关键字转大写，`_`、`%` 照样是通配符），先表后视图，最多 100 个
+_OBJECTS = text("SELECT * FROM (SELECT object_name, object_type FROM user_objects "
+                "WHERE object_type IN ('TABLE', 'VIEW') AND object_name LIKE '%' || :b_keyword || '%' "
+                "ORDER BY object_type, object_name) WHERE ROWNUM <= 100")
 
 
 def _column(name: str, data_type: str, nullable: str, char_length: object, precision: object, scale: object) -> ColumnInfo:
@@ -77,3 +82,9 @@ class OracleSchemaInspector:
         with self._engine.connect() as c:
             rows = c.execute(_COMMENTS, {"b_name": table.upper()}).all()
         return {r[0]: r[1] for r in rows} if rows else None
+
+    def objects(self, keyword: str) -> list[DbObject]:
+        """名称中含关键字的表和视图（当前用户 d_cg 的），最多 100 个，先表后视图、各按名称排列。"""
+        with self._engine.connect() as c:
+            rows = c.execute(_OBJECTS, {"b_keyword": keyword.strip().upper()}).all()
+        return [DbObject(name=str(r[0]), type="table" if r[1] == "TABLE" else "view") for r in rows]

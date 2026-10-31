@@ -80,6 +80,7 @@
     - 真实验证：`tests/config/test_oracle.py::test_wizard_on_d_cg` 在 d_cg 上通过（`T_COST_GOODS_PRICE_V` 已由 T-DB-3 建好），第 7 批合并后 `-m "oracle or redis"` 196 passed、0 failed、0 skipped，`.reports/batch7-20261030/merge/pytest-real-1.txt`。
     - "在写入任一项时注入失败"：上线后再补（`docs/工程约定.md` 第 5 节：用户没有点名的异常、边界、并发不做）。
     - 甲核对第四节 B14（向导导入列时标题不取列注释）、B15（向导不能按关键字列出表和视图）：未做，排在第 8 批。
+    - 2026-10-31 第 8 批 G5（`batch8/config-caps`）：B14、B15 已做，见 T-CF-13（CF-20）、T-FC-5、T-DB-5。
     - "还没有独立复核"保持原样，按用户规则（`.kiro/steering/测试范围.md`）不阻断完成。
 
 ### T-CF-7 成本核算币种 Lookup 带出汇率、状态改为字典下拉
@@ -90,3 +91,23 @@
 - 验收标准：业务例子（浏览器、d_cg，正式用例 `frontend/tests/e2e/cost-config.spec.ts`）：测试成本单选"欧元"，汇率等于运行时从 `T_COST_FORMONEY_V` 读出的欧元汇率，保存后重读一致；状态下拉按旧系统顺序列出 5 个值，选"已立项"保存后重读一致。
 - 状态与证据：进行中（模拟验证和浏览器业务例子通过，待独立复核）。2026-10-31 第 7 批 CF 组，提交 fd1f3b1（`batch7/cost-config`），报告 `.reports/batch7-20261030/cf-cost-config/报告.md`。合并后主代理执行 `platform db copy-business-tables`，只新建了 `T_COST_FORMONEY_V`（4 列、4 行，其余对象"已存在，未改动"，`.reports/batch7-20261030/merge/copy-business-tables.txt`），再经配置接口写进 d_cg（`save_config.out.txt`）；整套端到端 42 passed，其中本卡 2 条（`e2e-6.txt`）。
   - d_cg 现有 700 张成本单中 256 张的状态不在这 5 个值里（自主 125、委托研发 43、委托转移 40、"0" 24 等，另有 21 张为空，cmx 分布相同，是旧数据本来就有的）：照常显示原值，打开下拉时列表里没有它们的原值，选了才会改；保存不按字典校验。
+
+### T-CF-12 页面视图带默认值和对比的显示方式
+
+- 归属与目标：实现 CF-19（盘点 `.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B8、B9；用户 2026-10-31 回复"开始"）。契约 C05 v9。来源：旧系统 `cost-web/src/v3/composables/meta-v3/useWorkingSetStore.ts` 第 543–585 行、`useMetaColumns.ts` 第 166–176、204–219、423–455 行。
+- 前置输入：开始前 T-CF-2。
+- 负责范围：`contracts/types.py`（`ViewField.default`、`ViewField.compare`、`FieldCompareView`）、`config/views.py`。
+- 交付物：页面视图的字段带出实体字段的 `default`，配了 `compare` 时带出 `{"format": ...}`，没有配置时省略。
+- 接入责任：frontend-page 的 T-FP-18 使用；合并后主代理经配置接口重新生成页面视图（任何一次保存都会按新代码重新生成）。
+- 验收标准：模拟验证：成本核算主表实体的商务人员配 `builtin` 当前用户姓名、状态配 `options`、每批物料成本配对比只显示百分比时，页面视图中这三个字段分别带出相同的 `default` 和 `{"format": "percent"}`，没有配置的字段省略这两项，页面视图能被解析回来。
+- 状态与证据：进行中（模拟验证通过；浏览器用例待主代理合并后运行；待独立复核）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`，报告 `.reports/batch8-20261031/g5-config-caps/报告.md`。模拟验证：`tests/config/test_views.py::test_field_default_and_compare_format`；`pytest -m "not oracle and not redis"` 1316 passed（`pytest.txt`），`lint-imports` 5 kept。seed 的实体都没有配默认值和对比，页面视图不变。浏览器用例见 T-FP-18。
+
+### T-CF-13 新建页面向导取列注释、按关键字搜表和视图；规则去掉数据项
+
+- 归属与目标：实现 CF-20（盘点第四节 B14、B15）和 C06 v27 去掉规则的 `dataItems`（盘点第五节 U3：配置页能配数据项，保存和审批详情计算都不执行；主代理告诉用户"打算把这个入口去掉，而不是去实现它"，用户没有异议）。契约 C06 v27、C08 v21、C09 v16。来源：旧系统 `MetaConfigService.listDbObjects` 第 621–645 行、`listViewColumns`、`useWizardState.ts` 第 103 行；`RuleConfigDialog.vue`（规则没有数据项，`dataItems` 只在审批定义里）。
+- 前置输入：开始前 T-CF-6、T-DB-5。
+- 负责范围：`config/wizard.py`（`column_labels`、`schema_objects`）、`config/service.py`、`config/router.py`；`contracts/types.py`（`SchemaObjectsRequest`、`SchemaObject`、`SchemaObjectsResponse`，去掉 `DataItem` 和 `RuleConfig.data_items`）、`config/validation.py`、`config/packs.py`、`pipeline/calc.py` 和 `approval/calc.py` 的注释。
+- 交付物：`wizard/columns` 的标题取列注释；`POST /api/config/schema/objects`；写了 `dataItems` 的规则保存时拒绝。
+- 接入责任：frontend-config 的 T-FC-5 使用。
+- 验收标准：模拟验证：液体成本核算主表 T_COST_PINGGU_LQ 导入列时 COST_PERBOX、M_PERPACK 的标题为"每盒成本""每中盒小盒数"，没有注释的列为列名，有视图时取视图的注释；输入"t_cost_goods"列出物料表和物料清单视图、先表后视图；接口返回同样的结果；写了 `dataItems` 的规则保存时拒绝，提示不允许出现 dataItems。真实验证（只读，只查 d_cg 的数据字典）：输入"T_COST_GOODS"列出 T_COST_GOODS（表）、T_COST_GOODS_PRICE_V（视图），名称都含关键字、先表后视图；T_COST_PINGGU_LQ 导入列的主键 DOCID、序列已存在，两列标题为列注释。
+- 状态与证据：进行中（模拟验证、只读真实验证和浏览器用例通过；待独立复核）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`。模拟验证：`tests/config/test_wizard.py` 新增 2 条、`test_router.py::test_wizard_and_schema_endpoints` 加 `schema/objects`、`test_validation.py::test_rule_with_data_items_rejected`；`pytest -m "not oracle and not redis"` 1316 passed。真实验证：`tests/config/test_wizard_schema_oracle.py` 1 条，连同 T-DB-5 的 4 条只读用例 5 passed（`pytest-real-readonly.txt`）；`test_oracle.py::test_wizard_on_d_cg` 会写 d_cg 配置，没有跑。只读核对：d_cg `PF_CONFIG_ITEM` 中含 `dataItems` 的配置 0 行（`01-规则数据项.out.txt`），seed 也没有；审批流的数据项不是这一项，没有动（新平台审批流 C06 第 7 节本来没有数据项字段）。浏览器见 T-FC-5。

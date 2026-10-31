@@ -271,3 +271,23 @@ def test_erp_row_entity() -> None:
     assert fields["ISERP"].editable is False
     assert view.master.erp_row is not None and view.master.erp_row.column == "ISERP"
     assert view.system_buttons == [] and view.details == []
+
+
+def test_field_default_and_compare_format() -> None:
+    """CF-19（C05 v9）：页面视图的字段带出实体字段的 `default`（写法同 C06 第 2 节）和 `compare` 的显示方式 `format`；
+    没有配置的字段省略这两项。例（E28、E29 的写法，配在成本核算主表上）：商务人员默认当前用户名，使用状态下拉"草稿、已提交"，
+    总成本与另一个字段对比、只显示百分比。"""
+    items = seed_drafts()
+    entity = next(d for d in items if (d.type, d.key) == ("entity", "COST_PINGGU")).content
+    extra = {"BUSINESS_USER": {"default": {"type": "builtin", "value": "currentUserName"}},
+             "USESTATUS": {"default": {"type": "options", "value": ["草稿", "已提交"]}},
+             "TOTAL_COST": {"compare": {"mode": "field", "field": "SALEMONEY", "format": "percent"}}}
+    entity = {**entity, "fields": [{**f, **extra.get(f["name"], {})} for f in entity["fields"]]}
+    role = draft("role", "COST_ACCOUNTANT", {"name": "成本会计", "admin": False, "pages": {"COST_PINGGU": {"buttons": ["*"]}}})
+    view = _view([*_with(items, "entity", "COST_PINGGU", entity), role], "COST_PINGGU", "COST_ACCOUNTANT")
+    wire = {f["name"]: f for f in dump_wire(PageView, view)["master"]["fields"]}
+    assert wire["BUSINESS_USER"]["default"] == {"type": "builtin", "value": "currentUserName"}
+    assert wire["USESTATUS"]["default"] == {"type": "options", "value": ["草稿", "已提交"]}
+    assert wire["TOTAL_COST"]["compare"] == {"format": "percent"}
+    assert "default" not in wire["DOCID"] and "compare" not in wire["DOCID"]
+    assert parse_wire(PageView, dump_wire(PageView, view)) == view

@@ -5,7 +5,7 @@ import type { ErrorResponse } from '../errors';
 import type { PageView } from '../page-view';
 import type { EvaluationRequest, EvaluationResult, RulesPack } from '../rules';
 import type { ChannelEvent, ClientMessage, ServerMessage } from '../realtime';
-import type { Account, AccountList, ApprovalDetail, ApprovalList, ApprovalSummary, CommandReviewList, ConfigItem, ConfigItemList, ConfigSaveResponse, ConfigValidateResponse, DeliveryList, DepartmentList, DictResponse, ExportList, HealthResponse, InboxList, ListRequest, ListResponse, LoginResponse, LookupSearchResponse, MeResponse, PersonalConfig, PreviewResponse, RecordResponse, RowsResponse, SchemaColumnsResponse, SelectRoleResponse, WizardColumnsResponse } from '../http';
+import type { Account, AccountList, ApprovalDetail, ApprovalList, ApprovalSummary, CommandReviewList, ConfigItem, ConfigItemList, ConfigSaveResponse, ConfigValidateResponse, DeliveryList, DepartmentList, DictResponse, ExportList, HealthResponse, InboxList, ListRequest, ListResponse, LoginResponse, LookupSearchResponse, MeResponse, PersonalConfig, PreviewResponse, RecordResponse, RowsResponse, SchemaColumnsResponse, SchemaObjectsResponse, SelectRoleResponse, WizardColumnsResponse } from '../http';
 
 /** C02 第 1 节 页面保存 */
 export const commandSaveSample: Command = {
@@ -1138,6 +1138,20 @@ export const schemaColumnsResponseSample: SchemaColumnsResponse = {
     {
       "name": "DTLID",
       "type": "number"
+    }
+  ]
+};
+
+/** C09 第 3 节 搜表和视图（v16） */
+export const schemaObjectsResponseSample: SchemaObjectsResponse = {
+  "objects": [
+    {
+      "name": "T_COST_GOODS",
+      "type": "table"
+    },
+    {
+      "name": "T_COST_GOODS_PRICE_V",
+      "type": "view"
     }
   ]
 };

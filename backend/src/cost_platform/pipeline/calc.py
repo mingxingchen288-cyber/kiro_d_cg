@@ -183,7 +183,7 @@ class Recalculator:
             document=EvalDocument(entity=ref.entity, master=eval_row(doc.master),
                                   details={code: [eval_row(r) for r in rows] for code, rows in doc.details.items()}),
             changed=changed,
-            data={},  # 规则需要的数据库数据：配置快照没有给出规则的 dataItems，见 contract-gaps.md
+            data={},  # 规则没有数据项（C06 v27 去掉），不依赖数据库数据
         )
         handle = ctx.config.rules_pack(pack_id_of(state, ctx, ref))
         raw = self._engine.evaluate(handle, json.dumps(dump_wire(EvaluationRequest, request), ensure_ascii=False))
