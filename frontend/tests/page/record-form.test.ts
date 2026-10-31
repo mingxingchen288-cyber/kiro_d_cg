@@ -4,12 +4,17 @@
  * 用户 2026-11-01："表单和表格可以公用一个元数据，表单唯一的区别仅仅是可以调整每个表单列的位置和带线（大小）"。
  * 旧系统没有行表单（主表、明细都没有），这是新平台的能力。
  * 数据取自成本核算页：成本单 2550 的原料/辅料为聚维酮K30（206323）、硬脂酸镁（206324）、玉米淀粉（206325）；2551 为聚维酮K30（206400）。
+ * 对比值（行中的 compare）和界面规则是假设的。
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { CommandResult } from '../../src/contracts/command';
-import type { PageRuntime } from '../../src/modules/page/page-runtime';
+import type { RecordResponse } from '../../src/contracts/http';
+import type { EvalRowResult, EvaluationRequest, EvaluationResult } from '../../src/contracts/rules';
+import { COMPARE_DOWN_COLOR, COMPARE_UP_COLOR } from '../../src/modules/page/fields';
+import { buildColumns } from '../../src/modules/page/grid-adapter/columns';
+import type { GridRow, PageRuntime } from '../../src/modules/page/page-runtime';
 import { formView } from '../../src/modules/page/record-form';
-import { MASTER, MATERIAL, costView, materialRow, openCostPage, selectRecord } from './support';
+import { MASTER, MATERIAL, RECORDS, costView, materialRow, openCostPage, selectRecord } from './support';
 
 const UUID = '7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
 
@@ -140,6 +145,9 @@ describe('明细的行表单（FP-03）', () => {
     runtime.stepForm(MATERIAL, 1);
     expect(runtime.state.forms[MATERIAL]).toBe(added);
     expect(formView(runtime, MATERIAL)!.title).toBe('原料/辅料 新增的一行（未保存）');
+    // 新增的行：表单主体带表格行同样的标记（斜体），字段带深蓝底白字
+    expect(formView(runtime, MATERIAL)!.rowMarks).toEqual(['row-new']);
+    expect(formView(runtime, MATERIAL)!.items[0].marks).toEqual(['cell-new']);
     runtime.stepForm(MATERIAL, -1);
     expect(runtime.state.forms[MATERIAL]).toBe('206325');
 
@@ -164,5 +172,152 @@ describe('明细的行表单（FP-03）', () => {
     runtime.onSelection(MASTER, []);
     expect([runtime.state.activeRecord, runtime.state.forms[MATERIAL]]).toEqual([null, null]);
     expect(runtime.state.forms[MASTER]).toBe('2550');
+  });
+});
+
+// ---- 表单和表格只在排布上不同：对比、界面规则的样式与表格同一格相同
+
+/** 2550 的原料/辅料带对比值（假设）：聚维酮K30 的单价比参考高 3、金额高 30，硬脂酸镁的单价低 2.5，玉米淀粉的单价与参考相同 */
+function comparedRecords(): Record<string, RecordResponse> {
+  const records = structuredClone(RECORDS);
+  const [k30, stearate, starch] = records['2550'].details[MATERIAL];
+  k30.compare = {
+    PRICE: { value: '72', diff: '3', percent: '4.17' },
+    AMOUNT: { value: '720', diff: '30', percent: '4.17' }
+  };
+  stearate.compare = { PRICE: { value: '72.5', diff: '-2.5', percent: '-3.45' } };
+  starch.compare = { PRICE: { value: '38', diff: '0', percent: '0.00' } };
+  return records;
+}
+
+/** 明细的单价、金额按这两种显示方式对比（C05 v9 的 compare.format） */
+function comparedView(price: 'value' | 'percent' | 'both', amount: 'value' | 'percent' | 'both' = 'both') {
+  const view = costView();
+  for (const field of view.details[0].fields) {
+    if (field.name === 'PRICE') field.compare = { format: price };
+    if (field.name === 'AMOUNT') field.compare = { format: amount };
+  }
+  return view;
+}
+
+/** 表格的对比渲染器在 Node 中运行用的最小 document：元素只记文字、样式名、样式和子元素 */
+class FakeElement {
+  textContent = '';
+  className = '';
+  readonly style = { cssText: '' };
+  readonly children: FakeElement[] = [];
+  append(...items: FakeElement[]) {
+    this.children.push(...items);
+  }
+}
+
+/** 表格这一格（明细）显示的对比：渲染器画出的 cell-compare 的文字和颜色；没有时为 null */
+function tableCompare(runtime: PageRuntime, gridId: string, field: string) {
+  vi.stubGlobal('document', { createElement: () => new FakeElement() });
+  try {
+    const column = buildColumns(runtime, runtime.model.region(MATERIAL)!).find(c => c.colId === field)!;
+    const data: GridRow = runtime.gridRow(MATERIAL, gridId);
+    const render = column.cellRenderer as (params: { value: unknown; data: GridRow }) => FakeElement;
+    const diff = render({ value: data[field], data }).children.find(c => c.className === 'cell-compare');
+    return diff ? { text: diff.textContent, color: /color:([^;]+)/.exec(diff.style.cssText)![1] } : null;
+  } finally {
+    vi.unstubAllGlobals();
+  }
+}
+
+/** 明细表单里这个字段显示的对比；没有时为 null */
+function formCompare(runtime: PageRuntime, field: string) {
+  const item = formView(runtime, MATERIAL)!.items.find(i => i.field.name === field)!;
+  return item.compare ? { text: `${item.compare.arrow}${item.compare.text}`, color: item.compare.color } : null;
+}
+
+describe('表单里的对比与表格同一格相同（FP-03、FP-15、FP-24）', () => {
+  it('单价"都显示"：2550 聚维酮K30 的单价（可编辑）表单里是红色 ↑3 (4.17%)，与表格同一格相同', async () => {
+    const ctx = await openCostPage(comparedView('both'), undefined, comparedRecords());
+    const { runtime } = ctx;
+    await selectRecord(ctx, '2550');
+    runtime.openForm(MATERIAL, '206323');
+
+    const price = formView(runtime, MATERIAL)!.items.find(i => i.field.name === 'PRICE')!;
+    expect([price.editable, price.text]).toEqual([true, '75.0000']);
+    expect(formCompare(runtime, 'PRICE')).toEqual({ text: '↑3 (4.17%)', color: COMPARE_UP_COLOR });
+    expect(tableCompare(runtime, '206323', 'PRICE')).toEqual(formCompare(runtime, 'PRICE'));
+  });
+
+  it('单价"只显示差值"：硬脂酸镁表单里是绿色 ↓2.5，同表格；玉米淀粉与参考相同，表单和表格都不显示对比', async () => {
+    const ctx = await openCostPage(comparedView('value'), undefined, comparedRecords());
+    const { runtime } = ctx;
+    await selectRecord(ctx, '2550');
+    runtime.openForm(MATERIAL, '206323');
+
+    runtime.stepForm(MATERIAL, 1);
+    expect(formView(runtime, MATERIAL)!.title).toBe('原料/辅料 硬脂酸镁');
+    expect(formCompare(runtime, 'PRICE')).toEqual({ text: '↓2.5', color: COMPARE_DOWN_COLOR });
+    expect(tableCompare(runtime, '206324', 'PRICE')).toEqual(formCompare(runtime, 'PRICE'));
+
+    runtime.stepForm(MATERIAL, 1);
+    expect(formView(runtime, MATERIAL)!.title).toBe('原料/辅料 玉米淀粉');
+    expect([formCompare(runtime, 'PRICE'), tableCompare(runtime, '206325', 'PRICE')]).toEqual([null, null]);
+  });
+
+  it('金额"只显示百分比"：聚维酮K30 的金额（计算字段，只读）表单里是红色 ↑4.17%，同表格', async () => {
+    const ctx = await openCostPage(comparedView('both', 'percent'), undefined, comparedRecords());
+    const { runtime } = ctx;
+    await selectRecord(ctx, '2550');
+    runtime.openForm(MATERIAL, '206323');
+
+    const amount = formView(runtime, MATERIAL)!.items.find(i => i.field.name === 'AMOUNT')!;
+    expect([amount.editable, amount.text]).toEqual([false, '750.00']);
+    expect(formCompare(runtime, 'AMOUNT')).toEqual({ text: '↑4.17%', color: COMPARE_UP_COLOR });
+    expect(tableCompare(runtime, '206323', 'AMOUNT')).toEqual(formCompare(runtime, 'AMOUNT'));
+  });
+});
+
+const RED = { backgroundColor: '#ffcccc' };
+
+/** 假设的界面规则（同 display.test.ts）：主表备注为"ERP未搭建BOM"整行红底；原辅料硬脂酸镁的单价不可编辑、字体变灰 */
+function uiRules(request: EvaluationRequest): EvaluationResult {
+  const master = request.document.master;
+  const rows: EvalRowResult[] = [
+    {
+      entity: MASTER,
+      rowKey: master.rowKey,
+      computed: {},
+      fields: {},
+      style: { row: master.values.MEMO === 'ERP未搭建BOM' ? RED : null, cells: {} }
+    }
+  ];
+  for (const row of request.document.details[MATERIAL] ?? []) {
+    const stearate = row.values.GOODSNAME === '硬脂酸镁';
+    rows.push({
+      entity: MATERIAL,
+      rowKey: row.rowKey,
+      computed: {},
+      fields: stearate ? { PRICE: { editable: false } } : {},
+      style: { row: null, cells: stearate ? { PRICE: { color: '#999999' } } : {} }
+    });
+  }
+  return { ok: true, rows, effects: [] };
+}
+
+describe('表单里界面规则的样式与表格相同（FP-03、FP-18）', () => {
+  it('2550 备注为 ERP未搭建BOM：主表的表单主体红底（同表格的行）；硬脂酸镁的单价在表单里灰字、不可编辑（同表格的格）', async () => {
+    const records = structuredClone(RECORDS);
+    records['2550'].master.values.MEMO = 'ERP未搭建BOM';
+    const ctx = await openCostPage(costView(), fake => fake.calc.respond(uiRules), records);
+    const { runtime } = ctx;
+    await selectRecord(ctx, '2550');
+    runtime.openForm(MASTER, '2550');
+    runtime.openForm(MATERIAL, '206324');
+
+    expect(formView(runtime, MASTER)!.rowStyle).toEqual(RED);
+    const price = formView(runtime, MATERIAL)!.items.find(i => i.field.name === 'PRICE')!;
+    expect([price.style, price.editable]).toEqual([{ color: '#999999' }, false]);
+    const column = buildColumns(runtime, runtime.model.region(MATERIAL)!).find(c => c.colId === 'PRICE')!;
+    const cellStyle = column.cellStyle as (params: { data: GridRow }) => unknown;
+    expect(cellStyle({ data: runtime.gridRow(MATERIAL, '206324') })).toEqual(price.style);
+    // 其他行没有规则样式
+    runtime.stepForm(MATERIAL, -1);
+    expect(formView(runtime, MATERIAL)!.items.find(i => i.field.name === 'PRICE')!.style).toBeUndefined();
   });
 });
