@@ -52,3 +52,16 @@
   - 另外做了旧系统有、C09 没有的能力：部门的新建、修改、删除，账号列表按角色筛选，改自己的密码。见 `.reports/modules/identity/contract-gaps.md` 第 2–4 条。
   - 接入 assembly、realtime 后进行真实联调。
   - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：状态由"待联调"改为"完成"：联调 `tests/e2e/test_batch_a.py`（停用后 WebSocket 先收 `session.revoked` 再以 4401 关闭、下一次请求 401）通过（第 7 批合并后 `-m "oracle or redis"` 196 passed、0 failed、0 skipped，`.reports/batch7-20261030/merge/pytest-real-1.txt`）；浏览器 `frontend/tests/e2e/basic-1029.spec.ts:200`"场景 2 部门和账号"、`batch-d.spec.ts:280`"停用账号后，浏览器立即回到登录页"通过（第 7 批合并后端到端 42 passed，`.reports/batch7-20261030/merge/e2e-6.txt`）。`.reports/review/` 中没有本卡的复核记录，状态里补写"待独立复核"；按用户规则（`.kiro/steering/测试范围.md`）不阻断完成。
+
+### T-ID-4 改已有账号的账号名、账号和部门的高级查询、当前用户的部门名称（第 8 批 G4）
+
+- 归属与目标：ID-09（部门名称）、ID-11、ID-12；C04 v2、C09 v15。盘点 `.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B10、B11、B12，`乙-旧系统功能对照.md` 第 2.12、2.13 节；用户 2026-10-31 回复"开始"。
+- 前置输入：T-ID-3。
+- 负责范围：`identity/accounts.py`、`admin.py`、`router.py`、`service.py`、`sessions.py`，新文件 `identity/search.py`；`pipeline/entity_rules.py` 的 `currentDeptName` 一行（write-pipeline 的默认值，取执行上下文的部门名称）。
+- 交付物：`PUT /api/admin/accounts/{userId}` 可带 `username` 改账号名，重名 422；`GET /api/admin/accounts`、`/api/admin/departments` 可带 `advanced`；登录响应、`/api/me` 的当前用户和执行上下文带部门名称，默认值"当前部门名称"保存时取它。
+- 验收标准：模拟验证：韩群 HY221020 改成 HY221021 后新名字能登录、旧名字不能，已登录的会话换成新账号名；改成汪春龙的 HY090702 时 422、`field` 为 username、原名不变；按姓名包含"群"且部门为技术中心查出韩群，部门 IN（采购部、市场部）查出程苏慧、汪春龙，状态为停用查出朱文俊；部门名称包含"部"查出采购部、市场部；登录、`/api/me`、`authenticate` 都带"技术中心"，调到市场部后马上变，市场部改名后 `/api/me` 起用新名称；`currentDeptName` 默认值取"技术中心"。真实验证：d_cg 上改名、重名 422、按姓名和部门查人员、按名称查部门。
+- 状态与证据：进行中（模拟、真实、浏览器业务例子通过，待独立复核）。2026-10-31，第 8 批 G4，分支 `batch8/admin-shell`，原始输出在 `.reports/batch8-20261031/g4-admin-shell/`：
+  - 模拟：`tests/identity/test_rename_and_department_name.py` 5 个、`test_search.py` 4 个、`test_router.py::test_rename_account_search_and_department_name`、`tests/pipeline/test_default_dept_name.py`；后端模拟全部 1322 passed。
+  - 真实：`tests/identity/test_oracle.py::test_rename_account_on_oracle`、`test_advanced_search_and_department_name_on_oracle`；`-m "oracle or redis" tests/identity` 16 passed（含 Redis 会话）。
+  - 浏览器：`frontend/tests/e2e/batch8-admin-shell.spec.ts` 的"改已有账号的用户名"、"人员管理高级查询"、"部门管理高级查询"3 个 passed（`e2e-2.txt`）。"默认值'当前部门名称'"用例要临时改成本核算的实体配置，按 `共同约定.md` 第 3 节待主代理合并后运行。
+  - 与旧系统的差别：改名后已登录的会话马上换成新账号名（新平台的会话按账号版本刷新）；旧系统 JWT 带旧账号名到重新登录为止。历史 `UPDATE_BY` 都不改，与旧系统相同。

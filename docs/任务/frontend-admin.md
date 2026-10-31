@@ -23,5 +23,15 @@
   - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：状态由"待联调"改为"完成"。
     - "界面没有在浏览器中运行过"：模块已注册到外壳，浏览器 `frontend/tests/e2e/admin.spec.ts:17`（人员管理、部门管理）、`basic-1029.spec.ts:200`"场景 2 部门和账号"（新增部门、新增账号）、`:328`"场景 3 角色权限"（角色分配给测试账号）通过（第 7 批合并后端到端 42 passed，`.reports/batch7-20261030/merge/e2e-6.txt`）。
     - 命令审查（FM-04）、部门删除没有写测试：功能已有，用户没有点名这两条流程，按用户规则（`.kiro/steering/测试范围.md`）不另写。
-    - 契约缺口中的"已有账号不能改用户名"（甲核对第四节 B11）和人员、部门管理没有高级查询（B12）：未做，排在第 8 批。
+    - 契约缺口中的"已有账号不能改用户名"（甲核对第四节 B11）和人员、部门管理没有高级查询（B12）：第 8 批在 T-FM-2 中做了（FM-05、FM-06）。
     - "独立复核：未做"：`.reports/review/` 中没有本卡的复核记录，状态里补写"待独立复核"；按用户规则（`.kiro/steering/测试范围.md`）不阻断完成。
+
+### T-FM-2 改已有账号的用户名；人员、部门的高级查询（第 8 批 G4）
+
+- 归属与目标：FM-05、FM-06；C09 v15。盘点 `.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B11、B12，`乙-旧系统功能对照.md` 第 2.12、2.13 节；用户 2026-10-31 回复"开始"。
+- 前置输入：identity T-ID-4（`username`、`advanced`）。
+- 负责范围：`admin/accounts.ts`、`departments.ts`、`renderers/AccountsPanel.vue`、`DepartmentsPanel.vue`，新文件 `admin/advanced-search.ts`、`renderers/AdvancedSearchDialog.vue`。
+- 交付物：人员管理的"用户名"列已有的行能改；人员管理、部门管理的"高级查询"对话框。
+- 验收标准：模拟验证（`tests/admin/accounts.test.ts`、`departments.test.ts`）：韩群 HY221020 改成 HY221021，保存的请求带 `username`、其余照旧；改成 HY090702 时提示"保存失败：账号名 HY090702 已存在"、这一行留着；高级查询预置人员 5 个、部门 2 个条件，姓名包含"韩"且部门为技术中心查出韩群，部门 IN（采购部、市场部）且状态启用查出程苏慧、汪春龙，重置后查全部；部门名称包含"部"查出采购部、市场部，保存后仍按条件读取。浏览器：admin 改测试账号的用户名并保存，用新用户名登录成功、旧用户名 401；按姓名、部门查出测试账号；按部门名称查出测试部门。
+- 状态与证据：进行中（模拟验证和浏览器业务例子通过，待独立复核）。2026-10-31，第 8 批 G4，`batch8/admin-shell`：前端单元全部 594 passed；`frontend/tests/e2e/batch8-admin-shell.spec.ts` 3 个 passed，回归 `admin.spec.ts`、`basic-1029.spec.ts` 场景 2、`batch-d.spec.ts` 停用账号、`e01.spec.ts` 4 个 passed（`.reports/batch8-20261031/g4-admin-shell/e2e-2.txt`、`e2e-regress-1.txt`）。
+  - 与旧系统的差别：旧人员页"部门ID"（Lookup）和"部门名称"两个条件在新表格合成"部门"一个条件（从部门列表中选）；旧页面的邮箱、电话、部门编码新平台没有，没有这三个条件。

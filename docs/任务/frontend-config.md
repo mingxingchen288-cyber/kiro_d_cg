@@ -53,3 +53,13 @@
 - 接入责任：真实联调在 T-AS-7。
 - 验收标准：模拟验证：按向导生成物料清单页的请求与 C09 样例一致；审计默认开启、明细显示方式默认多 Tab，管理员改为关闭审计后，请求中的 `audit` 为 false；单表页不显示明细显示方式，请求仍带 `detailMode`；序列不存在时提示先建序列，不能继续生成。
 - 状态与证据：待联调（模拟验证通过；界面没有在浏览器中运行）。2026-10-29：向导 `wizard/wizard-state.ts`、`WizardPanel.vue`、`WizardTableForm.vue`，步骤同旧 `WizardPanel.vue`（页面菜单 / 导入表与配置字段 / 确认生成），页面编码输入同旧 `handleCodeInput`；归属菜单取菜单配置的分组；导入列经 `POST /api/config/wizard/columns`，序列不存在时提示并不能进入下一步、不发生成请求。显示、编辑的调整随请求带 `fieldDefaults`，后端没有写进实体时生成后补存（contract-gaps 第 2 条）。扩展配置：实体的必须审批字段规则（`entity/ApprovalRequiredDialog.vue`，入口"页面行为 → 需审批的编辑字段"）、默认值和选项值、对比（`views/TableFieldsCard.vue` 的列、`CompareDialog.vue`），审批流的 SQL 审批人和参数（审批人弹窗、参数弹窗）。模拟验证：`tests/config/wizard.test.ts` 7 个用例通过——生成请求顶层与 C09 样例一致（parentMenu cost、GOODS_PRICE_MANAGE、物料清单及成本、single、tabs、audit true、details 空），`master` 为 wizard.py 的写法；关闭审计后 `audit` 为 false、单表页仍带 `detailMode`；序列 T_COST_GOODS_SEQ 不存在时提示、不能继续、没有生成请求；调整显示、编辑后实体补存 `fieldDefaults`；物料实体保存必须审批规则、选项默认值、对比；审批流保存 SQL 审批人的绑定变量和最终批准时填写的参数。2026-10-30（丙组，`batch1/summary`）：FC-10，`views/TableFieldsCard.vue` 的列表格在"不能修改的原因"后加"求和"勾选列（非数值字段不能勾，悬停提示"只有数值字段能求和"），`table-fields.ts` 读写页面字段设置的 `aggregate`。模拟验证：`tests/config/table-fields.test.ts` 新增 1 个通过（seed 成本核算主表的总成本、原辅料金额显示已勾选；勾选主表批量 APEX_PL 并保存，页面只多写 `APEX_PL: {aggregate: "sum"}`）。界面没有在浏览器中运行。
+
+### T-FC-6 配置页填菜单图标（第 8 批 G4）
+
+- 归属与目标：FC-16；C06 v26 菜单项的 `icon`。盘点 `.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B13（frontend-config 缺口第 8 条"菜单图标"）；用户 2026-10-31 回复"开始"。
+- 前置输入：contracts `MenuItem.icon`（C06 v26）。
+- 负责范围：`config/core/types.ts`（`MenuNode.icon`）、`views/menu-tree.ts`、`SectionBasicInfo.vue`、`DirectoryInfoPanel.vue`、`PageConfigPanel.vue`、`UnifiedConfigPage.vue`（配置、管理入口也打开目录信息）。
+- 交付物：页面"基本信息"和"目录信息"能选或输入图标，保存到菜单配置项。
+- 验收标准：模拟验证（`tests/config/menu-icon.test.ts`）：常用图标为旧系统的 20 个，输入的图标也在选项里；给"基础信息"设 `mdi:currency-usd`、清空后去掉 `icon`，其他项不变；页面"成本核算"的图标改在菜单项 COST_PINGGU 上。浏览器：目录信息给"基础信息"换成包裹图标并保存，菜单配置项中为 `mdi:package-variant`，之后改回。
+- 状态与证据：进行中（模拟验证通过；浏览器用例已写好，要保存带 `icon` 的菜单，待主代理合并后运行，待独立复核）。2026-10-31，第 8 批 G4，`batch8/admin-shell`：前端单元全部 594 passed，`pnpm typecheck`、`pnpm lint:deps` 通过。
+  - 与旧系统的差别：旧系统只在页面"基本信息"里改图标，"目录信息"只显示；新平台的目录信息本来就能改分组名称，图标也在这里改。

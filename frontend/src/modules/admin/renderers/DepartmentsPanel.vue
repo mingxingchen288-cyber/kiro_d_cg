@@ -1,5 +1,8 @@
 <script setup lang="ts">
-/** 部门管理（旧系统 `dept-manage`）：新增、删除先记在表格里，点"保存"一起提交。行为都在 departments.ts */
+/**
+ * 部门管理（旧系统 `dept-manage`）：新增、删除先记在表格里，点"保存"一起提交；"高级查询"按 ID、部门名称查（FM-06）。
+ * 行为都在 departments.ts
+ */
 import { computed, onMounted, ref, shallowRef } from 'vue';
 import { NButton, NSpace } from 'naive-ui';
 import { AgGridVue } from 'ag-grid-vue3';
@@ -12,8 +15,10 @@ import type {
   RowSelectionOptions,
   ValueSetterParams
 } from 'ag-grid-community';
+import { DEPARTMENT_SEARCH_FIELDS, enabledCount } from '../advanced-search';
 import { type DepartmentRow, DepartmentsModel } from '../departments';
 import type { AdminDeps } from '../shared';
+import AdvancedSearchDialog from './AdvancedSearchDialog.vue';
 
 defineOptions({ name: 'DepartmentsPanel' });
 
@@ -23,6 +28,8 @@ const model = new DepartmentsModel(props.deps);
 const state = model.state;
 const api = shallowRef<GridApi<DepartmentRow> | null>(null);
 const selectedIds = ref<string[]>([]);
+const showSearch = ref(false);
+const searchCount = computed(() => enabledCount(DEPARTMENT_SEARCH_FIELDS, state.searchDrafts));
 
 const dirtyCount = computed(() => model.dirtyCount);
 const rowData = computed(() => state.rows.map(row => ({ ...row })));
@@ -96,6 +103,9 @@ onMounted(() => {
           删除
         </NButton>
         <NButton size="small" :disabled="dirtyCount === 0" :loading="state.saving" @click="save">保存</NButton>
+        <NButton size="small" :disabled="state.saving" @click="showSearch = true">
+          高级查询{{ state.advanced ? `（${searchCount}）` : '' }}
+        </NButton>
       </NSpace>
       <span v-if="state.deleted.length" class="text-12px text-#999">待删除 {{ state.deleted.length }} 个部门</span>
       <span v-if="dirtyCount > 0" class="text-12px text-#999">{{ dirtyCount }} 处未保存</span>
@@ -116,6 +126,13 @@ onMounted(() => {
         @selection-changed="onSelectionChanged"
       />
     </div>
+    <AdvancedSearchDialog
+      v-model:show="showSearch"
+      :fields="DEPARTMENT_SEARCH_FIELDS"
+      :drafts="state.searchDrafts"
+      @search="drafts => model.advancedSearch(drafts)"
+      @reset="drafts => model.advancedSearch(drafts)"
+    />
   </div>
 </template>
 

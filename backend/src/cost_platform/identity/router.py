@@ -46,6 +46,7 @@ from cost_platform.contracts.types import (
 )
 
 from .admin import AccountAdmin
+from .search import parse_advanced
 from .service import IdentityService
 
 SESSION_COOKIE = "cp_session"
@@ -154,10 +155,12 @@ def identity_router(identity: IdentityService, admin: AccountAdmin, config: Conf
     @router.get("/api/admin/accounts")
     async def list_accounts(request: Request, keyword: str = "", start_row: int = Query(0, alias="startRow"),
                             end_row: int = Query(50, alias="endRow"),
-                            role_code: str | None = Query(None, alias="roleCode")) -> JSONResponse:
-        """`roleCode` 为 C09 之外的参数：只列分配了该角色的账号。"""
+                            role_code: str | None = Query(None, alias="roleCode"),
+                            advanced: str | None = None) -> JSONResponse:
+        """`roleCode` 为 C09 之外的参数：只列分配了该角色的账号。`advanced` 为高级查询条件的 JSON 文本（C09 v15，ID-12）。"""
         await as_admin(request, is_write=False)
-        result = await run_in_threadpool(admin.list_accounts, keyword, start_row, end_row, role_code)
+        query = parse_advanced(advanced)
+        result = await run_in_threadpool(admin.list_accounts, keyword, start_row, end_row, role_code, query)
         return _json(AccountList, result)
 
     @router.post("/api/admin/accounts")
@@ -182,9 +185,11 @@ def identity_router(identity: IdentityService, admin: AccountAdmin, config: Conf
     # ------------------------------------------------------------ 部门（只对管理员）
 
     @router.get("/api/admin/departments")
-    async def departments(request: Request) -> JSONResponse:
+    async def departments(request: Request, advanced: str | None = None) -> JSONResponse:
+        """`advanced` 为高级查询条件的 JSON 文本（C09 v15，ID-12）。"""
         await as_admin(request, is_write=False)
-        return _json(DepartmentList, await run_in_threadpool(admin.departments))
+        query = parse_advanced(advanced)
+        return _json(DepartmentList, await run_in_threadpool(admin.departments, query))
 
     @router.post("/api/admin/departments")
     async def create_department(request: Request) -> JSONResponse:

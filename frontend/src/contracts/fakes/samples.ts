@@ -965,7 +965,8 @@ export const loginResponseSample: LoginResponse = {
     "userId": "112",
     "username": "yangna",
     "displayName": "杨娜",
-    "departmentId": "10"
+    "departmentId": "10",
+    "departmentName": "成本部"
   },
   "roles": [
     {
@@ -997,7 +998,8 @@ export const meResponseSample: MeResponse = {
     "userId": "112",
     "username": "yangna",
     "displayName": "杨娜",
-    "departmentId": "10"
+    "departmentId": "10",
+    "departmentName": "成本部"
   },
   "role": {
     "code": "COST_ACCOUNTANT",

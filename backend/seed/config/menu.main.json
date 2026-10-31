@@ -8,12 +8,14 @@
         "key": "cost",
         "title": "成本",
         "kind": "group",
+        "icon": "mdi:calculator-variant",
         "children": [
           {
             "key": "COST_PINGGU",
             "title": "成本核算",
             "kind": "page",
-            "pageCode": "COST_PINGGU"
+            "pageCode": "COST_PINGGU",
+            "icon": "mdi:calculator-variant"
           }
         ]
       },
@@ -21,24 +23,28 @@
         "key": "basic",
         "title": "基础信息",
         "kind": "group",
+        "icon": "mdi:currency-usd",
         "children": [
           {
             "key": "GOODS_PRICE_MANAGE",
             "title": "物料清单及成本",
             "kind": "page",
-            "pageCode": "GOODS_PRICE_MANAGE"
+            "pageCode": "GOODS_PRICE_MANAGE",
+            "icon": "mdi:tag-outline"
           }
         ]
       },
       {
         "key": "config",
         "title": "配置",
-        "kind": "config"
+        "kind": "config",
+        "icon": "mdi:database-cog"
       },
       {
         "key": "admin",
         "title": "系统管理",
-        "kind": "admin"
+        "kind": "admin",
+        "icon": "mdi:cog"
       }
     ]
   }

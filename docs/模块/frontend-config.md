@@ -47,6 +47,7 @@
   - "导出"：本页面的导出配置（`export:<编码>`）。
   按钮分组参考旧系统权限页（`cost-web/src/views/_builtin/permission/index.vue`）。代码在 `role/role-model.ts`（`PAGE_BUTTONS`、`areaPermissionRows`、`buttonGroups`）和 `role/RoleButtonDialog.vue`。
 - FC-11："表与列"的表信息中有"修改人列"，对应实体的 `updatedByColumn`（C06 第 2 节，2026-10-30 按旧系统每次保存写 UPDATE_BY 加入）：填目标表中的列名，例如物料清单填 UPDATE_BY；清空时去掉这一项。随"保存表信息"保存，保存时由 config 校验列在表中、不是字段的列。
+- FC-16：菜单图标（C06 v26 菜单项的 `icon`）在两处选：页面"基本信息"的"图标"（同旧系统 `SectionBasicInfo.vue` 第 33–54、87–96 行），改的是这个页面所在的菜单项，点"保存"时先保存页面、图标改了再保存菜单配置项，页面没有挂在菜单下时不能选；"目录信息"的"图标"，改的是选中的分组或配置、管理入口（旧目录信息只显示图标，新平台这里本来就能改分组名称，图标一起改；配置、管理入口也打开目录信息，只改名称和图标）。下拉的选项是旧系统的 20 个常用图标，可以输入别的 Iconify 图标名（例如旧菜单资源的 `mdi:domain`），清空即去掉 `icon`（外壳用默认图标）。代码在 `views/menu-tree.ts`（`ICON_OPTIONS`、`setNodeIcon`、`menuItemOfPage`）、`SectionBasicInfo.vue`、`DirectoryInfoPanel.vue`。
 - FC-13："表与列"的字段表有"查询"勾选列，同旧系统 `SectionTables.vue` 第 79–82 行的"查询"（`searchable`）：勾选时保存为本页面字段设置的 `searchable: true`（C06 v23 第 3 节），不勾时不写；页面上高级查询对话框一打开就列出这个字段的条件（frontend-page 的 FP-22）。任何类型的字段都能勾；"本页面"和"实体默认"两个范围下都是本页面的设置，同"求和"。
 
 ## 4. 依赖

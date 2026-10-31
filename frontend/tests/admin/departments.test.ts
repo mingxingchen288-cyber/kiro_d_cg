@@ -1,5 +1,6 @@
 /** 部门管理的正向流程（旧系统 dept-manage）：列出部门、表格里新建和修改，点"保存"提交 */
 import { describe, expect, it } from 'vitest';
+import { setValue } from '../../src/modules/admin/advanced-search';
 import { DepartmentsModel } from '../../src/modules/admin/departments';
 import { openAdmin } from './support';
 
@@ -42,5 +43,25 @@ describe('部门管理', () => {
       ['1069', '技术中心'],
       ['1101', '质量部']
     ]);
+  });
+
+  it('高级查询（FM-06）：部门名称包含"部"，查出采购部、市场部；保存后仍按这个条件读取', async () => {
+    const { model, http } = await openDepartments();
+    const drafts = model.state.searchDrafts.map(d => ({ ...d }));
+    expect(drafts.map(d => [d.field, d.operator])).toEqual([
+      ['departmentId', 'eq'],
+      ['name', 'like']
+    ]);
+    setValue(drafts[1], '部');
+    await model.advancedSearch(drafts);
+    expect(JSON.parse(String(http.callsTo('GET', '/api/admin/departments').at(-1)?.options?.query?.advanced))).toEqual({
+      op: 'and',
+      conditions: [{ field: 'name', operator: 'like', value: '部' }]
+    });
+    expect(model.state.rows.map(r => r.name)).toEqual(['采购部', '市场部']);
+
+    model.edit('581', '国际市场部');
+    expect(await model.save()).toBe(true);
+    expect(model.state.rows.map(r => r.name)).toEqual(['采购部', '国际市场部']);
   });
 });

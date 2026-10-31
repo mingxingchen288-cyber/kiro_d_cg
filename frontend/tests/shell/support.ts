@@ -13,7 +13,13 @@ import { type SessionStore, ShellSession, type StoredSession } from '../../src/m
 export const TECH_CENTER: RoleRef = { code: '技术中心', name: '技术中心', admin: false };
 export const ROLE_001: RoleRef = { code: '001', name: '001 海外营销中心-商业运营', admin: false };
 
-const E07_USER = { userId: '381', username: 'HY190510', displayName: 'HY190510', departmentId: null };
+const E07_USER = {
+  userId: '381',
+  username: 'HY190510',
+  displayName: 'HY190510',
+  departmentId: null,
+  departmentName: null
+};
 
 /** E07 的账号登录：两个角色，后端不自动选定 */
 export const e07Login: LoginResponse = {

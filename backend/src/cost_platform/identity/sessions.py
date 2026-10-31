@@ -2,7 +2,7 @@
 
 两种键：
 - 会话 `{ns}:session:{sid}`：登录时写入，过期时间为空闲时长，用户的有效操作会重新计时；内容见 `SessionData`。
-- 账号状态 `{ns}:user:{uid}:ver`：账号的当前版本，以及该版本下的启用状态、角色、姓名和部门（`AccountState`）。
+- 账号状态 `{ns}:user:{uid}:ver`：账号的当前版本，以及该版本下的启用状态、角色、账号名、姓名和部门（`AccountState`）。
   账号修改提交后写入新版本。会话里记着建立（或上次刷新）时的版本，两者不一致时按账号状态判断会话是否还有效，
   不用再查 Oracle。
 
@@ -30,11 +30,13 @@ class SessionData:
     role_code: str | None          # 还没有选定角色时为 None
     csrf_token: str
     version: int                   # 建立或上次刷新时的账号版本
+    department_name: str | None = None  # 部门名称（C04 v2）；登录时、账号改了部门时、`/api/me` 时按数据库更新
 
     def refreshed(self, state: AccountState) -> SessionData:
-        """账号改了姓名、部门等、但会话仍然有效时，按账号的当前状态刷新。"""
+        """账号改了账号名、姓名、部门等、但会话仍然有效时，按账号的当前状态刷新。"""
         return replace(self, username=state.username, display_name=state.display_name,
-                       department_id=state.department_id, version=state.version)
+                       department_id=state.department_id, department_name=state.department_name,
+                       version=state.version)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -53,6 +55,7 @@ class AccountState:
     username: str
     display_name: str
     department_id: str | None
+    department_name: str | None = None
 
     def to_json(self) -> str:
         return json.dumps({**asdict(self), "role_codes": list(self.role_codes)}, ensure_ascii=False)

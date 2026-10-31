@@ -13,9 +13,10 @@ from sqlalchemy import delete, func, insert, or_, select, text, update
 from sqlalchemy.engine import Connection
 
 from cost_platform.contracts.ports import UnitOfWorkFactory
-from cost_platform.contracts.types import AccountRef, Department, ErrorCode, ErrorDetail, PlatformError
+from cost_platform.contracts.types import AccountRef, AdvancedQuery, Department, ErrorCode, ErrorDetail, PlatformError
 
 from .passwords import Passwords
+from .search import ACCOUNT_FIELDS, DEPARTMENT_FIELDS, conditions_of
 from .sessions import AccountState
 from .tables import DEPARTMENT_SEQUENCE, USER_SEQUENCE, pf_department, pf_user, pf_user_role
 
@@ -43,10 +44,13 @@ class AccountRecord:
     password_hash: str | None = field(repr=False)
     role_codes: tuple[str, ...]
     version: int
+    department_name: str | None = None
+    """部门名称（C04 v2，默认值"当前部门名称"）；没有部门或部门已删除时为 None。"""
 
     def state(self) -> AccountState:
         return AccountState(user_id=self.user_id, version=self.version, enabled=self.enabled, role_codes=self.role_codes,
-                            username=self.username, display_name=self.display_name, department_id=self.department_id)
+                            username=self.username, display_name=self.display_name, department_id=self.department_id,
+                            department_name=self.department_name)
 
     def ref(self) -> AccountRef:
         return AccountRef(user_id=self.user_id, username=self.username, display_name=self.display_name,
@@ -65,10 +69,22 @@ def _uid(user_id: str) -> int | None:
     return int(user_id) if user_id.isdigit() else None
 
 
-def _account(row: object, roles: Sequence[str]) -> AccountRecord:
+def _account(row: object, roles: Sequence[str], department_names: dict[str, str]) -> AccountRecord:
+    department_id = row.department_id  # type: ignore[attr-defined]
     return AccountRecord(user_id=str(row.user_id), username=row.username, display_name=row.display_name,  # type: ignore[attr-defined]
-                         department_id=row.department_id, enabled=bool(row.enabled),  # type: ignore[attr-defined]
-                         password_hash=row.password_hash, role_codes=tuple(roles), version=int(row.version))  # type: ignore[attr-defined]
+                         department_id=department_id, enabled=bool(row.enabled),  # type: ignore[attr-defined]
+                         password_hash=row.password_hash, role_codes=tuple(roles), version=int(row.version),  # type: ignore[attr-defined]
+                         department_name=department_names.get(department_id) if department_id is not None else None)
+
+
+def _department_names(connection: Connection, department_ids: Iterable[str | None]) -> dict[str, str]:
+    """部门编号 → 部门名称；不存在的部门（已删除）不在结果中。"""
+    ids = sorted({d for d in department_ids if d is not None})
+    if not ids:
+        return {}
+    rows = connection.execute(select(pf_department.c.department_id, pf_department.c.name)
+                              .where(pf_department.c.department_id.in_(ids)))
+    return {department_id: name for department_id, name in rows}
 
 
 def _roles_of(connection: Connection, user_ids: Iterable[int]) -> dict[int, list[str]]:
@@ -89,12 +105,20 @@ def _load(connection: Connection, condition: object, *, lock: bool = False) -> A
     row = connection.execute(query.with_for_update() if lock else query).one_or_none()
     if row is None:
         return None
-    return _account(row, _roles_of(connection, [int(row.user_id)])[int(row.user_id)])
+    return _account(row, _roles_of(connection, [int(row.user_id)])[int(row.user_id)],
+                    _department_names(connection, [row.department_id]))
 
 
 def _duplicate_username(username: str) -> PlatformError:
     return PlatformError(ErrorCode.VALIDATION_FAILED, f"账号名 {username} 已存在",
                          [ErrorDetail(message=f"账号名 {username} 已存在", field="username")])
+
+
+def _username_taken(connection: Connection, username: str, except_user: int | None = None) -> bool:
+    condition = pf_user.c.username == username
+    if except_user is not None:
+        condition = condition & (pf_user.c.user_id != except_user)
+    return bool(connection.execute(select(func.count()).select_from(pf_user).where(condition)).scalar_one())
 
 
 class OracleAccounts:
@@ -122,10 +146,12 @@ class OracleAccounts:
         with self._uow.begin() as uow:
             return _load(uow.connection, pf_user.c.user_id == uid)
 
-    def list_accounts(self, keyword: str, start: int, end: int, role_code: str | None = None) -> tuple[list[AccountRecord], int]:
-        """账号列表（C09 第 2 节）：`keyword` 匹配账号名或姓名（不分大小写）；`role_code` 只列分配了该角色的账号。
+    def list_accounts(self, keyword: str, start: int, end: int, role_code: str | None = None,
+                      advanced: AdvancedQuery | None = None) -> tuple[list[AccountRecord], int]:
+        """账号列表（C09 第 2 节）：`keyword` 匹配账号名或姓名（不分大小写）；`role_code` 只列分配了该角色的账号；
+        `advanced` 为高级查询条件（ID-12，`search.py`），与前两项是且。
         按账号编号排列，`start` 包含、`end` 不包含（C09 第 1 节）。"""
-        conditions = []
+        conditions = conditions_of(ACCOUNT_FIELDS, advanced)
         word = keyword.strip().lower()
         if word:
             pattern = f"%{word}%"
@@ -138,11 +164,15 @@ class OracleAccounts:
             rows = conn.execute(select(pf_user).where(*conditions).order_by(pf_user.c.user_id)
                                 .offset(start).limit(max(end - start, 0))).all()
             roles = _roles_of(conn, [int(r.user_id) for r in rows])
-        return [_account(r, roles[int(r.user_id)]) for r in rows], total
+            names = _department_names(conn, [r.department_id for r in rows])
+        return [_account(r, roles[int(r.user_id)], names) for r in rows], total
 
-    def departments(self) -> list[DepartmentRecord]:
+    def departments(self, advanced: AdvancedQuery | None = None) -> list[DepartmentRecord]:
+        """部门列表，按部门编号排列；`advanced` 为高级查询条件（ID-12）。"""
+        conditions = conditions_of(DEPARTMENT_FIELDS, advanced)
         with self._uow.begin() as uow:
-            rows = uow.connection.execute(select(pf_department).order_by(pf_department.c.department_id)).all()
+            rows = uow.connection.execute(select(pf_department).where(*conditions)
+                                          .order_by(pf_department.c.department_id)).all()
         return [DepartmentRecord(r.department_id, r.name, r.parent_id) for r in rows]
 
     # ------------------------------------------------------------ DirectoryReader（C08 第 3 节）
@@ -185,7 +215,7 @@ class OracleAccounts:
         """新建账号；账号名已存在时抛 422 VALIDATION_FAILED（ID-07）。"""
         with self._uow.begin() as uow:
             conn = uow.connection
-            if conn.execute(select(func.count()).select_from(pf_user).where(pf_user.c.username == username)).scalar_one():
+            if _username_taken(conn, username):
                 raise _duplicate_username(username)
             uid = self._insert(conn, username, display_name, department_id, password_hash, role_codes, enabled)
             created = _load(conn, pf_user.c.user_id == uid)
@@ -194,8 +224,10 @@ class OracleAccounts:
         return created
 
     def update_account(self, user_id: str, display_name: str, department_id: str | None, role_codes: Sequence[str],
-                       enabled: bool) -> tuple[AccountRecord, AccountRecord] | None:
-        """修改姓名、部门、角色和启用状态，在一个事务内完成，账号版本加一（ID-05）。返回（修改前，修改后）；账号不存在时为 None。"""
+                       enabled: bool, username: str | None = None) -> tuple[AccountRecord, AccountRecord] | None:
+        """修改账号名（ID-11，`username` 为 None 时不改）、姓名、部门、角色和启用状态，在一个事务内完成，账号版本加一
+        （ID-05）。账号名改成别的账号已用的名字时抛 422 VALIDATION_FAILED（ID-07）。返回（修改前，修改后）；
+        账号不存在时为 None。"""
         uid = _uid(user_id)
         if uid is None:
             return None
@@ -204,9 +236,13 @@ class OracleAccounts:
             before = _load(conn, pf_user.c.user_id == uid, lock=True)
             if before is None:
                 return None
-            conn.execute(update(pf_user).where(pf_user.c.user_id == uid).values(
-                display_name=display_name, department_id=department_id, enabled=1 if enabled else 0,
-                version=pf_user.c.version + 1))
+            values: dict[str, object] = {"display_name": display_name, "department_id": department_id,
+                                         "enabled": 1 if enabled else 0, "version": pf_user.c.version + 1}
+            if username is not None and username != before.username:
+                if _username_taken(conn, username, except_user=uid):
+                    raise _duplicate_username(username)
+                values["username"] = username
+            conn.execute(update(pf_user).where(pf_user.c.user_id == uid).values(**values))
             wanted = list(dict.fromkeys(role_codes))
             removed = [c for c in before.role_codes if c not in wanted]
             added = [c for c in wanted if c not in before.role_codes]

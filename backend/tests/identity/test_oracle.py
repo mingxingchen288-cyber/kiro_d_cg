@@ -127,6 +127,46 @@ def test_departments_on_oracle(accounts: OracleAccounts) -> None:
     assert accounts.delete_department(created.department_id) is True
 
 
+def test_rename_account_on_oracle(accounts: OracleAccounts) -> None:
+    """ID-11：改账号名，账号版本加一；改成别人已用的名字时 422，原名不变。"""
+    hash_ = fast_passwords().hash("Abc123..")
+    accounts.create_account("ct_id_wang", "汪春龙", None, hash_, [])
+    created = accounts.create_account("ct_id_han", "韩群", None, hash_, [ACCOUNTANT])
+    changed = accounts.update_account(created.user_id, "韩群", None, [ACCOUNTANT], True, username="ct_id_han2")
+    assert changed is not None and (changed[1].username, changed[1].version) == ("ct_id_han2", 2)
+    assert accounts.find("ct_id_han") is None and accounts.find("ct_id_han2") == changed[1]
+    with pytest.raises(PlatformError) as caught:
+        accounts.update_account(created.user_id, "韩群", None, [ACCOUNTANT], True, username="ct_id_wang")
+    assert caught.value.code is ErrorCode.VALIDATION_FAILED and caught.value.details[0].field == "username"
+    assert accounts.get(created.user_id).username == "ct_id_han2"  # type: ignore[union-attr]
+
+
+def test_advanced_search_and_department_name_on_oracle(accounts: OracleAccounts) -> None:
+    """ID-12：按姓名、部门查人员，按名称查部门；账号带部门名称（B10）。"""
+    from cost_platform.contracts.types import AdvancedQuery, parse_wire
+
+    def query(*conditions: dict[str, object]) -> AdvancedQuery:
+        return parse_wire(AdvancedQuery, {"op": "and", "conditions": list(conditions)})  # type: ignore[no-any-return]
+
+    tech = accounts.create_department(f"{DEPARTMENT_PREFIX}技术中心", None)
+    hash_ = fast_passwords().hash("Abc123..")
+    han = accounts.create_account("ct_id_han", "韩群", tech.department_id, hash_, [ACCOUNTANT])
+    accounts.create_account("ct_id_zhu", "朱文俊", None, hash_, [ACCOUNTANT])
+    assert han.department_name == f"{DEPARTMENT_PREFIX}技术中心"
+
+    rows, total = accounts.list_accounts("", 0, 50, advanced=query(
+        {"field": "displayName", "operator": "like", "value": "韩"},
+        {"field": "departmentId", "operator": "in", "value": [tech.department_id]}))
+    assert (total, [r.username for r in rows]) == (1, ["ct_id_han"])
+    rows, _ = accounts.list_accounts("ct_id_", 0, 50, advanced=query(
+        {"field": "userId", "operator": "ge", "value": han.user_id},
+        {"field": "enabled", "operator": "eq", "value": True}))
+    assert [r.username for r in rows] == ["ct_id_han", "ct_id_zhu"]
+    found = accounts.departments(query({"field": "name", "operator": "like", "value": f"{DEPARTMENT_PREFIX}技术"},
+                                       {"field": "departmentId", "operator": "eq", "value": tech.department_id}))
+    assert [d.department_id for d in found] == [tech.department_id]
+
+
 class OracleDirectoryHarness:
     def __init__(self, engine: Engine, accounts: OracleAccounts) -> None:
         self._engine = engine

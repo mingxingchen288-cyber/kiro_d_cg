@@ -109,11 +109,13 @@ function builtinValue(code: string, field: ViewField, ctx: DefaultContext): Fiel
       return ctx.user?.displayName ?? null;
     case 'currentDeptId':
       return ctx.user?.departmentId ?? null;
+    case 'currentDeptName':
+      // C09 v15 的 CurrentUser.departmentName，同旧系统 useWorkingSetStore.ts 第 552–553 行 userInfo.departmentName
+      return ctx.user?.departmentName ?? null;
     case 'currentRoleCode':
       return ctx.role?.code ?? null;
     case 'currentTime':
       return field.type === 'date' ? localDate(ctx.now) : localDateTime(ctx.now);
-    // currentDeptName：C09 的 CurrentUser 没有部门名称，取不到时为空（契约缺口第 3 项）
     default:
       return null;
   }

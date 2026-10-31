@@ -27,8 +27,10 @@
 - ID-06：启动时如果没有 admin 账号，创建 admin / admin123..，启用，并分配 `ADMIN` 角色；已存在时不改任何内容。
 - ID-07：账号名唯一，重复时返回 422 VALIDATION_FAILED。
 - ID-08：`AccountImporter` 导入旧账号（含 BCrypt 哈希）、角色分配和部门；已存在的账号不覆盖，列入报告。
-- ID-09：`/api/me` 返回的菜单取自配置快照的 `menus()`，config 已去掉当前角色不能访问的页面。
+- ID-09：`/api/me` 返回的菜单取自配置快照的 `menus()`，config 已去掉当前角色不能访问的页面。当前用户带部门名称（C09 v15 `departmentName`，执行上下文 C04 v2 的 `department_name`，供默认值"当前部门名称"）：登录时按账号的部门编号读取，账号改了部门时随账号版本刷新，`/api/me` 时重新读取、变了就写回会话；没有部门或部门已删除时为空。所以部门改名后，已登录的人刷新页面起页面和保存都用新名称，同旧系统 `AuthService.getUserInfo` 每次查部门名称、旧前端在登录和刷新页面时调用（`store/modules/auth/index.ts` 第 138–151 行、`store/modules/route/index.ts` 第 177–186 行）。
 - ID-10：会话在 2 小时内没有有效操作即过期；有有效操作时，从这次操作起重新计时。有效操作只指用户自己的写入和查询请求；带 `X-Background-Request: 1` 的请求（C09 第 1 节）和 WebSocket 的握手、心跳都不算，这些情况以 `touch=False` 检查会话。时长取 `.env` 的 `PLATFORM_SESSION_IDLE_MINUTES`，默认 120。
+- ID-11：已有账号可以改账号名（C09 v15 `AccountUpdate.username`，省略时不改），同旧系统人员管理"用户名"列可编辑（cmx `T_COST_COLUMN_METADATA` 中 CostUser 的 USERNAME 为 EDITABLE=1，审计日志里改过 5 次）。改成别的账号已用的名字时返回 422 VALIDATION_FAILED（`field` 为 `username`，提示"账号名 … 已存在"，同 ID-07；旧系统由唯一约束 SYS_C0025457 拒绝）。改名与其他修改在同一个事务里，账号版本加一；之后用新账号名登录，旧账号名登录失败。已经写下的修改人（`UPDATE_BY`，写的是当时的账号名）不改，同旧系统（没有任何代码或触发器在改名时改历史）。已登录的会话按新的账号版本换成新账号名，之后保存写新账号名；旧系统的 JWT 里带着旧账号名，到重新登录为止写旧账号名，这一点与旧系统不同（新平台的会话本来就按账号版本刷新，ID-05）。
+- ID-12：账号列表、部门列表可以带高级查询条件（C09 v15 `advanced`，格式同 C09 第 4 节，条件不写 `entity`），同旧系统人员管理、部门管理两个通用页的"高级查询"（按列的"查询"标记 `T_COST_COLUMN_METADATA.SEARCHABLE`）。账号能查：`userId`、`username`、`displayName`、`departmentId`、`enabled`；部门能查：`departmentId`、`name`。旧页面勾了"查询"的邮箱、电话、部门编码新平台没有。运算符和取值同 queries-export 的列表（`queries/sql.py` 的 `Conditions.build`）：文本不分大小写、"包含"按字面匹配；等于、不等于的值为 null 时为"为空""不为空"；其余运算符没有值时这条条件不起作用；数值按十进制比较。代码在 `identity/search.py`。
 
 ## 4. 依赖
 

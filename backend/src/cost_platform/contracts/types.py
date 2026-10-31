@@ -476,6 +476,7 @@ class Identity:
     department_id: str | None
     role_code: str
     session_id: str = dc_field(repr=False)
+    department_name: str | None = None  # C04 v2：部门名称，identity 登录时填；没有部门或部门已删除时为 None
 
 
 @dataclass(frozen=True)
@@ -1151,6 +1152,7 @@ class MenuItem(Wire):
     title: str
     kind: Literal["group", "page", "config", "admin"]
     page_code: Code | None = None
+    icon: str | None = None  # C06 v26：Iconify 图标名，例如 mdi:calculator-variant；省略时外壳用默认图标
     children: list[MenuItem] = []
 
 
@@ -1434,6 +1436,7 @@ class CurrentUser(Wire):
     username: str
     display_name: str
     department_id: Key | None
+    department_name: str | None  # C09 v15：部门名称（默认值"当前部门名称"）
 
 
 class RoleRef(Wire):
@@ -1512,6 +1515,7 @@ class AccountUpdate(Wire):
     department_id: Key | None
     role_codes: list[Code]
     enabled: Bool
+    username: str | None = None  # C09 v15：改账号名；省略时不改
 
 
 class PasswordChange(Wire):

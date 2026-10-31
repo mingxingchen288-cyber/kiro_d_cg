@@ -136,7 +136,7 @@ export const PAGES: Record<string, Record<string, unknown>> = {
 
 export function createBackend() {
   const fake = createFakeShell({
-    user: { userId: '1', username: 'admin', displayName: '系统管理员', departmentId: '10' },
+    user: { userId: '1', username: 'admin', displayName: '系统管理员', departmentId: '10', departmentName: '成本部' },
     role: { code: 'ADMIN', name: '系统管理员', admin: true }
   });
   const items = new Map<string, StoredItem>();

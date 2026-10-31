@@ -25,10 +25,34 @@ type Row = View['affected'][number]['rows'][number];
 
 const c = (before: string | null, after: string | null = before) => ({ before, after });
 
-export const ADMIN: CurrentUser = { userId: '1', username: 'admin', displayName: '系统管理员', departmentId: null };
-export const YANGNA: CurrentUser = { userId: '112', username: 'yangna', displayName: '杨娜', departmentId: '10' };
-export const BUYER: CurrentUser = { userId: '2001', username: 'buyer', displayName: '采购员', departmentId: '20' };
-export const MAKER: CurrentUser = { userId: '3001', username: 'maker', displayName: '生产员', departmentId: '30' };
+export const ADMIN: CurrentUser = {
+  userId: '1',
+  username: 'admin',
+  displayName: '系统管理员',
+  departmentId: null,
+  departmentName: null
+};
+export const YANGNA: CurrentUser = {
+  userId: '112',
+  username: 'yangna',
+  displayName: '杨娜',
+  departmentId: '10',
+  departmentName: '成本部'
+};
+export const BUYER: CurrentUser = {
+  userId: '2001',
+  username: 'buyer',
+  displayName: '采购员',
+  departmentId: '20',
+  departmentName: '采购部'
+};
+export const MAKER: CurrentUser = {
+  userId: '3001',
+  username: 'maker',
+  displayName: '生产员',
+  departmentId: '30',
+  departmentName: '生产部'
+};
 
 export const ROLES = {
   ADMIN: { code: 'ADMIN', name: '系统管理员', admin: true },

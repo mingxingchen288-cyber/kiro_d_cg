@@ -122,3 +122,71 @@ export function moveNode(items: MenuNode[], dragKey: string, targetKey: string, 
 export function removeNode(items: MenuNode[], key: string) {
   return take(items, key) !== null;
 }
+
+/**
+ * 菜单图标的常用选项（FC-16），同旧系统 SectionBasicInfo.vue 第 33–54 行的 20 个；下拉可以输入其他 Iconify 图标名，
+ * 例如旧菜单资源里的 mdi:calculator-variant、mdi:domain（cmx `T_COST_RESOURCE.ICON`）。
+ */
+export const ICON_OPTIONS: Array<{ label: string; value: string }> = [
+  { label: '📁 文件夹', value: 'mdi:folder' },
+  { label: '📄 文件', value: 'mdi:file-document' },
+  { label: '📊 图表', value: 'mdi:chart-bar' },
+  { label: '🧮 计算器', value: 'mdi:calculator-variant' },
+  { label: '📦 包裹', value: 'mdi:package-variant' },
+  { label: '🚚 运输', value: 'mdi:truck-delivery' },
+  { label: '💰 货币', value: 'mdi:currency-usd' },
+  { label: '👥 用户', value: 'mdi:account-group' },
+  { label: '🔒 锁', value: 'mdi:lock' },
+  { label: '⚙ 设置', value: 'mdi:cog' },
+  { label: '🏢 部门', value: 'mdi:office-building' },
+  { label: '📋 列表', value: 'mdi:format-list-bulleted' },
+  { label: '🔍 搜索', value: 'mdi:magnify' },
+  { label: '📝 编辑', value: 'mdi:pencil' },
+  { label: '📈 趋势', value: 'mdi:trending-up' },
+  { label: '🏭 工厂', value: 'mdi:factory' },
+  { label: '💊 药品', value: 'mdi:pill' },
+  { label: '🧪 实验', value: 'mdi:flask' },
+  { label: '📑 审批', value: 'mdi:file-check' },
+  { label: '🗂 归档', value: 'mdi:archive' }
+];
+
+/** 下拉的选项：常用图标，再加上当前值（输入的、不在常用里的图标也能显示出来） */
+export function iconOptions(current: string | null | undefined) {
+  if (!current || ICON_OPTIONS.some(o => o.value === current)) return ICON_OPTIONS;
+  return [...ICON_OPTIONS, { label: current, value: current }];
+}
+
+/** 菜单配置项中这一项的图标 */
+export function iconOfNode(items: MenuNode[], key: string): string | null {
+  return findNode(items, key)?.icon ?? null;
+}
+
+/** 改这一项的图标；空值去掉 `icon`（外壳用默认图标）。返回 false 表示菜单中没有这一项 */
+export function setNodeIcon(items: MenuNode[], key: string, icon: string | null | undefined) {
+  const node = findNode(items, key);
+  if (!node) return false;
+  const value = icon?.trim();
+  if (value) node.icon = value;
+  else delete node.icon;
+  return true;
+}
+
+/** 页面挂在哪个菜单项下：菜单配置项编码和菜单项编码；没有挂在菜单下时为 null */
+export function menuItemOfPage(
+  menus: Array<{ key: string; content: { items: MenuNode[] } }>,
+  pageCode: string
+): { menuKey: string; nodeKey: string } | null {
+  const walk = (items: MenuNode[]): MenuNode | null => {
+    for (const item of items) {
+      if (item.kind === 'page' && item.pageCode === pageCode) return item;
+      const found = item.children ? walk(item.children) : null;
+      if (found) return found;
+    }
+    return null;
+  };
+  for (const menu of menus) {
+    const found = walk(menu.content.items);
+    if (found) return { menuKey: menu.key, nodeKey: found.key };
+  }
+  return null;
+}

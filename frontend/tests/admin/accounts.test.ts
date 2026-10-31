@@ -4,6 +4,14 @@
  */
 import { describe, expect, it } from 'vitest';
 import { AccountsModel, INITIAL_PASSWORD } from '../../src/modules/admin/accounts';
+import {
+  ACCOUNT_SEARCH_FIELDS,
+  buildAdvanced,
+  enabledCount,
+  resetConditions,
+  setOperator,
+  setValue
+} from '../../src/modules/admin/advanced-search';
 import { openAdmin } from './support';
 
 async function openAccounts() {
@@ -88,6 +96,73 @@ describe('人员管理', () => {
       ['383', { displayName: '韩群（技术）', departmentId: '581', roleCodes: ['技术中心'], enabled: true }]
     ]);
     expect(model.row('383')).toMatchObject({ displayName: '韩群（技术）', departmentId: '581', changed: false });
+  });
+
+  it('改已有账号的用户名（FM-05）：韩群的 HY221020 改成 HY221021，保存时带 username，列表里是新用户名', async () => {
+    const { model, http } = await openAccounts();
+    model.edit('383', 'username', ' HY221021 ');
+    expect(model.row('383')).toMatchObject({ username: ' HY221021 ', changed: true });
+    expect(await model.save()).toBe(true);
+    expect(http.callsTo('PUT', '/api/admin/accounts/:userId').map(c => [c.params.userId, c.body])).toEqual([
+      [
+        '383',
+        { username: 'HY221021', displayName: '韩群', departmentId: '1069', roleCodes: ['技术中心'], enabled: true }
+      ]
+    ]);
+    expect(model.row('383')).toMatchObject({ username: 'HY221021', changed: false });
+  });
+
+  it('改成别人已用的用户名：提示"账号名 … 已存在"，这一行留在表格里', async () => {
+    const { model, messages } = await openAccounts();
+    model.edit('383', 'username', 'HY090702');
+    expect(await model.save()).toBe(false);
+    expect(messages).toContainEqual({ kind: 'error', text: '保存失败：账号名 HY090702 已存在' });
+    expect(model.row('383')).toMatchObject({ username: 'HY090702', changed: true });
+  });
+
+  it('高级查询（FM-06）：姓名包含"韩"、部门是技术中心；条件下次打开还在，重置后查全部', async () => {
+    const { model, http } = await openAccounts();
+    const drafts = model.state.searchDrafts.map(d => ({ ...d }));
+    expect(drafts.map(d => [d.field, d.operator])).toEqual([
+      ['userId', 'eq'],
+      ['username', 'like'],
+      ['displayName', 'like'],
+      ['departmentId', 'eq'],
+      ['enabled', 'eq']
+    ]);
+    setValue(drafts[2], '韩');
+    setValue(drafts[3], '1069');
+    expect(enabledCount(ACCOUNT_SEARCH_FIELDS, drafts)).toBe(2);
+
+    await model.advancedSearch(drafts);
+    const advanced = http.callsTo('GET', '/api/admin/accounts').at(-1)?.options?.query?.advanced;
+    expect(JSON.parse(String(advanced))).toEqual({
+      op: 'and',
+      conditions: [
+        { field: 'displayName', operator: 'like', value: '韩' },
+        { field: 'departmentId', operator: 'eq', value: '1069' }
+      ]
+    });
+    expect(model.state.rows.map(r => r.displayName)).toEqual(['韩群']);
+    expect(model.state.searchDrafts[2]).toMatchObject({ value: '韩', enabled: true });
+
+    await model.advancedSearch(resetConditions(model.state.searchDrafts));
+    expect(http.callsTo('GET', '/api/admin/accounts').at(-1)?.options?.query?.advanced).toBeUndefined();
+    expect(model.state.rows).toHaveLength(4);
+  });
+
+  it('高级查询：部门 IN（采购部、市场部），状态为启用', async () => {
+    const { model } = await openAccounts();
+    const drafts = model.state.searchDrafts.map(d => ({ ...d }));
+    setOperator(drafts[3], 'in', true);
+    setValue(drafts[3], '175,581');
+    setValue(drafts[4], 'true');
+    expect(buildAdvanced(ACCOUNT_SEARCH_FIELDS, drafts)?.conditions).toEqual([
+      { field: 'departmentId', operator: 'in', value: ['175', '581'] },
+      { field: 'enabled', operator: 'eq', value: true }
+    ]);
+    await model.advancedSearch(drafts);
+    expect(model.state.rows.map(r => r.displayName)).toEqual(['程苏慧', '汪春龙']);
   });
 
   it('停用（FM-02）：先确认并提示立即下线，确认后提交 enabled=false；取消时不提交', async () => {

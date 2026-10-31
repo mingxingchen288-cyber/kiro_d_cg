@@ -65,6 +65,51 @@ describe('菜单', () => {
     expect(menuOfKey(menus, 'accounts')?.path).toBe('/admin/accounts');
   });
 
+  it('菜单图标（FS-08）：配置了 icon 的分组和菜单项带上旧系统的图标，没配的不带（外壳用默认图标 mdi:menu）', () => {
+    const items: MenuItem[] = [
+      {
+        key: 'cost',
+        title: '成本',
+        kind: 'group',
+        icon: 'mdi:calculator-variant',
+        children: [
+          {
+            key: 'COST_PINGGU',
+            title: '成本核算',
+            kind: 'page',
+            pageCode: 'COST_PINGGU',
+            icon: 'mdi:calculator-variant'
+          }
+        ]
+      },
+      {
+        key: 'basic',
+        title: '基础信息',
+        kind: 'group',
+        icon: 'mdi:currency-usd',
+        children: [{ key: 'GOODS_PRICE_MANAGE', title: '物料清单及成本', kind: 'page', pageCode: 'GOODS_PRICE_MANAGE' }]
+      },
+      { key: 'config', title: '配置', kind: 'config', icon: 'mdi:database-cog' }
+    ];
+    expect(buildMenus(items, [page, config])).toEqual([
+      {
+        key: 'cost',
+        title: '成本',
+        path: null,
+        icon: 'mdi:calculator-variant',
+        children: [{ key: 'COST_PINGGU', title: '成本核算', path: '/page/COST_PINGGU', icon: 'mdi:calculator-variant' }]
+      },
+      {
+        key: 'basic',
+        title: '基础信息',
+        path: null,
+        icon: 'mdi:currency-usd',
+        children: [{ key: 'GOODS_PRICE_MANAGE', title: '物料清单及成本', path: '/page/GOODS_PRICE_MANAGE' }]
+      },
+      { key: 'config', title: '配置', path: '/config', icon: 'mdi:database-cog' }
+    ]);
+  });
+
   it('模块还没有注册时，它的菜单项不显示，分组空了也不显示', () => {
     const menus = buildMenus(adminMenus, [page]);
 
