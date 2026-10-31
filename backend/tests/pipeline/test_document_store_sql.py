@@ -154,6 +154,32 @@ def test_details_of_several_entities_in_one_statement() -> None:
     assert found["COST_PACKAGE"]["1001"][0].values["GOODSNAME"] == "铝箔"
 
 
+def test_lock_details_one_statement_per_detail_table() -> None:
+    """主从单据连明细一起锁（用户 2026-10-31，`locks.py` 规则 5）：物料、包材两个明细实体都在 T_COST_PINGGU_DTL、都按 DOCID
+    关联，成本单 1002、1001 的明细一条语句锁住，按物理表的主键列和关联列，不读数据。"""
+    package = MATERIAL_ENTITY.model_copy(update={"read_view": "V_COST_PINGGU_PACKAGE"})
+    uow = RecordingUnitOfWork()
+    OracleDocumentStore(5).lock_details(  # type: ignore[arg-type]
+        uow, [DetailSource(MATERIAL, MATERIAL_ENTITY, "DOCID"), DetailSource("COST_PACKAGE", package, "DOCID")], ["1002", "1001"])
+    [statement] = uow.connection.statements
+    assert statement.sql == ("SELECT DTLID FROM T_COST_PINGGU_DTL WHERE DOCID IN (:p0, :p1) "
+                             "ORDER BY DTLID FOR UPDATE WAIT 5")
+    assert statement.params == {"p0": D(1001), "p1": D(1002)}
+
+
+def test_lock_document_locks_details_before_reading_them() -> None:
+    """推迟加锁的成本单锁住后核对（`lock_document`）：锁主表行并读出 → 锁明细 → 普通读明细。"""
+    ctx = Setup().context()
+    uow = RecordingUnitOfWork()
+    uow.connection.results = [[(D(1001), "250mg乙酰唑胺片", None, D(100000), D("54.00"), "王五", "草稿", None)], [], []]
+    found = OracleDocumentStore(5).lock_document(uow, ctx, REF, [MATERIAL])  # type: ignore[arg-type]
+    assert found is not None and found.details == {MATERIAL: []}
+    sql = uow.connection.sql
+    assert len(sql) == 3 and sql[0].endswith("FROM T_COST_PINGGU WHERE DOCID IN (:k0) ORDER BY DOCID FOR UPDATE WAIT 5")
+    assert sql[1] == "SELECT DTLID FROM T_COST_PINGGU_DTL WHERE DOCID IN (:p0) ORDER BY DTLID FOR UPDATE WAIT 5"
+    assert "UNION ALL" not in sql[2] and "FOR UPDATE" not in sql[2] and "FROM V_COST_PINGGU_MATERIAL" in sql[2]
+
+
 def test_update_only_changed_columns_grouped() -> None:
     """E05：只写 PRICE 和计算带出的 COST_BATCH，USAGE 不出现在语句中；写同样列的行合成一条批量语句。"""
     uow = RecordingUnitOfWork()

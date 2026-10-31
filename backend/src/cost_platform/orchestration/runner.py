@@ -1,4 +1,5 @@
 """命令执行（`CommandExecutor`，C08 第 5 节）：一个命令一个事务，按 `STAGE_ORDER` 执行各模块的管道阶段。
+涉及几张单据的命令先按单据拆成子命令（`split.py`，C02 v10 第 1 节），每个子命令照下面的步骤各自执行。
 
 管道阶段的顺序只在这里定义（用户 2026-10-29 定）。每个阶段的 `name` 是下面的一个位置名；同一位置的几个实现（例如
 "确定涉及的单据"由 write-pipeline、operations、approval 各实现一个）由各自的 `applies` 决定这次执行哪个。不用数字顺序号。
@@ -22,6 +23,7 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 from collections.abc import Sequence
 
 from cost_platform.contracts.ports import (
@@ -32,7 +34,21 @@ from cost_platform.contracts.ports import (
     UnitOfWork,
     UnitOfWorkFactory,
 )
-from cost_platform.contracts.types import Command, CommandResult, CommandState, ExecutionContext, LockScopeChanged
+from cost_platform.contracts.types import (
+    Command,
+    CommandResult,
+    CommandState,
+    DocumentFailure,
+    ErrorCode,
+    ErrorResponse,
+    ExecutionContext,
+    LockScopeChanged,
+    PlatformError,
+)
+
+from .split import Part, merge_results, split_by_document
+
+_log = logging.getLogger(__name__)
 
 STAGE_ORDER: tuple[str, ...] = (
     "操作权限",          # 架构第 7 节第 2 步：authz
@@ -77,6 +93,25 @@ class CommandRunner:
         self._at = {name: [s for s in stages if s.name == name] for name in STAGE_ORDER}
 
     def execute(self, command: Command, ctx: ExecutionContext) -> CommandResult:
+        """涉及几张单据时按单据提交（`split.py`）：每张单据一个子命令、一个事务，失败的记入结果的 `failed`，其余照常提交；
+        只涉及一张单据的命令照原来执行，失败时抛 PlatformError。"""
+        parts = split_by_document(command, ctx)
+        if parts is None:
+            return self._execute_one(command, ctx)
+        done: list[CommandResult] = []
+        failed: list[DocumentFailure] = []
+        for part in parts:
+            try:
+                done.append(self._execute_one(part.command, ctx))
+            except PlatformError as error:
+                failed.append(_failure(part, error.to_response()))
+            except Exception:  # noqa: BLE001 —— 前面的单据可能已经提交，不能让一张单据的意外错误盖住它们的结果
+                _log.exception("按单据提交：单据 %s %s 执行出错", part.entity, part.row_key or part.client_row_id)
+                failed.append(_failure(part, ErrorResponse(
+                    code=ErrorCode.INTERNAL_ERROR, message="处理这张单据时出现内部错误，请联系管理员", details=[])))
+        return merge_results(command, done, failed)
+
+    def _execute_one(self, command: Command, ctx: ExecutionContext) -> CommandResult:
         with self._monitor.watch(command, ctx):
             while True:
                 try:
@@ -136,3 +171,7 @@ class CommandRunner:
             self._round_tail(uow, state, ctx)
         for name in STAGE_ORDER[last + 1:]:
             self._position(name, uow, state, ctx)
+
+
+def _failure(part: Part, error: ErrorResponse) -> DocumentFailure:
+    return DocumentFailure(entity=part.entity, row_key=part.row_key, client_row_id=part.client_row_id, error=error)

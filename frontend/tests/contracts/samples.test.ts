@@ -98,6 +98,7 @@ const ROUNDTRIP: Array<[string, Schema<unknown>, unknown]> = [
   ],
   ['C02 已写入', c02.CommandResult, block('C02', 2)],
   ['C02 已提交审批', c02.CommandResult, block('C02', 3)],
+  ['C02 按单据提交，一张没成功', c02.CommandResult, block('C02', 4)],
   ['C03 错误', c03.ErrorResponse, block('C03', 0)],
   ['C05 页面视图', c05.PageView, block('C05', 0)],
   ['C07 规则包', c07.RulesPack, block('C07', 0)],

@@ -2,6 +2,7 @@
  * 外壳的运行时（单例）：创建 ShellApi 依赖的 HTTP 客户端、实时连接、计算客户端，以及会话、通知、铃铛角标、页签标记和模块注册。
  * main.ts 在创建 Pinia 之后、加载路由之前调用 `installModules`，把 `src/modules/` 下的模块注册到外壳（C11）。
  */
+import { h } from 'vue';
 import { router } from '@/router';
 import { createPlatformHttp, serviceBaseURL } from '@/service/platform';
 import { type ShellRealtimeClient, createRealtimeClient } from '@/service/realtime';
@@ -19,6 +20,10 @@ import { createShellApi } from './shell-api';
 import { DirtyTabs } from './tabs';
 import { TodoCount } from './todo-count';
 
+/** 提示文字中的换行照样换行（Naive UI 的 message 默认把换行显示成空格） */
+function lines(text: string) {
+  return text.includes('\n') ? () => h('div', { style: 'white-space: pre-line' }, text) : text;
+}
 const STORAGE_KEY = `${import.meta.env.VITE_STORAGE_PREFIX ?? ''}shell-session`;
 
 /** 浏览器会话存储：CSRF 令牌和登录时返回的角色列表，关闭浏览器标签页后清除 */
@@ -119,9 +124,11 @@ export function shellRuntime(): ShellRuntime {
       }
     },
     message: {
-      success: text => window.$message?.success(text),
-      warning: text => window.$message?.warning(text),
-      error: text => window.$message?.error(text)
+      success: text => window.$message?.success(lines(text)),
+      warning: text => window.$message?.warning(lines(text)),
+      // 多行的错误（例如按单据提交时每张没成功的单据一行）多显示一会儿，鼠标停在上面时不消失
+      error: text =>
+        window.$message?.error(lines(text), text.includes('\n') ? { duration: 10000, keepAliveOnHover: true } : {})
     },
     bell: {
       refresh: () => void todo.refresh()

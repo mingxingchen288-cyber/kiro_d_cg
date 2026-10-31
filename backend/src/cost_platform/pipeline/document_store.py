@@ -5,8 +5,9 @@
   锁多行，或实体的读取视图关联了别的表（`locks.ReadViews`）时，按主键顺序每行一条锁表的语句，再一条普通查询读出数据
   （`lock_load`）。用户发起时把行权限条件作为判断列一起查出（C08 第 7 节）。
   推迟加锁的单据锁住后核对（`lock_document`）用同一条加锁并读出的语句，不另外重读。
-- 明细：一次读出若干张单据在若干个明细实体中的全部行，一条语句（多个明细实体用 UNION ALL），不加锁：
-  单据锁在主表行上；多表视图加 FOR UPDATE 会锁住关联表的行（C08 第 5a 节）。
+  主从单据锁住主表行后，每张明细表一条语句锁住这些单据的全部明细行（`lock_details`，`locks.py` 规则 5）。
+- 明细：一次读出若干张单据在若干个明细实体中的全部行，一条语句（多个明细实体用 UNION ALL），本身不加锁：
+  明细行已由 `lock_details` 按表锁住；读取视图可以关联别的表，加 FOR UPDATE 会锁住关联表的行（C08 第 5a 节）。
 - 写入：只写有变化的列；同一实体的同一种操作按写入的列分组，每组一条批量语句；新增行的主键取序列 `<表名>_SEQ`，
   用 RETURNING 取回；审批通过时写入的新增行使用已取得的主键（`RowChange.row_key` 不为空，approval AP-02）。
   删除主表行前按关联字段删除它的全部明细，同一张明细表只删一次（WP-06）。
@@ -42,7 +43,7 @@ from cost_platform.contracts.types import (
 )
 from cost_platform.contracts.values import from_db, from_wire, to_db, to_wire
 
-from .locks import ReadViews, lock_key_sql, lock_select_sql
+from .locks import ReadViews, lock_children_sql, lock_key_sql, lock_select_sql
 
 _ALLOWED = "WP_ALLOWED"
 
@@ -67,6 +68,8 @@ class RowStore(Protocol):
 
     def load_details_many(self, uow: UnitOfWork, sources: Sequence[DetailSource],
                           record_keys: Sequence[str]) -> dict[str, dict[str, list[Row]]]: ...
+
+    def lock_details(self, uow: UnitOfWork, sources: Sequence[DetailSource], record_keys: Sequence[str]) -> None: ...
 
     def insert(self, uow: UnitOfWork, entity: EntityConfig, changes: list[RowChange]) -> None: ...
 
@@ -165,15 +168,32 @@ class OracleDocumentStore:
     def lock_document(self, uow: UnitOfWork, ctx: ExecutionContext, ref: DocumentRef,
                       details: Collection[str]) -> DocumentData | None:
         """锁住一张单据的主表行并读出数据（`BusinessLocker.lock` 核对加锁前读到的本命令单据，规则 4）：与普通保存的加锁读取
-        同一条语句（`lock_load` 只有一个主键时）；`details` 中的明细实体再一条普通查询读出（不加锁）。单据已不存在时为 None。"""
+        同一条语句（`lock_load` 只有一个主键时）；再锁住它的全部明细行（`lock_details`，每张明细表一条），`details` 中的
+        明细实体再一条普通查询读出。单据已不存在时为 None。"""
         entity = ctx.config.entity(ref.entity)
         master = self.lock_load(uow, ref.entity, entity, [ref.record_key]).get(ref.record_key)
         if master is None:
             return None
-        sources = [DetailSource(link.entity, ctx.config.entity(link.entity), link.parent_key)
-                   for link in entity.details if link.entity in details]
+        every = [DetailSource(link.entity, ctx.config.entity(link.entity), link.parent_key) for link in entity.details]
+        self.lock_details(uow, every, [ref.record_key])
+        sources = [s for s in every if s.entity_code in details]
         rows = self.load_details_many(uow, sources, [ref.record_key]) if sources else {}
         return DocumentData(ref=ref, master=master, details={s.entity_code: rows[s.entity_code][ref.record_key] for s in sources})
+
+    def lock_details(self, uow: UnitOfWork, sources: Sequence[DetailSource], record_keys: Sequence[str]) -> None:
+        """主表行锁住之后，锁住这些单据在 `sources` 各明细表中的全部行（`locks.py` 规则 5）：每张明细表一条
+        `locks.lock_children_sql`，按表名的顺序；两个明细实体在同一张表、按同一列关联主表时只锁一次。没有明细的单据
+        没有行可锁。"""
+        if not record_keys:
+            return
+        tables: dict[tuple[str, str], tuple[EntityField, str]] = {}
+        for source in sources:
+            parent = _field(source.entity, source.parent_key)
+            pk = _field(source.entity, source.entity.primary_key)
+            tables.setdefault((source.entity.table.upper(), str(parent.column).upper()), (parent, str(pk.column).upper()))
+        for (name, parent_column), (parent, pk_column) in sorted(tables.items()):
+            binds = {f"p{i}": k for i, k in enumerate(_sorted_keys(parent, record_keys))}
+            uow.connection.execute(text(lock_children_sql(name, pk_column, parent_column, list(binds), self._wait)), binds)
 
     def read_documents(self, uow: UnitOfWork, ctx: ExecutionContext,
                        refs: Sequence[DocumentRef]) -> dict[DocumentRef, DocumentData]:

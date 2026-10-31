@@ -242,7 +242,8 @@ class ConfigImporter(Protocol):
 
 class CommandExecutor(Protocol):
     def execute(self, command: Command, ctx: ExecutionContext) -> CommandResult:
-        """失败时抛 PlatformError，事务已回滚。"""
+        """只涉及一张单据时失败抛 PlatformError，事务已回滚。按单据提交（C02 v10 第 1 节：页面保存带 2 张及以上单据、
+        按钮选中 2 行及以上主表行）时每张单据一个事务，没成功的单据记入结果的 `failed`，不抛 PlatformError（C08 v23）。"""
         ...
 
 

@@ -21,6 +21,7 @@ import {
   trueValue,
   uuid
 } from './schema';
+import { ErrorResponse } from './errors';
 
 export const FieldValues = record(businessValue);
 export type FieldValues = Infer<typeof FieldValues>;
@@ -129,6 +130,25 @@ export const ApprovalRef = object('ApprovalRef', {
 });
 export type ApprovalRef = Infer<typeof ApprovalRef>;
 
+function exactlyOneIdentity(row: { rowKey?: string | null; clientRowId?: string | null }) {
+  return (row.rowKey == null) === (row.clientRowId == null) ? 'rowKey 和 clientRowId 必须给出一个' : null;
+}
+
+/**
+ * 按单据提交（C02 v10 第 1 节）时没有成功的一张单据：主表实体、主键（新增的单据为 clientRowId，二者给出一个）和它的
+ * C03 错误体。这张单据没有写入，其余单据照常提交。
+ */
+export const DocumentFailure = refine(
+  object('DocumentFailure', {
+    entity: code,
+    rowKey: optional(nullable(key)),
+    clientRowId: optional(nullable(clientRowId)),
+    error: ErrorResponse
+  }),
+  exactlyOneIdentity
+);
+export type DocumentFailure = Infer<typeof DocumentFailure>;
+
 export const CommandResult = object('CommandResult', {
   requestKey: uuid,
   outcome: literal('saved', 'unchanged', 'approvalSubmitted', 'approvalProcessed'),
@@ -136,7 +156,9 @@ export const CommandResult = object('CommandResult', {
   idMap: record(key, clientRowId),
   prompts: array(Prompt),
   skipped: array(SkippedRow),
-  approvals: array(ApprovalRef)
+  approvals: array(ApprovalRef),
+  /** 按单据提交时没有成功的单据，按提交的顺序；都成功时省略 */
+  failed: optional(array(DocumentFailure))
 });
 export type CommandResult = Infer<typeof CommandResult>;
 

@@ -7,7 +7,7 @@
  * 行的名称（rowLabelField）：页面视图没有专门的名称字段，取这一区域 Lookup 回填的第一个可见文本字段（成本核算明细为
  * 物料名称，主表为产品名称），没有时取第一个可见的文本字段。主表行前面加单据号（工具栏和审批提示都按单据号称呼单据）。
  */
-import type { FieldValues } from '../../contracts/command';
+import type { DocumentFailure, FieldValues } from '../../contracts/command';
 import type { ErrorDetail } from '../../contracts/errors';
 import type { PageView, ViewRegion } from '../../contracts/page-view';
 import { regionOf } from './fields';
@@ -76,4 +76,45 @@ export function failureText(
   if (!parts.length) return error.message;
   const text = parts.join('；');
   return groups.has(error.message) || !error.message ? text : `${error.message}：${text}`;
+}
+
+/**
+ * 按单据提交（C02 v10 第 1 节）有单据没成功时的提示，同旧系统 useWorkingSetStore.ts 第 1169–1186 行：第一行为张数，
+ * 下面每张没成功的单据一行"单据 2551 250mg乙酰唑胺片：原因"。
+ *
+ * - 原因按 `failureText`；指向这张单据主表行本身的明细只留文字，不再列出单据（这一行开头已经说了）。
+ * - 被审批冻结的单据说明是哪个审批（进度另外弹出，同只保存一张单据时）。
+ * - `action` 为 null 时是保存，否则为按钮名称；`done` 为成功、没有提交审批的张数。
+ */
+// eslint-disable-next-line max-params -- 页面视图、没成功的单据、张数、行的当前值、按钮名称（保存时省略）
+export function documentFailuresText(
+  view: PageView,
+  failed: DocumentFailure[],
+  counts: { done: number; submitted: number },
+  valuesOf: (entity: string, id: string) => FieldValues,
+  action: string | null = null
+): string {
+  const submitted = counts.submitted ? `，提交审批 ${counts.submitted} 张` : '';
+  const head =
+    action === null
+      ? `${counts.submitted ? '保存' : '保存成功'} ${counts.done} 张${submitted}，失败 ${failed.length} 张`
+      : `${action}：完成 ${counts.done} 张${submitted}，失败 ${failed.length} 张`;
+  const lines = failed.map(failure => {
+    const id = (failure.rowKey ?? failure.clientRowId)!;
+    const { error } = failure;
+    let reason: string;
+    if (error.code === 'FROZEN_BY_APPROVAL') {
+      const approvals = [...new Set(error.details.map(d => d.approvalId).filter(Boolean))];
+      reason = approvals.length ? `${error.message}（审批 ${approvals.join('、')}）` : error.message;
+    } else {
+      const details = error.details.map(d =>
+        d.entity === failure.entity && (d.rowKey ?? d.clientRowId) === id
+          ? { ...d, entity: null, rowKey: null, clientRowId: null }
+          : d
+      );
+      reason = failureText(view, { message: error.message, details }, valuesOf);
+    }
+    return `单据 ${rowLabel(view, { entity: failure.entity, id, values: valuesOf(failure.entity, id) })}：${reason}`;
+  });
+  return [head, ...lines].join('\n');
 }

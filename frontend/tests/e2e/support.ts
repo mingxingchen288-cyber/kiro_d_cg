@@ -18,7 +18,9 @@
  *
  * 不用固定等待（waitForTimeout）：等元素出现、等接口响应、等内容变化；表格要等下一帧时用 `nextFrame`。
  */
+import { Buffer } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -72,14 +74,45 @@ async function restoreSession(context: BrowserContext, user: UserName) {
 // ================================================================ 平台记录（命令、审批）
 
 type Result = { requestKey?: string; approvals?: Array<{ approvalId: string }> } | null;
+/** 结果对应的请求体（命令）；不是 JSON 时为 null */
+type Sent = {
+  documents?: Array<{ entity: string; master: { rowKey?: string; clientRowId?: string } }>;
+  params?: { selectedRows?: Array<{ entity: string; rowKey: string }> };
+} | null;
+
+/** UUID 第 5 版（同 Python 的 uuid.uuid5）：名字空间为一个 UUID，名字按 UTF-8 */
+function uuid5(namespace: string, name: string) {
+  const hash = createHash('sha1')
+    .update(Buffer.concat([Buffer.from(namespace.replaceAll('-', ''), 'hex'), Buffer.from(name, 'utf8')]))
+    .digest();
+  hash[6] = (hash[6] & 0x0f) | 0x50;
+  hash[8] = (hash[8] & 0x3f) | 0x80;
+  const hex = hash.subarray(0, 16).toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
+ * 按单据提交（C02 v10 第 1 节）的命令记录按各张单据的子请求键记（backend orchestration/split.py `sub_request_key`）：
+ * 命令中有 2 张及以上单据、或按钮选中 2 行及以上时，每张单据、每个选中行一个
+ */
+function documentKeys(requestKey: string, sent: Sent): string[] {
+  const names = [
+    ...(sent?.documents ?? []).map(d => `${d.entity}/${d.master.rowKey ?? d.master.clientRowId}`),
+    ...(sent?.params?.selectedRows ?? []).map(r => `${r.entity}/${r.rowKey}`)
+  ];
+  return names.length > 1 ? names.map(name => uuid5(requestKey, name)) : [];
+}
 
 /** 一个 worker 提交的命令（请求键）和发起的审批；worker 结束时删掉它们产生的平台记录 */
 export class Trail {
   readonly keys = new Set<string>();
   readonly approvals = new Set<string>();
 
-  note(result: Result) {
-    if (result?.requestKey) this.keys.add(result.requestKey);
+  note(result: Result, sent: Sent = null) {
+    if (result?.requestKey) {
+      this.keys.add(result.requestKey);
+      for (const key of documentKeys(result.requestKey, sent)) this.keys.add(key);
+    }
     for (const approval of result?.approvals ?? []) this.approvals.add(approval.approvalId);
   }
 
@@ -111,13 +144,19 @@ export function backendScript(module: string, args: string[]) {
 /** 命令、通过、驳回、撤回的响应：记下请求键和发起的审批 */
 const RECORDED = /\/api\/(commands|approvals\/\d+\/(pass|reject|withdraw))$/;
 
-function watchResults(context: BrowserContext, notes: Array<(result: Result) => void>) {
+function watchResults(context: BrowserContext, notes: Array<(result: Result, sent: Sent) => void>) {
   context.on('response', (response: Response) => {
     if (response.request().method() !== 'POST' || !RECORDED.test(new URL(response.url()).pathname)) return;
+    let sent: Sent = null;
+    try {
+      sent = response.request().postDataJSON();
+    } catch {
+      // 请求体不是 JSON
+    }
     response
       .json()
       .then((result: Result) => {
-        for (const note of notes) note(result);
+        for (const note of notes) note(result, sent);
       })
       .catch(() => undefined);
   });
@@ -146,7 +185,7 @@ export class Api {
     readonly request: APIRequestContext,
     private readonly prefix: string,
     private readonly origin: string,
-    private readonly onResult: (result: Result) => void = () => undefined
+    private readonly onResult: (result: Result, sent: Sent) => void = () => undefined
   ) {}
 
   async send<T = any>(method: Method, path: string, body?: unknown): Promise<ApiResult<T>> {
@@ -155,7 +194,7 @@ export class Api {
     const response = await this.request.fetch(`${this.prefix}${path}`, { method, data: body, headers });
     const text = await response.text();
     const parsed = text ? JSON.parse(text) : null;
-    if (method === 'POST' && RECORDED.test(path)) this.onResult(parsed);
+    if (method === 'POST' && RECORDED.test(path)) this.onResult(parsed, (body ?? null) as Sent);
     return { status: response.status(), body: parsed };
   }
 
@@ -241,6 +280,12 @@ export class Api {
 export function mustSave<T extends { outcome?: string }>(result: T) {
   if (result?.outcome !== 'saved') throw new Error(`保存没有成功：${JSON.stringify(result)}`);
   return result as T & { idMap: Record<string, string>; rows: Row[] };
+}
+
+/** 一起删除的单据中没删掉的（命令结果的 `failed`，C02 v10） */
+function notDeleted(keys: string[], result: { failed?: Array<{ rowKey?: string | null }> }) {
+  const failed = new Set((result.failed ?? []).map(f => f.rowKey));
+  return keys.filter(key => failed.has(key));
 }
 
 /** 一张测试成本单：新主键和来源明细行到新行的对应 */
@@ -442,7 +487,8 @@ export class TestData {
       const result = await this.api.command(
         left.map(rowKey => ({ entity: 'COST_PINGGU', master: { op: 'delete', rowKey }, details: [] }))
       );
-      if (result?.outcome === 'saved') left.length = 0;
+      // 几张单据一起删时按单据提交（C02 v10）：没删掉的在 failed 中，留给后面直接按主键删
+      if (result?.outcome === 'saved') left.splice(0, left.length, ...notDeleted(left, result));
     });
     const leftLiquid: string[] = [];
     await attempt('删除测试液体成本单', async () => {
@@ -452,7 +498,7 @@ export class TestData {
         leftLiquid.map(rowKey => ({ entity: LIQUID, master: { op: 'delete', rowKey }, details: [] })),
         LIQUID_SAVE
       );
-      if (result?.outcome === 'saved') leftLiquid.length = 0;
+      if (result?.outcome === 'saved') leftLiquid.splice(0, leftLiquid.length, ...notDeleted(leftLiquid, result));
     });
     if (this.users.length) {
       await attempt('删除测试账号', () => backendScript('tests.e2e.cleanup', ['--users', this.users.join(',')]));
@@ -526,7 +572,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   storageState: async ({ user }, use) => use(authFile(user)),
   adminApi: async ({ playwright, baseURL, apiPrefix, trail }, use) => {
     const request = await playwright.request.newContext({ baseURL, storageState: authFile('admin') });
-    await use(new Api(request, apiPrefix, new URL(baseURL!).origin, r => trail.note(r)));
+    await use(new Api(request, apiPrefix, new URL(baseURL!).origin, (r, sent) => trail.note(r, sent)));
     await request.dispose();
   },
   data: async ({ adminApi }, use, testInfo) => {
@@ -537,14 +583,14 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   },
   context: async ({ context, user, trail, data }, use) => {
     await restoreSession(context, user);
-    watchResults(context, [r => trail.note(r), r => data.note(r)]);
+    watchResults(context, [(r, sent) => trail.note(r, sent), r => data.note(r)]);
     await use(context);
   },
   apiOf: async ({ apiPrefix, baseURL, trail, data }, use) => {
     await use(
       p =>
-        new Api(p.request, apiPrefix, new URL(baseURL!).origin, r => {
-          trail.note(r);
+        new Api(p.request, apiPrefix, new URL(baseURL!).origin, (r, sent) => {
+          trail.note(r, sent);
           data.note(r);
         })
     );
@@ -556,7 +602,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const context = await browser.newContext({ storageState: authFile(user) });
       opened.push(context);
       await restoreSession(context, user);
-      watchResults(context, [r => trail.note(r), r => data.note(r)]);
+      watchResults(context, [(r, sent) => trail.note(r, sent), r => data.note(r)]);
       return context.newPage();
     });
     await Promise.all(opened.map(context => context.close()));
@@ -566,7 +612,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await use(async () => {
       const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
       opened.push(context);
-      watchResults(context, [r => trail.note(r), r => data.note(r)]);
+      watchResults(context, [(r, sent) => trail.note(r, sent), r => data.note(r)]);
       return context.newPage();
     });
     await Promise.all(opened.map(context => context.close()));
@@ -780,6 +826,13 @@ export type CommandResult = {
   rows: Row[];
   idMap: Record<string, string>;
   approvals: Array<{ approvalId: string; flows: string[] }>;
+  /** 按单据提交（C02 v10）时没成功的单据 */
+  failed?: Array<{
+    entity: string;
+    rowKey?: string | null;
+    clientRowId?: string | null;
+    error: { code: string; message: string; details: Array<{ entity: string | null; rowKey: string | null; field: string | null }> };
+  }>;
 };
 
 /** 点工具栏"保存"，返回命令结果 */
