@@ -116,6 +116,8 @@ export interface FieldSetting extends FieldFlags {
   aggregate?: 'sum' | null;
   /** 查询（C06 v23 第 3 节）：为 true 时高级查询对话框一打开就列出这个字段的条件 */
   searchable?: boolean | null;
+  /** 复制（C06 v30 第 3 节）：为 false 时复制主表（连明细）、复制明细时都不复制这一列，新行留空；省略时为 true */
+  copy?: boolean;
 }
 
 export interface ButtonConfig {

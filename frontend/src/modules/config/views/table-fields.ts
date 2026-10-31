@@ -3,7 +3,7 @@
  * - 实体（C06 第 2 节，所有页面共用）：标题、类型、写入列、来源（ERP / 自有）、角色、小数位、千分位（只有数值字段能勾）、
  *   默认值、选项值、对比；
  * - 页面字段设置（C06 第 3 节，只对本页面）：显示、编辑、必填、求和（汇总行，只能用于数值字段）、查询（高级查询的预置条件）、
- *   宽度、固定、字典、字典可填写（选了字典才能勾）、Lookup；
+ *   复制（默认勾上，取消时复制不带这一列，C06 v30）、宽度、固定、字典、字典可填写（选了字典才能勾）、Lookup；
  *   "显示、编辑、必填"也可以切换为编辑实体的 `fieldDefaults`（所有页面的基线）。
  * 旧系统每个页面有自己的一份列元数据；新配置把它拆成实体和页面两层，下层只能收紧可见、可编辑，必填只能增加。
  *
@@ -53,6 +53,11 @@ export interface FieldRow {
   aggregate: boolean;
   /** 页面字段设置的 `searchable`（C06 v23 第 3 节）：勾选时高级查询对话框一打开就列出这个字段，同旧系统列表格的"查询" */
   searchable: boolean;
+  /**
+   * 页面字段设置的 `copy`（C06 v30 第 3 节，FC-17）：默认勾上；取消时保存为 `copy: false`，复制时这一列不复制、新行留空。
+   * 旧系统没有这一项（用户 2026-10-31 要求的新增能力）
+   */
+  copy: boolean;
   defaultText: string;
   optionsText: string;
   compare: FieldCompare | null;
@@ -145,6 +150,7 @@ export function fieldRows(entity: EntityContent, settings: Record<string, FieldS
       lookup: s.lookup ?? null,
       aggregate: s.aggregate === 'sum',
       searchable: s.searchable === true,
+      copy: s.copy !== false,
       defaultText: defaultToText(f.default),
       optionsText: f.default?.type === 'options' ? f.default.value.join(',') : '',
       compare: f.compare ?? null,
@@ -191,6 +197,7 @@ export function applyRows(entity: EntityContent, settings: Record<string, FieldS
     if (r.lookup) s.lookup = r.lookup;
     if (r.aggregate) s.aggregate = 'sum';
     if (r.searchable) s.searchable = true;
+    if (!r.copy) s.copy = false;
     if (Object.keys(s).length) nextSettings[r.name] = s;
   }
   const nextEntity: EntityContent = { ...entity, fields };
@@ -224,6 +231,7 @@ export function newRowsFrom(columns: Array<{ name: string; type: string; label: 
       lookup: null,
       aggregate: false,
       searchable: false,
+      copy: true,
       defaultText: '',
       optionsText: '',
       compare: null,

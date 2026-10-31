@@ -30,7 +30,7 @@ import type { LookupColumn, PageView, ViewButton, ViewRegion } from '../../contr
 import type { RealtimeClient } from '../../contracts/realtime';
 import type { CalcWorkerClient, RuleEffect } from '../../contracts/rules';
 import type { ShellApi } from '../../contracts/shell';
-import { type CopySelection, copyDetailRows, copyMaster, defaultMasterSelection } from './copy';
+import { type CopySelection, copyDetailRows, copyMaster, copyableFields, defaultMasterSelection } from './copy';
 import type { RowId } from './edit-buffer';
 import { MASTER_GRID, fieldOf, newRowValues, regionKey } from './fields';
 import { failureText } from './failure';
@@ -1357,11 +1357,12 @@ export class PageRuntime {
     const recordId = this.state.activeRecord;
     if (!recordId || !selected.length || !this.guard(view.master.entity, recordId)) return;
     const region = this.model.region(entity)!;
+    // 默认勾选对话框列出的全部字段（不含配置为不复制的，FP-25）
     this.ui.copy.value = {
       entity,
       recordId,
       rows: selected,
-      selection: { fields: region.fields.filter(f => f.visible).map(f => f.name) }
+      selection: { fields: copyableFields(region).map(f => f.name) }
     };
   }
 

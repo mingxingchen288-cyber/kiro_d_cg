@@ -17,12 +17,12 @@ import { createBackend, notifier, seedItems, useSeed } from './support';
 
 const SAVE_OPERATION = 'COST_PINGGU.save';
 
-async function openPage() {
+async function openPage(code = 'COST_PINGGU') {
   const backend = createBackend();
   useSeed(backend);
   const n = notifier();
   const page = new ItemEditor(backend.store, 'page', n);
-  await page.open('COST_PINGGU');
+  await page.open(code);
   return { backend, n, page };
 }
 
@@ -199,6 +199,41 @@ describe('查询（C06 v23 第 3 节 searchable，同旧系统列表格的"查�
     const content = backend.get('page', 'COST_PINGGU')!.content as unknown as PageContent;
     expect(content.master.fields).toEqual({ ...seedPage.master.fields, DOCID: { pinned: 'left' } });
     expect(content.details).toEqual(seedPage.details);
+    expect(opened.n.messages.filter(m => m.kind === 'error')).toEqual([]);
+  });
+});
+
+describe('复制（C06 v30 第 3 节 copy，FC-17，E45）', () => {
+  it('客户信息页的列默认都勾着"复制"；取消主表区域 ZONE、分销商明细分销商名称的复制并保存：页面只多写这两列的 copy: false，保存操作不变', async () => {
+    const opened = await openPage('CUSTOMER_MANAGE');
+    const { backend } = opened;
+    const seedPage = seedItems().find(i => i.type === 'page' && i.key === 'CUSTOMER_MANAGE')!
+      .content as unknown as PageContent;
+    const customers = await openTable(opened, 'COST_CUSTOMER', 'page');
+    expect(['CUSTOMID', 'CUSTOMNAME', 'ZONE', 'ISERP'].map(name => customers.row(name).copy)).toEqual([
+      true,
+      true,
+      true,
+      true
+    ]);
+    customers.row('ZONE').copy = false;
+    expect(await customers.save()).toBe(true);
+    const distributors = await openTable(opened, 'COST_TRANPOSER', 'page');
+    expect(distributors.row('TRANPOSNAME').copy).toBe(true);
+    distributors.row('TRANPOSNAME').copy = false;
+    expect(await distributors.save()).toBe(true);
+
+    const saved = backend.get('page', 'CUSTOMER_MANAGE')!;
+    const content = saved.content as unknown as PageContent;
+    expect(content.master.fields).toEqual({ ...seedPage.master.fields, ZONE: { searchable: true, copy: false } });
+    expect(content.details![0].fields).toEqual({
+      ...seedPage.details![0].fields,
+      TRANPOSNAME: { searchable: true, copy: false }
+    });
+    expect(backend.get('operation', 'CUSTOMER_MANAGE.save')!.version).toBe(1);
+    // 重新打开：这两列不勾，其余照旧勾着
+    const reopened = await openTable(opened, 'COST_CUSTOMER', 'page');
+    expect(['CUSTOMNAME', 'ZONE'].map(name => reopened.row(name).copy)).toEqual([true, false]);
     expect(opened.n.messages.filter(m => m.kind === 'error')).toEqual([]);
   });
 });
