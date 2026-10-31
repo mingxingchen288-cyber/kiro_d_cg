@@ -18,7 +18,7 @@
 
 导出 C11 的 `FrontendModule`，路由 `/page/:pageCode`；调用 [C09](../契约/C09-HTTP接口.md) 第 3–5 节的接口和 [C07](../契约/C07-规则内核接口.md) 的 Worker 消息。
 
-- FP-01：单表页只有主表区；主从页在主表区下面显示明细区，明细按 Tab 或堆叠显示，分隔线可以拖动。旧系统的主从嵌套模式（主表行下面展开明细，旧系统默认）不保留，用户 2026-10-30 确认"行展开不做"。
+- FP-01：单表页只有主表区；主从页在主表区下面显示明细区，明细按 Tab 或堆叠显示，分隔线可以拖动。旧系统的主从嵌套模式（主表行下面展开明细，旧系统默认）不保留，用户 2026-10-30 确认"行展开不做"。明细跟着主表（用户 2026-10-31："查询一条不存在的数据，从表依然存在……从表必须跟随主表出现"）：明细区只显示主表选中的那张单据；主表没有选中的行时明细清空，同旧系统分屏模式（`MasterDetailLayoutV3.vue` 的 onSelectionChanged）；主表按新的条件（列头筛选、高级查询、定位单据）查询后，明细区显示的单据不在第一页结果中、也不是还没保存的新增单据时，主表取消选中、明细清空，排序、翻页、保存后重新查询不改条件、不清空。代码在 `page-runtime.ts`（`onSelection`、`followMasterQuery`），模拟验证 `tests/page/detail-follows-master.test.ts`。
 - FP-02：主表用 AG Grid 服务端行模型，明细用客户端行模型，只给各行模型传它支持的参数（`cacheBlockSize` 只给主表，`groupDefaultExpanded` 只给明细）。行标识用 `rowKey` 或 `clientRowId`；新增行保存后换成正式主键，行节点不变。
   - 列虚拟化（测试模式专用）：只在测试模式（`import.meta.env.MODE === 'test'`，即 `vite --mode test`：`pnpm dev`、`pnpm build:test`，端到端测试的两种运行方式都用它）下给主表、明细和 Lookup 结果设 `suppressColumnVirtualisation`，表格一次渲染全部列，端到端用例按 col-id 直接取格子、不用横向逐段滚动。来源：用户 2026-10-30 同意"只在 vite --mode test 下关掉列虚拟化（回归也改成用 build:test 构建）"。正式模式（`pnpm build`，`--mode prod`）不变，仍只渲染视野内的列（1600 宽时主表 43 列只渲染 9 列）。开关在 `grid-adapter/columns.ts`；配置页表格（frontend-config 的 `components/grid-columns.ts`）和审批的修改内容、受影响单据表格（frontend-approval 的 `renderers/grid-theme.ts`）同样处理。
 - FP-03：每行最前面固定一列展开图标。点击后，表单在主表区原地替换表格显示：表格只设为不可见，滚动位置和选中行保留；明细区不动。表单头部有返回、上一条、下一条。双击单元格照常进入单元格编辑。

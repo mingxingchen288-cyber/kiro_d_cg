@@ -207,6 +207,9 @@ const port: GridPort = {
     target.setSelected(true, true);
     api.value?.ensureNodeVisible(target);
   },
+  deselectAll() {
+    api.value?.deselectAll();
+  },
   refreshAll() {
     api.value?.refreshCells({ force: true });
     api.value?.redrawRows();

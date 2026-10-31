@@ -200,6 +200,9 @@ export class FakeGrid implements GridPort {
   select(id: string) {
     this.selected = [id];
   }
+  deselectAll() {
+    this.selected = [];
+  }
   refreshAll() {
     this.refreshed += 1;
   }

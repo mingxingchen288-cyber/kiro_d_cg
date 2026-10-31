@@ -58,6 +58,8 @@ export interface GridPort {
   reload(purge?: boolean): void;
   selectedIds(): string[];
   select(id: string): void;
+  /** 取消全部选中（主表查询条件变了、当前单据不在新结果中时） */
+  deselectAll(): void;
   /** 重新计算可编辑和样式（配置原地替换、只读切换） */
   refreshAll(): void;
   /** 当前的列状态，只含可见字段，按显示顺序 */
@@ -227,6 +229,9 @@ export class PageRuntime {
   /** 要定位的单据（FP-20）：下一次从第一行开始的主表查询只取这一张 */
   private focusKey: string | null = null;
 
+  /** 最近一次主表查询的条件（列头筛选、高级查询；定位单据时为 `focus:<主键>`），用来判断查询条件变了没有 */
+  private masterCondition: string | null = null;
+
   private get api() {
     return this.deps.api;
   }
@@ -388,10 +393,15 @@ export class PageRuntime {
     const body: ListRequest = { ...request };
     if (this.ui.advanced.value) body.advanced = this.ui.advanced.value;
     this.lastQuery = body;
+    const condition = JSON.stringify({ filter: request.filterModel ?? {}, advanced: body.advanced ?? null });
     const response = await this.api.listRows(this.pageCode, body);
     this.model.registerMasterRows(response.rows);
     this.state.total = response.total;
     this.ui.aggregates.value = response.aggregates;
+    if (request.startRow === 0 && condition !== this.masterCondition) {
+      this.masterCondition = condition;
+      this.followMasterQuery(response.rows.map(r => r.rowKey));
+    }
     // 这一块的行一显示就带界面规则的效果（FP-18）：每块只在取到数据时求值一次，滚动时表格用缓存的块，不再求值
     await within(this.display(response.rows.map(r => r.rowKey)), DISPLAY_WAIT);
     const added = request.startRow === 0 ? this.model.newMasterRows().map(r => this.model.gridId(r.id)) : [];
@@ -432,6 +442,8 @@ export class PageRuntime {
     const response = await this.api.rowsByKeys(this.pageCode, { entity: master, rowKeys: [recordKey] });
     this.model.registerMasterRows(response.rows);
     this.lastQuery = null;
+    this.masterCondition = `focus:${recordKey}`;
+    this.followMasterQuery(response.rows.map(r => r.rowKey));
     this.state.focused = recordKey;
     this.state.total = response.rows.length;
     const found = response.rows[0];
@@ -460,14 +472,34 @@ export class PageRuntime {
     }
   }
 
-  /** 选中行变了（表格行标识） */
+  /**
+   * 选中行变了（表格行标识）。明细跟着主表：选中主表行时显示它的明细；主表没有选中的行时明细清空，
+   * 同旧系统分屏模式（`MasterDetailLayoutV3.vue` 的 onSelectionChanged：没有选中行时 setActiveMasterContext(null)，
+   * 明细区显示"请选择主表记录"）。
+   */
   onSelection(entity: string, gridIds: string[]) {
     const view = this.view.value;
     if (!view) return;
     this.state.selected = { ...this.state.selected, [regionKey(view, entity)]: gridIds.length };
-    if (entity === view.master.entity && gridIds.length && view.details.length) {
-      void this.activate(this.model.rowIdOf(gridIds[gridIds.length - 1]));
-    }
+    if (entity !== view.master.entity || !view.details.length) return;
+    if (gridIds.length) void this.activate(this.model.rowIdOf(gridIds[gridIds.length - 1]));
+    else if (this.state.activeRecord) this.clearActive();
+  }
+
+  /**
+   * 主表按新的条件查询（列头筛选、高级查询、定位单据）后的第一页：明细区显示的单据不在结果中，也不是还没保存的新增单据时，
+   * 主表取消选中、明细清空。主表是服务端查询，查不到的单据不能再显示它的明细。排序、翻页、保存后重新查询不改条件，不经过这里。
+   */
+  private followMasterQuery(rowKeys: string[]) {
+    const active = this.state.activeRecord;
+    if (!active || rowKeys.includes(active) || this.model.buffer.isNew(this.model.master, active)) return;
+    this.clearActive();
+    this.port(this.model.master)?.deselectAll();
+  }
+
+  private clearActive() {
+    this.state.activeRecord = null;
+    for (const detail of this.view.value?.details ?? []) this.port(detail.entity)?.setRows([]);
   }
 
   selectedRows(entity: string): string[] {
