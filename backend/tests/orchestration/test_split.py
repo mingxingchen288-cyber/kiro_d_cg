@@ -147,14 +147,26 @@ def test_replay_returns_committed_documents_and_reruns_failed_ones() -> None:
 
 
 def test_new_document_failure_carries_client_row_id() -> None:
-    """新增的单据失败时按 clientRowId 指出；成功的新增单据取得主键，`idMap` 合在一起。"""
+    """新建的成本单被拒绝、2550 照常保存：新建的这张按 clientRowId 指出（没有主键），输出中只有 clientRowId；
+    子请求键按 clientRowId 算。"""
+    h = Harness()
+    h.fail[NEW_DOC] = PlatformError(ErrorCode.VALIDATION_FAILED, "备注必填", details=[])
+    result = h.execute(save(modify("2550"), {"op": "add", "clientRowId": NEW_DOC, "values": {"MEMO": None}}))
+    assert [r.row_key for r in result.rows] == ["2550"] and result.id_map == {}
+    [failure] = result.failed
+    assert (failure.row_key, failure.client_row_id, failure.error.code) == (None, NEW_DOC, ErrorCode.VALIDATION_FAILED)
+    [wire] = dump_wire(CommandResult, result)["failed"]
+    assert wire["clientRowId"] == NEW_DOC and "rowKey" not in wire
+    assert h.monitor.watched[1] == (sub_request_key(REQUEST_KEY, PAGE, NEW_DOC), ErrorCode.VALIDATION_FAILED)
+
+
+def test_new_document_saved_gets_its_key_in_id_map() -> None:
+    """新建的成本单保存成功、2550 被拒绝：新建的取得主键 9001，`idMap` 照常给出。"""
     h = Harness()
     h.fail["2550"] = PlatformError(ErrorCode.VALIDATION_FAILED, "保存失败", details=[])
     result = h.execute(save(modify("2550"), {"op": "add", "clientRowId": NEW_DOC, "values": {"MEMO": "新建"}}))
     assert result.id_map == {NEW_DOC: "9001"}
-    [failure] = result.failed
-    assert (failure.row_key, failure.client_row_id, failure.error.code) == ("2550", None, ErrorCode.VALIDATION_FAILED)
-    assert sub_request_key(REQUEST_KEY, PAGE, NEW_DOC) == h.monitor.watched[1][0]
+    assert [(f.row_key, f.client_row_id) for f in result.failed] == [("2550", None)]
 
 
 def test_unexpected_error_of_one_document_does_not_hide_the_others() -> None:
@@ -165,7 +177,7 @@ def test_unexpected_error_of_one_document_does_not_hide_the_others() -> None:
     assert [r.row_key for r in result.rows] == ["2551"]
     [failure] = result.failed
     assert failure.row_key == "2550" and failure.error.code is ErrorCode.INTERNAL_ERROR
-    assert failure.error.message == "保存这张单据时出现内部错误，请联系管理员"
+    assert failure.error.message == "处理这张单据时出现内部错误，请联系管理员"
 
 
 def test_all_documents_failed() -> None:

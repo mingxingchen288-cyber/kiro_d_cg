@@ -108,7 +108,7 @@ class CommandRunner:
             except Exception:  # noqa: BLE001 —— 前面的单据可能已经提交，不能让一张单据的意外错误盖住它们的结果
                 _log.exception("按单据提交：单据 %s %s 执行出错", part.entity, part.row_key or part.client_row_id)
                 failed.append(_failure(part, ErrorResponse(
-                    code=ErrorCode.INTERNAL_ERROR, message="保存这张单据时出现内部错误，请联系管理员", details=[])))
+                    code=ErrorCode.INTERNAL_ERROR, message="处理这张单据时出现内部错误，请联系管理员", details=[])))
         return merge_results(command, done, failed)
 
     def _execute_one(self, command: Command, ctx: ExecutionContext) -> CommandResult:

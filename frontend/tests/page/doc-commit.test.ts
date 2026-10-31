@@ -140,3 +140,54 @@ describe('按单据提交（C02 v10）', () => {
     expect(fake.messages.some(m => m.text === '同步价格已完成')).toBe(false);
   });
 });
+
+describe('按单据提交：新建的单据没成功（C02 v10）', () => {
+  it('新建的成本单数量填 0 被规则拒绝、2551 照常保存：新建的单据和它的修改留在页面上，错误标在格子上，效果栏照旧显示它的提示', async () => {
+    const ctx = await openCostPage();
+    const { runtime, fake } = ctx;
+    await runtime.addRow(MASTER);
+    const added = runtime.model.newMasterRows()[0].id;
+    const rejected = {
+      kind: 'reject' as const,
+      rule: 'R_QTY_GT0',
+      message: '数量必须大于0',
+      entity: MASTER,
+      clientRowId: added,
+      field: 'QTY'
+    };
+    // 预览：新建的这张数量为 0 时给出拒绝提示
+    fake.calc.respond(request => ({
+      ok: true,
+      rows: [],
+      effects:
+        request.document.master.clientRowId === added && request.document.master.values.QTY === '0' ? [rejected] : []
+    }));
+    runtime.edit(MASTER, added, 'QTY', '0');
+    runtime.edit(MASTER, '2551', 'MEMO', '已核对');
+    await runtime.settled();
+    expect(runtime.ui.effects.value.map(e => e.message)).toEqual(['数量必须大于0']);
+    const failure: DocumentFailure = {
+      entity: MASTER,
+      clientRowId: added,
+      error: {
+        code: 'RULE_REJECTED',
+        message: '数量必须大于0',
+        details: [detail({ message: '数量必须大于0', entity: MASTER, clientRowId: added, field: 'QTY' })]
+      }
+    };
+    fake.http.on('POST', '/api/commands', result([{ ...masterRow('2551', '已核对'), entity: MASTER }], [failure]));
+
+    await runtime.save();
+
+    expect(runtime.gridRow(MASTER, '2551').MEMO).toBe('已核对');
+    expect(runtime.model.buffer.isChanged(MASTER, '2551', 'MEMO')).toBe(false);
+    expect(runtime.model.buffer.isNew(MASTER, added)).toBe(true);
+    expect(runtime.gridRow(MASTER, added).QTY).toBe('0');
+    expect(runtime.model.errorsOf(MASTER, added)).toEqual([{ field: 'QTY', message: '数量必须大于0' }]);
+    expect(fake.messages).toContainEqual({
+      kind: 'error',
+      text: '保存成功 1 张，失败 1 张\n单据 新增的一张：数量必须大于0'
+    });
+    expect(runtime.ui.effects.value.map(e => e.message)).toEqual(['数量必须大于0']);
+  });
+});

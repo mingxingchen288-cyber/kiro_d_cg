@@ -1052,7 +1052,9 @@ export class PageRuntime {
       this.state.formRecord = key && this.model.buffer.current(master, key) ? key : null;
     }
     if (reloadNeeded) this.port(master)?.reload();
-    this.ui.effects.value = [];
+    // 规则效果栏：保存过的单据的效果去掉；没成功的单据修改还在，它的效果（例如"每片含量必填且必须大于0"）照旧显示
+    for (const recordId of recordIds) this.model.setEffects(recordId, []);
+    this.ui.effects.value = failedIds.size ? this.model.allEffects() : [];
     this.syncState();
     this.announce(result, '已保存');
     // 预览已清掉：保存过的单据按保存后的值重新做显示求值（FP-18）

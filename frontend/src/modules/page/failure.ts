@@ -86,6 +86,7 @@ export function failureText(
  * - 被审批冻结的单据说明是哪个审批（进度另外弹出，同只保存一张单据时）。
  * - `action` 为 null 时是保存，否则为按钮名称；`done` 为成功、没有提交审批的张数。
  */
+// eslint-disable-next-line max-params -- 页面视图、没成功的单据、张数、行的当前值、按钮名称（保存时省略）
 export function documentFailuresText(
   view: PageView,
   failed: DocumentFailure[],
