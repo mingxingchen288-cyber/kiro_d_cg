@@ -122,7 +122,7 @@
 - 交付物：通用页面按页面编码 COST_PINGGU_LQ 打开液体成本核算，列、明细、按钮、规则都来自配置。
 - 接入责任：主代理合并后在 `menu.main` 的"成本"分组、"成本核算"之后加菜单项"液体成本核算"（页面编码 COST_PINGGU_LQ，图标 `mdi:calculator-variant`，同旧 T_COST_RESOURCE 124）。
 - 验收标准：模拟验证：业务例子 E43；seed 整体校验通过。真实验证（d_cg）：seed 的液体配置在 d_cg 的表结构上校验通过；规则对 d_cg 全部液体单据重算，结果与按旧计算引擎直接算的相同，与库里旧值不同的每一处都说明原因。浏览器：复制液体单据、改原辅料单价，预览和保存后每批成本、主表合计按规则重算，重新打开一致；备注"ERP未搭建BOM"的单据整行红底。
-- 状态与证据：进行中（模拟验证、真实验证和浏览器业务例子通过；独立复核通过，`.reports/review/T-CF-10.md`；液体包材每批数量要不要除以每盒装量，待用户回复（见 `.reports/review/T-CF-10.md`"需要问用户"））。2026-10-31 第 8 批 G2，分支 `batch8/liquid-cost`，报告 `.reports/batch8-20261031/g2-liquid-cost/报告.md`。
+- 状态与证据：完成（模拟验证、真实验证和浏览器业务例子通过；独立复核通过，`.reports/review/T-CF-10.md`）。复核提出的液体包材每批数量要不要除以每盒装量，用户 2026-11-01 答复："公式是什么样你不需要管，你只需要保证我能配置公式并且能正常进行前后端计算"——口径由配置决定，`rule.R_LQ_PKG_BATCH_QTY` 不改；公式能在配置页改（规则编辑，T-FC-3），前后端按同一个规则包计算（本卡的预览与保存一致、全部液体单据重算与旧计算引擎逐值相同）。2026-10-31 第 8 批 G2，分支 `batch8/liquid-cost`，报告 `.reports/batch8-20261031/g2-liquid-cost/报告.md`。
   - 命令（原始输出都在报告目录）：后端 `backend` 目录 `uv run --with ..\rules-core\dist\python\cost_rules_core-0.1.0-cp313-cp313-win_amd64.whl pytest -q -p no:cacheprovider -m "not oracle and not redis"`；真实 `-m "oracle or redis" tests/config/test_liquid_recompute_oracle.py tests/operations/test_liquid_oracle.py`（加 `--override-ini=log_cli=true --log-cli-level=INFO` 输出分类数字）；浏览器 `frontend` 目录 `pnpm exec playwright test -c <报告目录>\playwright.g2.config.ts tests/e2e/liquid-cost.spec.ts --project e2e`（`run-e2e.ps1`）。
   - 写进 d_cg（经用户的 8080，`save_liquid_config.py`）：24 项新配置都是 version 1；`role.ADMIN` 38 → 39、`role.技术中心` 2 → 3，回读液体的键都在。admin、jishu01 读 COST_PINGGU_LQ 的页面视图 200，chengben01 为 403（成本会计角色在旧系统也没有液体页面）；三人读 COST_PINGGU 都是 200。
   - 模拟验证：`tests/config/test_packs.py::test_seed_liquid_rules_sample_e43`；后端模拟全量 1310 passed（`unit-1.txt`）。

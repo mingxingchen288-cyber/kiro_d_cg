@@ -65,7 +65,7 @@
 - 负责范围：seed 的 `operation.COST_PINGGU_LQ.generateFromBom.json`；`page.COST_PINGGU_LQ.json` 主表按钮"由BOM生成明细"（`requiresSelection` 为 true）。不改 operations 的代码。
 - 交付物：液体成本核算主表的"由BOM生成明细"。
 - 验收标准：真实验证（d_cg）：把液体成本单 2571（产品 8726，2mg地塞米松片，批量 300000）复制成新单据，选中它点"由BOM生成明细"：原来的 10 行明细删掉，按 BOM 新增 9 行（原辅料 4、包材 5），物料、mg/ml、单价与旧过程的查询相同，名称、分类由物料 Lookup 带出；每批数量、每批成本和主表按液体规则算出；名称不在包材三个分支里的铝箔、硬片两行每批数量为 BOM 用量。浏览器中点这个按钮结果相同。
-- 状态与证据：进行中（真实验证和浏览器业务例子通过；独立复核通过，`.reports/review/T-OP-6.md`；液体包材每批数量要不要除以每盒装量，待用户回复（见 `.reports/review/T-CF-10.md`"需要问用户"））。2026-10-31 第 8 批 G2，分支 `batch8/liquid-cost`，报告 `.reports/batch8-20261031/g2-liquid-cost/报告.md`。
+- 状态与证据：完成（真实验证和浏览器业务例子通过；独立复核通过，`.reports/review/T-OP-6.md`）。液体包材口径用户 2026-11-01 答复由配置决定、规则不改（见 T-CF-10）。2026-10-31 第 8 批 G2，分支 `batch8/liquid-cost`，报告 `.reports/batch8-20261031/g2-liquid-cost/报告.md`。
   - 真实验证：`tests/operations/test_liquid_oracle.py` 3 passed（与重算对比一起 5 passed，`real-1.txt`）：组装同 `test_sql_actions_oracle.py`（真实的 db-core、rules-core、authz、queries、write-pipeline、operations、approval 插件，配置快照由 seed 在内存中生成，不写 PF_CONFIG_ITEM）。① seed 的液体配置在 d_cg 的表结构上通过 C06 第 10 节的校验，"由BOM生成明细"的 SQL 交给 Oracle 解析通过；② 上面的验收例子，旧过程的查询写在测试里逐行比对；③ 改一行原辅料单价保存，这一行的每批成本和主表按液体规则重算，命令结果与重新读出的相同。测试单据（主键取两个序列）、明细和命令记录结束时删除。
   - 浏览器（用户的 8080、9527）：`frontend/tests/e2e/liquid-cost.spec.ts` 第二个用例通过（`e2e-1.txt`）：经平台复制 2571、点"由BOM生成明细"，提示"由BOM生成明细已完成"，接口读出的明细与 `backend/tests/e2e/liquid.py` 按旧过程查询算出的相同，明细区显示新的行。
   - 与旧系统的差别见 OP-12：原辅料的 mg/ml 由 SQL 按旧过程第一步反推、每批数量由规则算；重算用页面规则，不调有错的 P_PINGGU_DTL_COMPUTE_LQ、P_PINGGU_COMPUTE_LQ；物料不在原料、辅料、包材分类里的 BOM 行不新增（旧过程插进明细表，但页面上看不到）。"同步采购价"（旧 P_PINGGU_COMPUTE_ALL_LQ）不配，同成本核算（用户 2026-10-30）。
