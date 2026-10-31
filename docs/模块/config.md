@@ -101,6 +101,7 @@
   - 与旧系统不同的一处：003 在成本核算的行权限（旧 `T_COST_ROLE_PAGE` 297）是 `USESTATUS = '委托研发' OR USESTATUS = '评估中' OR CREATE_BY = '委托转移'`，d_cg 的 T_COST_PINGGU 没有 CREATE_BY 列，保存时校验不过；cmx 中 CREATE_BY 为"委托转移"的单据 0 行，与其他条件是 OR，去掉这一条后能看到的单据与旧系统相同，迁成 `USESTATUS = '委托研发' OR USESTATUS = '评估中'`。同一角色液体页（298）的同一位置是 `USESTATUS = '委托转移'`，旧配置可能选错了字段，这里按旧系统的实际效果迁，没有改成状态"委托转移"。
   - 每一项的对照、生成脚本和只读查询见 `.reports/batch9-20261031/a-roles/`（`迁移对照.md`、`gen_roles.py`、`q02-角色页面内容.out.txt`）。d_cg 已经保存（版本 1）。
 - 规则没有"数据项"（C06 v27，盘点 U3）：写了 `dataItems` 的规则保存时按未定义的字段拒绝（422），保存时也不再校验数据项的 SQL；规则包中规则的 `serverOnly`（C07）都为 false。
+- CF-22：页面视图的字段带出页面字段设置的 `copy`（C06 v30 第 3 节，C05 v11；2026-10-31 第 9 批）：页面配置这个区域的这个字段写了 `copy: false` 时，页面视图中这个字段带 `"copy": false`，不论字段可不可见；没有写或写 `true` 时省略，页面视图与 v10 相同，没用这一项的页面在 main 的前端上照样能读。复制时前端不复制这一列（frontend-page 的 FP-25），后端也不取源行的值（write-pipeline 的 WP-24）。保存页面配置时不另做校验。例（E45）：客户信息页主表的区域 ZONE 写 `copy: false`，系统管理员的页面视图中只有 ZONE 带 `"copy": false`。依据：用户 2026-10-31"复制主表要把明细表一起复制过来，这个是通用方法，但是也可以配置哪些列可以不复制，这个在元数据中配置即可"；旧系统复制只排除 id 和主键（`cost-web/src/v3/composables/meta-v3/copy-row-fields.ts` 第 3–12 行），没有这项配置，是新增能力；配在页面字段设置上，同旧系统每个页面一份列元数据。代码在 `views.py`（`_view_field`）、`page_view.py`（文件配置用）。
 
 ## 4. 依赖
 

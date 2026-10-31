@@ -99,13 +99,15 @@ class _Rows:
     def new_values(self, provided: Mapping[str, BusinessValue | Value], writable: frozenset[str] | None,
                    ctx: ExecutionContext | None, client_row_id: str | None, row_key: str | None = None, *,
                    wire: bool = True, source: Mapping[str, Value] | None = None,
-                   readable: Collection[str] = (), defaults: bool = True) -> dict[str, Value]:
+                   readable: Collection[str] = (), not_copied: Collection[str] = (),
+                   defaults: bool = True) -> dict[str, Value]:
         """新增行要写入的值：填写的值、默认值（WP-16）、erpRow 列设为 localValue（WP-14）。不含主键和关联字段。
         不可编辑字段的 builtin 默认值按执行上下文取，前端传来的值不用（E28）。复制出的行（`source` 为源行）见
         `_copied_values`。`defaults` 为 False 时不补默认值：按钮 `replaceDetails` 新增的行（`RowIntent.fill_defaults`），
         没写的列取数据库的列默认值；审批通过时写入的复制出的行（`RowIntent.copy_of`），值已在提交时解出。"""
         if source is not None:
-            return self._copied_values(provided, writable, source, readable, client_row_id, row_key, wire=wire)
+            return self._copied_values(provided, writable, source, readable, not_copied, client_row_id, row_key,
+                                       wire=wire)
         builtin_locked = {n for n in self.rules.builtin_names() if writable is not None and n not in writable}
         given = {n: v for n, v in provided.items() if n not in builtin_locked}
         self.check(sorted(given), None, writable, row_key, client_row_id)
@@ -119,11 +121,12 @@ class _Rows:
         return values
 
     def _copied_values(self, provided: Mapping[str, BusinessValue | Value], writable: frozenset[str] | None,
-                       source: Mapping[str, Value], readable: Collection[str], client_row_id: str | None,
-                       row_key: str | None, *, wire: bool) -> dict[str, Value]:
+                       source: Mapping[str, Value], readable: Collection[str], not_copied: Collection[str],
+                       client_row_id: str | None, row_key: str | None, *, wire: bool) -> dict[str, Value]:
         """复制出的行（C02 `copyOf`，WP-21）：可写的字段取命令中的值（复制后用户可能改过）；不可写、但在页面上可见、
         能写进表的字段（例如成本单的币种、项目号）取源行的值，不用命令中的值；只在视图中的字段和计算字段不写（旧系统插入
-        跳过虚拟列，计算字段由计算规则算出）；其余不可写的字段照常 422。不补默认值（WP-16）；erpRow 列设为 localValue。"""
+        跳过虚拟列，计算字段由计算规则算出）；页面配置为不复制的字段（`not_copied`，WP-24）不取源行的值，不可写时不写、
+        留空；其余不可写的字段照常 422。不补默认值（WP-16）；erpRow 列设为 localValue。"""
         allowed = writable if writable is not None else frozenset(self._fields)
         taken: set[str] = set()
         dropped: set[str] = set()
@@ -131,7 +134,7 @@ class _Rows:
             field = self._fields.get(name)
             if field is None or name in allowed:
                 continue
-            if field.column is None or field.role == "calculated":
+            if field.column is None or field.role == "calculated" or name in not_copied:
                 dropped.add(name)
             elif name in readable and self.rules.not_writable_reason(name, None) is None:
                 taken.add(name)
@@ -173,13 +176,16 @@ class DocumentMerger:
         return patched
 
     @staticmethod
-    def _readable(ctx: ExecutionContext, page: str | None, entity: str) -> frozenset[str]:
-        """用户在这个页面上能看到的字段（页面视图中 visible 的字段）：复制出的行只取这些字段的源行值（WP-21）。"""
+    def _copy_fields(ctx: ExecutionContext, page: str | None, entity: str) -> tuple[frozenset[str], frozenset[str]]:
+        """复制出的行按页面视图取的两组字段：第一组为用户在这个页面上能看到、页面配置没有设为不复制的字段，只有这些
+        字段取源行的值（WP-21）；第二组为页面配置 `copy` 为 false 的字段，不取源行的值（WP-24）。"""
         if page is None:
-            return frozenset()
+            return frozenset(), frozenset()
         view = ctx.config.page_view(page)
         area = next((a for a in [view.master, *view.details] if a.entity == entity), None)
-        return frozenset(f.name for f in area.fields if f.visible) if area is not None else frozenset()
+        fields = area.fields if area is not None else []
+        return (frozenset(f.name for f in fields if f.visible and f.copy_),
+                frozenset(f.name for f in fields if not f.copy_))
 
     def _merge(self, state: CommandState, ctx: ExecutionContext, page: str | None, reject: bool, patch: DocumentPatch,
                patched: set[RowRef], sources: SourceRows) -> None:
@@ -189,9 +195,10 @@ class DocumentMerger:
         ref = document_ref(patch.entity, patch.master)
         master = patch.master
         if isinstance(master, MasterAdd):
+            readable, not_copied = self._copy_fields(ctx, page, patch.entity)
             values = master_rows.new_values(master.values, self._writable(ctx, page, master_rules, None), ctx,
                                             master.client_row_id, source=source_of(sources, patch.entity, master.copy_of),
-                                            readable=self._readable(ctx, page, patch.entity))
+                                            readable=readable, not_copied=not_copied)
             row = Row(entity=patch.entity, row_key=None, client_row_id=master.client_row_id,
                       values={**{f.name: None for f in entity.fields}, **values})
             doc = DocumentData(ref=ref, master=row, details={link.entity: [] for link in entity.details})
@@ -217,9 +224,10 @@ class DocumentMerger:
             rules = EntityRules(detail.entity, ctx.config.entity(detail.entity), links[detail.entity])
             rows = _Rows(rules, self._scales)
             if isinstance(detail, DetailAdd):
+                readable, not_copied = self._copy_fields(ctx, page, detail.entity)
                 values = rows.new_values(detail.values, self._writable(ctx, page, rules, None), ctx, detail.client_row_id,
                                          source=source_of(sources, detail.entity, detail.copy_of),
-                                         readable=self._readable(ctx, page, detail.entity))
+                                         readable=readable, not_copied=not_copied)
                 add_detail(state, doc, rules, values, client_row_id=detail.client_row_id, row_key=None)
                 patched.add((detail.entity, detail.client_row_id))
                 continue

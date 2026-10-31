@@ -74,3 +74,13 @@
 - 验收标准：模拟验证（`tests/config/menu-icon.test.ts`）：常用图标为旧系统的 20 个，输入的图标也在选项里；给"基础信息"设 `mdi:currency-usd`、清空后去掉 `icon`，其他项不变；页面"成本核算"的图标改在菜单项 COST_PINGGU 上。浏览器：目录信息给"基础信息"换成包裹图标并保存，菜单配置项中为 `mdi:package-variant`，之后改回。
 - 状态与证据：进行中（模拟验证、浏览器用例通过；待独立复核）。合并后（2026-10-31，main）主代理运行：浏览器用例全部通过（`.reports/batch8-20261031/merge/e2e-6.txt`，57 passed），后端真实测试 217 passed（`pytest-real-1.txt`）。2026-10-31，第 8 批 G4，`batch8/admin-shell`：前端单元全部 594 passed，`pnpm typecheck`、`pnpm lint:deps` 通过。
   - 与旧系统的差别：旧系统只在页面"基本信息"里改图标，"目录信息"只显示；新平台的目录信息本来就能改分组名称，图标也在这里改。
+
+### T-FC-7 "表与列"的"复制"勾选（第 9 批 B 组）
+
+- 归属与目标：FC-17；C06 v30 第 3 节页面字段的 `copy`。依据用户 2026-10-31："但是也可以配置哪些列可以不复制，这个在元数据中配置即可"。旧系统列表格没有这一列，是新增能力。
+- 前置输入：contracts 的 `FieldSetting.copy`（C06 v30，后端 T-CF-15）。
+- 负责范围：`config/core/types.ts`（`FieldSetting.copy`）、`views/table-fields.ts`（`FieldRow.copy`、`fieldRows`、`applyRows`、`newRowsFrom`）、`views/TableFieldsCard.vue`（"复制"列）。
+- 交付物："表与列"的字段表有"复制"列，默认勾上，取消时页面字段设置写 `copy: false`。
+- 接入责任：页面上的效果在 frontend-page 的 T-FP-19 用例 2 核对（经配置接口保存同一份写法）。
+- 验收标准：模拟验证（E45，`tests/config/table-fields.test.ts`"复制"一例）：seed 的客户信息页各列默认勾着"复制"；取消主表 ZONE、分销商明细 TRANPOSNAME 的复制并保存，页面配置只多写这两列的 `copy: false`，保存操作不变（版本仍为 1），重新打开时这两列不勾。
+- 状态与证据：进行中（模拟验证通过；待独立复核）。2026-10-31 第 9 批 B 组，分支 `batch9/copy-config`：`pnpm test` 44 个文件 606 passed，`pnpm typecheck`、`pnpm lint:deps` 通过。配置页上点"保存列"写 d_cg 的浏览器核对没有做：这项配置 main 的后端校验不过，合并前不往 d_cg 保存；同一份写法由 T-FP-19 用例 2 经配置接口保存（合并后运行）。

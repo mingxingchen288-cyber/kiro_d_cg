@@ -9,6 +9,8 @@
 实体字段的 `default` 原样带出，`compare` 只带出显示方式 `format`（C05 v9、CF-19）：前端新增行时立即填上默认值，
 同旧系统 `useWorkingSetStore.ts` 的 resolveColumnDefaultValue；对比按配置的显示方式，同旧 `useMetaColumns.ts`
 的 renderCompareValue。
+页面字段设置的 `copy` 为 false 时字段带 `copy: false`（C05 v11、CF-22）：复制时这一列不复制、新行留空；没有配置时
+省略，页面视图与 v10 相同。
 
 按钮：区域按钮按页面配置的顺序，只留当前角色有权限的：要 `*` 或权限键 `master:<动作>`、`<明细实体>:<动作>`，
 新增、删除也一样按区域授权（C06 v24 第 8 节，用户 2026-10-30"控制到明细级别"）。`systemButtons` 只有 `save`、
@@ -96,6 +98,7 @@ def _view_field(field: EntityField, entity: EntityConfig, setting: FieldSetting 
         searchable=visible and setting is not None and setting.searchable is True,
         default=field.default,
         compare=FieldCompareView(format=field.compare.format) if field.compare is not None else None,
+        copy_=setting is None or setting.copy_,
     )
 
 

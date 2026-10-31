@@ -83,7 +83,12 @@ export const ViewField = object('ViewField', {
   /** C05 v9：新增行的默认值（实体字段的 `default`），新增行时立即填上，`options` 用下拉（frontend-page FP-23） */
   default: optional(nullable(FieldDefault)),
   /** C05 v9：对比的显示方式（实体字段 `compare.format`），value 只显示差值、percent 只显示百分比、both 都显示（FP-24） */
-  compare: optional(nullable(FieldCompareView))
+  compare: optional(nullable(FieldCompareView)),
+  /**
+   * C05 v11：页面配置的 `copy`（C06 v30 第 3 节）为 false 时为 false，否则省略：复制主表（连明细）、复制明细时都不复制这一列，
+   * 复制对话框里不列出，新行这一列留空（frontend-page FP-25）
+   */
+  copy: optional(bool)
 });
 export type ViewField = Infer<typeof ViewField>;
 

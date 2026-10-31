@@ -253,6 +253,35 @@ def test_seed_page_view_searchable() -> None:
         "GOODSID", "GOODSNAME", "PRICE", "USEFLAG", "GOODSTYPE", "PACKTYPE", "FACTORYNAME", "ISERP", "STANDARDTYPE"]
 
 
+def test_not_copied_field_in_page_view() -> None:
+    """CF-22（C05 v11、C06 v30 `copy`，E45）：客户信息页把主表的区域 ZONE、分销商明细的分销商名称 TRANPOSNAME 配成
+    `copy: false`，系统管理员的页面视图中这两个字段带 `"copy": false`，其余字段没有 `copy`；没有配置时整个页面视图
+    与原来相同（序列化后没有 `copy` 这一项），main 的前端照样能读。"""
+    items = seed_drafts()
+    before = build_views(Catalog({}).merged(items), 7, {})[("CUSTOMER_MANAGE", "ADMIN")]
+    assert all("copy" not in f for area in [dump_wire(PageView, before)["master"], *dump_wire(PageView, before)["details"]]
+               for f in area["fields"])
+    page = next(d for d in items if (d.type, d.key) == ("page", "CUSTOMER_MANAGE")).content
+    master_fields = {**page["master"]["fields"], "ZONE": {**page["master"]["fields"]["ZONE"], "copy": False}}
+    detail = page["details"][0]
+    detail_fields = {**detail["fields"], "TRANPOSNAME": {**detail["fields"]["TRANPOSNAME"], "copy": False}}
+    page = {**page, "master": {**page["master"], "fields": master_fields},
+            "details": [{**detail, "fields": detail_fields}]}
+    view = build_views(Catalog({}).merged(_with(items, "page", "CUSTOMER_MANAGE", page)), 7, {})[("CUSTOMER_MANAGE", "ADMIN")]
+    wire = dump_wire(PageView, view)
+    assert {f["name"]: f.get("copy") for f in wire["master"]["fields"]} == {
+        "CUSTOMID": None, "CUSTOMNAME": None, "ZONE": False, "ISERP": None}
+    assert {f["name"]: f.get("copy") for f in wire["details"][0]["fields"]} == {
+        "TRANPOSID": None, "CUSTOMID": None, "TRANPOSNAME": False, "ISERP": None}
+    assert parse_wire(PageView, wire) == view
+    # 只多了这两项：其余与没有配置时相同
+    same = view.model_copy(update={
+        "master": view.master.model_copy(update={"fields": [f.model_copy(update={"copy_": True}) for f in view.master.fields]}),
+        "details": [d.model_copy(update={"fields": [f.model_copy(update={"copy_": True}) for f in d.fields]})
+                    for d in view.details]})
+    assert dump_wire(PageView, same) == dump_wire(PageView, before)
+
+
 def test_erp_row_entity() -> None:
     """有 erpRow 的物料清单：ERP 列按页面设置可编辑（前端在 ERP 行上再显示为只读），erpRow.column 本身不可编辑。
     PRICE 同时列入保存操作的 writableFields（页面视图的 editable 与它取交集）。"""

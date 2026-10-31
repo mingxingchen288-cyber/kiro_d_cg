@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { DocumentPatch } from '../../src/contracts/command';
 import { array } from '../../src/contracts/schema';
 import { buildAdvanced, emptyCondition } from '../../src/modules/page/advanced-search';
+import { copyableFields } from '../../src/modules/page/copy';
 import { COMPARE_DOWN_COLOR, COMPARE_UP_COLOR, compareDisplay, fieldOf } from '../../src/modules/page/fields';
 import { MASTER, MATERIAL, costView, openCostPage, selectRecord } from './support';
 
@@ -82,6 +83,84 @@ describe('复制（FP-13）', () => {
     expect(material.ids.slice(2, 4).every(id => id.startsWith('tmp-'))).toBe(true);
     expect(material.ids[4]).toBe('206325');
     expect(runtime.gridRow(MATERIAL, material.ids[3]).GOODSNAME).toBe('硬脂酸镁');
+  });
+});
+
+describe('不复制的列（FP-25，C05 v11 copy: false）', () => {
+  /** 页面配置把主表的数量（可写）、创建人（不可写）和原辅料的单价（可写）设为不复制 */
+  function notCopiedView() {
+    const view = costView();
+    for (const f of view.master.fields) if (['QTY', 'CREATE_BY'].includes(f.name)) f.copy = false;
+    for (const f of view.details[0].fields) if (f.name === 'PRICE') f.copy = false;
+    return view;
+  }
+
+  it('复制成本单 2550（连明细，默认全选）：对话框不列出数量、创建人、单价；新单据这三列为空，命令中数量、单价为 null，不带创建人', async () => {
+    const view = notCopiedView();
+    expect(copyableFields(view.master).map(f => f.name)).toEqual(['GOODSNAME', 'MEMO', 'TOTAL_COST', 'STATUS']);
+    expect(copyableFields(view.details[0]).map(f => f.name)).toEqual([
+      'GOODSID',
+      'GOODSNAME',
+      'USAGE',
+      'AMOUNT',
+      'MEMO'
+    ]);
+    const ctx = await openCostPage(view);
+    const { runtime, master } = ctx;
+    master.select('2550');
+    runtime.onSelection(MASTER, ['2550']);
+    await runtime.openCopy(MASTER);
+    const copy = runtime.ui.copy.value!;
+    expect(copy.selection.fields).toEqual(['GOODSNAME', 'MEMO', 'TOTAL_COST', 'STATUS']);
+    expect(copy.selection.details![MATERIAL].fields).toEqual(['GOODSID', 'GOODSNAME', 'USAGE', 'AMOUNT', 'MEMO']);
+    await runtime.confirmCopy(copy.selection);
+
+    const newId = master.ids[master.ids.indexOf('2550') + 1];
+    expect(runtime.gridRow(MASTER, newId)).toMatchObject({ QTY: null, CREATE_BY: null, STATUS: '评估中' });
+    const details = runtime.model.detailIds(MATERIAL, newId).map(id => runtime.gridRow(MATERIAL, id));
+    expect(details.map(d => [d.GOODSID, d.PRICE, d.USAGE])).toEqual([
+      ['25', null, '10'],
+      ['115', null, '10'],
+      ['116', null, '10']
+    ]);
+    const [document] = runtime.model.buffer.documents().filter(d => d.master.op === 'add');
+    expect(document.master).toEqual({
+      op: 'add',
+      clientRowId: newId,
+      copyOf: '2550',
+      values: { MEMO: null, QTY: null, STATUS: '评估中' }
+    });
+    expect(document.details.map(d => (d.op === 'add' ? d.values : null))[0]).toEqual({
+      GOODSID: '25',
+      GOODSNAME: '聚维酮K30',
+      PRICE: null,
+      USAGE: '10',
+      MEMO: null
+    });
+  });
+
+  it('明细区复制硬脂酸镁一行：默认勾选的字段不含单价，新行单价为空', async () => {
+    const ctx = await openCostPage(notCopiedView());
+    const { runtime, material } = ctx;
+    await selectRecord(ctx, '2550');
+    material.selected = ['206324'];
+    runtime.onSelection(MATERIAL, material.selected);
+    await runtime.openCopy(MATERIAL);
+    const copy = runtime.ui.copy.value!;
+    expect(copy.selection.fields).toEqual(['GOODSID', 'GOODSNAME', 'USAGE', 'AMOUNT', 'MEMO']);
+    await runtime.confirmCopy(copy.selection, copy.rows);
+    const added = material.ids[material.ids.indexOf('206324') + 1];
+    expect(runtime.gridRow(MATERIAL, added)).toMatchObject({ GOODSID: '115', GOODSNAME: '硬脂酸镁', PRICE: null });
+    const [document] = runtime.model.buffer.documents();
+    expect(document.details).toEqual([
+      {
+        entity: MATERIAL,
+        op: 'add',
+        clientRowId: added,
+        copyOf: '206324',
+        values: { GOODSID: '115', GOODSNAME: '硬脂酸镁', PRICE: null, USAGE: '10', MEMO: null }
+      }
+    ]);
   });
 });
 

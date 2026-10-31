@@ -218,3 +218,13 @@
 - 接入责任：真实联调在本卡的浏览器用例（合并后通过）。
 - 验收标准：业务例子 E28、E29；模拟验证：配置为只显示差值、只显示百分比、都显示时，当前 3.80、历史 3.50 分别显示"0.30""8.57%""0.30 (8.57%)"。浏览器（d_cg，正式用例 `frontend/tests/e2e/batch8-config-caps.spec.ts` 场景 2、3，`@shared-config`，临时改实体配置、结束时恢复）：成本核算主表商务人员配当前用户姓名、剂型下拉"片剂、胶囊剂"、收率固定 98，admin 点"新增"后新行立即显示 admin 的姓名、片剂、98，剂型双击出这两个值的下拉，不保存；物料清单执行价配"与参考价格对比"，物料 14142 的执行价旁按"只显示差值""只显示百分比"显示，与列表接口的对比结果相同。
 - 状态与证据：进行中（模拟验证、浏览器用例通过；待独立复核）。合并后（2026-10-31，main）主代理运行：浏览器用例全部通过（`.reports/batch8-20261031/merge/e2e-6.txt`，57 passed），后端真实测试 217 passed（`pytest-real-1.txt`）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`。模拟验证：`tests/page/copy-lookup.test.ts` 新增 FP-24 一条（E28、E29 原有）；契约测试 `samples.test.ts` 去掉 ViewField 的 `default`、`compare` 缺口，与后端 `types.py` 字段一致；`pnpm test` 42 个文件 590 passed。浏览器：两条用例列在 `shared-config` 项目（`e2e-list-shared.txt`），合并后运行 `.reports/batch8-20261031/g5-config-caps/run-e2e.ps1 -Project shared-config -Grep 'B8|B9'`（脚本里的 worktree 路径、端口按合并后的位置改）。
+
+### T-FP-19 复制不带"不复制"的列；客户信息复制客户带分销商
+
+- 归属与目标：实现 FP-25（C05 v11 字段的 `copy`，后端 T-CF-15）。依据用户 2026-10-31："跟着复制（复制主表要把明细表一起复制过来，这个是通用方法，但是也可以配置哪些列可以不复制，这个在元数据中配置即可）"。旧系统没有这项配置，是新增能力。另核对第 8 批 G1 留下的未核实项"客户信息复制客户时分销商是否跟着复制"（FP-13 的现有能力，不改代码）。
+- 前置输入：开始前 T-FP-5、T-FP-11、T-CF-15。
+- 负责范围：`contracts/page-view.ts`（`ViewField.copy`）、`modules/page/copy.ts`（`copyableFields`）、`page-runtime.ts`（`openCopy` 明细区默认勾选的字段改用 `copyableFields`）。复制对话框 `renderers/CopyDialog.vue` 已按 `copyableFields` 列字段，不用改。
+- 交付物：配置为不复制的列在主表区复制（连明细）和明细区复制的对话框里都不出现，新行这一列为空。
+- 接入责任：真实联调在本卡的浏览器用例 2（合并后运行）。
+- 验收标准：业务例子 E45；模拟验证：成本核算页把主表数量（可写）、创建人（不可写）和原辅料单价（可写）配成不复制，复制 2550（连明细）时对话框不列出这三列，新单据这三列为空，命令中数量、单价为 null、不带创建人；明细区复制一行时默认勾选的字段不含单价，新行单价为空。浏览器（d_cg，正式用例 `frontend/tests/e2e/copy-config-1031.spec.ts`）：1. 客户信息复制一个带一个分销商的测试客户，对话框默认全选，保存后新客户的客户名称、区域与源相同，分销商明细一行、名称相同、分销商ID 新的、客户ID 指向新客户（不改配置）；2. E45（`@shared-config`，测试锁 `page.CUSTOMER_MANAGE`，结束时恢复页面配置）。
+- 状态与证据：进行中（模拟验证和浏览器用例 1 通过，用例 2 待主代理合并后运行；待独立复核）。2026-10-31 第 9 批 B 组，分支 `batch9/copy-config`，报告 `.reports/batch9-20261031/b-copy-config/报告.md`。模拟验证：`tests/page/copy-lookup.test.ts`"不复制的列"两例；`pnpm test` 44 个文件 606 passed，`pnpm typecheck` 通过，`pnpm lint:deps` 通过；契约测试 `samples.test.ts` 的 ViewField 字段与后端 `types.py` 一致（别名 `copy`）。浏览器：`pnpm build:test` 后在本组后端 8092 运行用例 1，1 passed（`e2e-1.txt`），测试客户、分销商结束时删掉（只读核对 `q01-测试客户残留.out.txt`：PF_TEST 客户 0、分销商 0）。用例 2 要保存本组的新配置写法（`copy`），main 的后端读不懂，没有运行；合并、重启后运行 `.reports/batch9-20261031/b-copy-config/run-e2e.ps1 -Project shared-config -Grep 'E45' -Out e2e-2.txt`（脚本里的 worktree 路径、端口按合并后的位置改）。

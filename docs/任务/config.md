@@ -169,3 +169,13 @@
   - 模拟验证：`tests/config/test_migrated_roles.py`（11 个用例）；`tests/config tests/authz` 189 passed（`pytest-03.txt`）；后端 `uv run --with <rules-core wheel> pytest -q -p no:cacheprovider -m "not oracle and not redis"` 1349 passed、217 deselected（`pytest-全量模拟.txt`）；`uv run lint-imports --no-cache` 5 kept。前端 `pnpm typecheck`、`pnpm test`（603 passed）、`pnpm lint:deps` 通过。
   - 真实验证（d_cg，经用户的 8080，`save_roles.py`，输出 `save_roles.out.txt`）：role/001、002、003、005、006、007、008 新建，版本都是 1，回读与 seed 相同；admin、chengben01、jishu01 读 `GET /api/pages/COST_PINGGU/view` 都是 200。只读核对 `PF_CONFIG_ITEM`：7 个角色的代号 7671～7677，页面视图 39 份（007 三份，其余各六份，`q07-保存后核对.out.txt`）。
   - 浏览器（本组 8091/9541，`run-e2e.ps1`）：`roles-1031.spec.ts` 3 passed（`e2e-2.txt`）：采购登录后菜单、物料清单的按钮和右键导出、成本核算的按钮、列和可编辑；生产登录后菜单。
+
+### T-CF-15 页面视图带出"不复制"的列
+
+- 归属与目标：实现 CF-22（C06 v30 第 3 节 `copy`、C05 v11）。依据用户 2026-10-31："跟着复制（复制主表要把明细表一起复制过来，这个是通用方法，但是也可以配置哪些列可以不复制，这个在元数据中配置即可）"。旧系统没有这项配置（`copy-row-fields.ts` 第 3–12 行只排除 id 和主键），是新增能力。
+- 前置输入：开始前 T-CF-2。
+- 负责范围：`contracts/types.py`（`FieldSetting.copy_`、`ViewField.copy_`，别名 `copy`）、`config/views.py`、`config/page_view.py`。
+- 交付物：页面字段设置可以写 `copy: false`；页面视图的字段只在为 false 时带 `"copy": false`。
+- 接入责任：frontend-page 的 T-FP-19、write-pipeline 的 T-WP-16 使用；合并后主代理经配置接口保存一次任何配置即按新代码重新生成页面视图。这项配置 main 的后端（8080）校验不过，合并、重启 8080 之前不往 d_cg 保存。
+- 验收标准：模拟验证（E45）：seed 的客户信息页把主表 ZONE、分销商明细 TRANPOSNAME 写成 `copy: false`，系统管理员的页面视图中只有这两个字段带 `"copy": false`；没有配置时页面视图序列化后没有 `copy`，与原来相同；页面视图能被解析回来。
+- 状态与证据：进行中（模拟验证通过；待独立复核）。2026-10-31 第 9 批 B 组，分支 `batch9/copy-config`，报告 `.reports/batch9-20261031/b-copy-config/报告.md`。模拟验证：`tests/config/test_views.py::test_not_copied_field_in_page_view`；`pytest -m "not oracle and not redis"` 1340 passed、217 deselected（`pytest-1.txt`），`lint-imports` 5 kept、0 broken；C06 第 1.1 节表格补 `copy`（`tests/contracts/test_samples.py::test_c06_omittable_fields_match_section_1_1`）。浏览器用例见 T-FP-19。

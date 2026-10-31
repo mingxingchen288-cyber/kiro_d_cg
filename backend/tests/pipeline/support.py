@@ -105,11 +105,14 @@ GOODS_ENTITY = t.EntityConfig(
 ENTITIES = {MASTER: MASTER_ENTITY, MATERIAL: MATERIAL_ENTITY, GOODS: GOODS_ENTITY}
 
 
-def view_fields(entity: t.EntityConfig, editable: Iterable[str], required: Iterable[str] = ()) -> list[t.ViewField]:
-    editable, required = set(editable), set(required)
+def view_fields(entity: t.EntityConfig, editable: Iterable[str], required: Iterable[str] = (),
+                not_copied: Iterable[str] = ()) -> list[t.ViewField]:
+    """页面视图的字段；`not_copied` 为页面配置 `copy: false` 的字段（C05 v11）。"""
+    editable, required, not_copied = set(editable), set(required), set(not_copied)
     return [t.ViewField(name=f.name, label=f.label, type=f.type, scale=None, source=f.source,
                         calculated=f.role == "calculated", visible=True, editable=f.name in editable,
-                        required=f.name in required, width=None, pinned=None, dict_type=None, lookup=None)
+                        required=f.name in required, width=None, pinned=None, dict_type=None, lookup=None,
+                        copy_=f.name not in not_copied)
             for f in entity.fields]
 
 
@@ -120,16 +123,19 @@ MATERIAL_WRITABLE = ("GOODSID", "USAGE", "PRICE", "MEMO")
 GOODS_WRITABLE = ("PRICE", "ZX_PRICE", "NAME")
 
 
-def cost_page_view(audit: bool = True, required: dict[str, list[str]] | None = None) -> t.PageView:
-    required = required or {}
+def cost_page_view(audit: bool = True, required: dict[str, list[str]] | None = None,
+                   not_copied: dict[str, list[str]] | None = None) -> t.PageView:
+    required, not_copied = required or {}, not_copied or {}
     return t.PageView(
         page_code=PAGE, title="成本核算", version=1, layout="masterDetail", detail_mode="tabs", audit=audit,
         save_operation=SAVE, rules_pack=t.PackRef(pack_id=PAGE, version=1),
-        master=t.ViewMaster(entity=MASTER, primary_key="DOCID", fields=view_fields(MASTER_ENTITY, MASTER_WRITABLE,
-                                                                                      required.get(MASTER, [])),
+        master=t.ViewMaster(entity=MASTER, primary_key="DOCID",
+                            fields=view_fields(MASTER_ENTITY, MASTER_WRITABLE, required.get(MASTER, []),
+                                               not_copied.get(MASTER, [])),
                             buttons=[], grid=_GRID, form_layout=[]),
         details=[t.ViewDetail(entity=MATERIAL, title="原料/辅料", primary_key="DTLID", parent_key="DOCID",
-                              fields=view_fields(MATERIAL_ENTITY, MATERIAL_WRITABLE, required.get(MATERIAL, [])),
+                              fields=view_fields(MATERIAL_ENTITY, MATERIAL_WRITABLE, required.get(MATERIAL, []),
+                                                 not_copied.get(MATERIAL, [])),
                               buttons=[], grid=_GRID, form_layout=[])],
         system_buttons=["save", "addRow", "deleteRow"])
 
@@ -161,6 +167,8 @@ class Setup:
     required: dict[str, list[str]] = field(default_factory=dict)
     rule_fields: dict[str, dict[str, frozenset[str]]] | None = None
     """保存时规则读取的字段（ConfigSnapshot.rule_fields）；不给时按"规则读取全部字段"，每次保存都求值。"""
+    not_copied: dict[str, list[str]] = field(default_factory=dict)
+    """成本核算页上配置为不复制的字段（页面配置 `copy: false`，C05 v11），按实体。"""
 
     def __post_init__(self) -> None:
         self.permission.set_writable(PAGE, MASTER, MASTER_WRITABLE)
@@ -174,7 +182,8 @@ class Setup:
                       BUTTON: t.OperationConfig(label="同步价格", kind="action", propagation="continue",
                                                 row_not_found=self.row_not_found)}  # type: ignore[arg-type]
         return FakeConfigSnapshot(version=1, role_code="COST_ACCOUNTANT", role=role,
-                                  page_views={PAGE: cost_page_view(self.audit, self.required), GOODS_PAGE: goods_page_view()},
+                                  page_views={PAGE: cost_page_view(self.audit, self.required, self.not_copied),
+                                              GOODS_PAGE: goods_page_view()},
                                   entities=ENTITIES, operations=operations,
                                   packs={PAGE: self.pack, GOODS_PAGE: self.pack, MASTER: self.pack, GOODS: self.pack},
                                   rule_fields=self.rule_fields)

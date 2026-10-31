@@ -12,6 +12,8 @@
  *   勾选都有的；源行是还没保存的新增行（不是复制来的）时没有来源，不可写的字段不写。
  * - 复制的是当前显示的值（含未保存的修改和预览算出的计算字段），标为删除的行不复制。
  * - `erpRow.column` 由平台设为本地值，不从源行复制；ERP 列照样复制，新行是本地行，可以编辑。
+ * - 页面配置为不复制的列（C05 v11 `copy: false`，FP-25；用户 2026-10-31"也可以配置哪些列可以不复制"，旧系统没有这项配置）：
+ *   主表区复制（连明细）和明细区复制时，对话框里都不列出，新行这一列留空，同没勾选的字段；后端同样不取源行的值（WP-24）。
  * - 复制出的主表行放在源行下方，明细行放在最后一个选中行的下方；撤销一次撤回整个复制。
  */
 import type { FieldValues } from '../../contracts/command';
@@ -31,10 +33,13 @@ export interface CopySelection {
   details?: Record<string, { rows: string[]; fields: string[] }>;
 }
 
-/** 复制对话框中可以勾选的字段：可见、不是主键、不是关联字段、不是 erpRow.column */
+/**
+ * 复制对话框中可以勾选的字段：可见、页面配置没有设为不复制（C05 v11 `copy: false`，FP-25）、不是主键、不是关联字段、
+ * 不是 erpRow.column
+ */
 export function copyableFields(region: ViewRegion): FieldChoice[] {
   return region.fields
-    .filter(f => f.visible)
+    .filter(f => f.visible && f.copy !== false)
     .filter(f => f.name !== region.primaryKey)
     .filter(f => !('parentKey' in region) || f.name !== region.parentKey)
     .filter(f => !region.erpRow || f.name !== region.erpRow.column)

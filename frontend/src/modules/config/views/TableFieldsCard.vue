@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * "表与列"中的一张表，同旧系统 SectionTables.vue 的一个折叠项：视图 / 目标表 / PK 等表信息和"保存表信息"，
- * 列表格（标题、类型、写入列、来源、角色、小数位、千分位、显示、编辑、必填、求和、查询、宽度、固定、字典、字典可填写、
+ * 列表格（标题、类型、写入列、来源、角色、小数位、千分位、显示、编辑、必填、求和、查询、复制、宽度、固定、字典、字典可填写、
  * Lookup、默认值、选项值、对比），
  * 按钮"从视图重新导入""选择视图列添加""删除选中列""上移""下移""保存列"。
  * "显示、编辑、必填"显示实际结果，不能改的格子不能勾，原因在"不能修改的原因"列和悬停提示中（FC-09）。
@@ -107,6 +107,10 @@ const columns = computed<ColDef[]>(() => [
   {
     ...booleanColumn('searchable', '查询', 55),
     tooltipValueGetter: () => '勾选后高级查询对话框一打开就列出这个字段的条件'
+  },
+  {
+    ...booleanColumn('copy', '复制', 55),
+    tooltipValueGetter: () => '取消后复制主表（连明细）、复制明细时都不复制这一列，新行这一列为空'
   },
   { field: 'width', headerName: '宽度', width: 65, cellDataType: 'number' },
   selectColumn('pinned', '固定', [{ label: '不固定', value: null }, { label: '左', value: 'left' }, { label: '右', value: 'right' }], 70),

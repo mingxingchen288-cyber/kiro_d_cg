@@ -15,7 +15,7 @@ import pytest
 from cost_platform.contracts import types as t
 from cost_platform.contracts.fakes import FakeStage
 
-from .support import MASTER, MATERIAL, TMP_1, TMP_2, Pipeline, command, master_none
+from .support import MASTER, MATERIAL, TMP_1, TMP_2, Pipeline, Setup, command, master_none
 
 D = Decimal
 TMP_3 = "tmp-8c3a4e5f-2d6a-4b7c-8e9f-1a2b3c4d5e6f"
@@ -38,6 +38,20 @@ def test_copied_master_takes_not_writable_fields_from_source() -> None:
     assert (row["GOODSNAME"], row["CREATE_BY"], row["MEMO"], row["APEX_PL"]) == ("250mg乙酰唑胺片", "王五", "复制", D(100000))
     assert row["TOTAL_COST"] is None and row["USESTATUS"] is None
     assert pipeline.store.copy_reads == 1  # type: ignore[attr-defined]
+
+
+def test_not_copied_fields_are_left_empty() -> None:
+    """WP-24（C05 v11 `copy: false`）：成本核算页把创建人 CREATE_BY（不可写）、批量 APEX_PL（可写）配成不复制。复制 1001：
+    前端不复制这两列，批量写 null；这个页面是在改配置之前打开的，对话框里还勾着创建人，命令中带了源行的"王五"。
+    新单据的创建人、批量都为空：创建人不取源行的值、不报错，批量不补默认值；产品名称照旧取源行的值，备注取命令中的值。"""
+    pipeline = Pipeline(setup=Setup(not_copied={MASTER: ["CREATE_BY", "APEX_PL"]}))
+    cmd = copy_master({"GOODSNAME": "250mg乙酰唑胺片", "CREATE_BY": "王五", "MEMO": "复制", "APEX_PL": None})
+    result = pipeline.execute(cmd, pipeline.setup.context())
+    row = pipeline.store.rows[MASTER][result.id_map[TMP_1]]
+    assert (row["GOODSNAME"], row["MEMO"]) == ("250mg乙酰唑胺片", "复制")
+    assert (row["CREATE_BY"], row["APEX_PL"]) == (None, None)
+    [inserted] = [r for w in pipeline.store.writes if w.op == "insert" for r in w.rows]
+    assert "CREATE_BY" not in inserted
 
 
 def test_new_row_without_copy_of_still_rejects_not_writable_field() -> None:
