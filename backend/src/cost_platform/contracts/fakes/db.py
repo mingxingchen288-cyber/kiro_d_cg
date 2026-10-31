@@ -88,7 +88,7 @@ class FakeSchemaInspector(Scripted):
     """`SchemaInspector`：表和视图的结构由 `add_table`、`add_view` 预设；表的主键由 `add_table` 的 `primary_key` 给出，
     列注释由 `comments` 给出（没给的列没有注释）。"""
 
-    scriptable = ('columns', 'object_type', 'primary_key', 'column_comments', 'objects', 'view_sources')
+    scriptable = ('columns', 'object_type', 'primary_key', 'column_comments', 'objects')
 
     def __init__(self) -> None:
         super().__init__()
@@ -96,7 +96,6 @@ class FakeSchemaInspector(Scripted):
         self._types: dict[str, Literal["table", "view"]] = {}
         self._keys: dict[str, str] = {}
         self._comments: dict[str, dict[str, str]] = {}
-        self._sources: dict[str, list[str]] = {}
 
     def add_table(self, table: str, columns: Sequence[ColumnInfo], primary_key: str | None = None,
                   comments: Mapping[str, str] | None = None) -> None:
@@ -106,13 +105,10 @@ class FakeSchemaInspector(Scripted):
         if primary_key is not None:
             self._keys[table] = primary_key
 
-    def add_view(self, view: str, columns: Sequence[ColumnInfo], comments: Mapping[str, str] | None = None,
-                 sources: Sequence[str] = ()) -> None:
-        """`sources`：视图读取的表、视图（`view_sources` 的结果）；没给时为空。"""
+    def add_view(self, view: str, columns: Sequence[ColumnInfo], comments: Mapping[str, str] | None = None) -> None:
         self._tables[view] = {c.name: c for c in columns}
         self._types[view] = "view"
         self._comments[view] = dict(comments or {})
-        self._sources[view] = sorted(sources)
 
     def columns(self, table: str) -> dict[str, ColumnInfo] | None:
         self._record("columns", table)
@@ -140,10 +136,6 @@ class FakeSchemaInspector(Scripted):
         upper = keyword.strip().upper()
         found = [DbObject(name=name, type=kind) for name, kind in self._types.items() if upper in name.upper()]
         return sorted(found, key=lambda o: (o.type, o.name))[:100]
-
-    def view_sources(self, view: str) -> list[str] | None:
-        self._record("view_sources", view)
-        return list(self._sources[view]) if self._types.get(view) == "view" else None
 
 
 class FakeConnectionFactory(Scripted):

@@ -41,13 +41,12 @@ from cost_platform.contracts.fakes import (
     FakeStage,
 )
 from cost_platform.db_core.engine import OracleUnitOfWorkFactory
-from cost_platform.db_core.schema import OracleSchemaInspector
 from cost_platform.orchestration.runner import CommandRunner
 from cost_platform.pipeline.calc import Recalculator
 from cost_platform.pipeline.command_log import OracleCommandRecorder
 from cost_platform.pipeline.document_store import OracleDocumentStore
 from cost_platform.pipeline.loader import DocumentLoader, PageSaveInvolved
-from cost_platform.pipeline.locks import LockBook, PipelineLocks, ReadViews
+from cost_platform.pipeline.locks import LockBook, PipelineLocks
 from cost_platform.pipeline.merge import DocumentMerger, IntentMerger
 from cost_platform.pipeline.stages import LockStage, MergeIntentsStage, MergePatchesStage, RecalculateStage, WriteChangesStage
 from cost_platform.pipeline.table_writer import OracleTableWriter
@@ -274,14 +273,13 @@ class Platform:
         self.gates = Gates()
         inspector = _inspector()
         scales = ColumnScales(inspector)
-        views = ReadViews(OracleSchemaInspector(engine))  # 同 plugin.py：读取视图读取哪些表取 d_cg 的数据字典
         permission = FakePermissionChecker()
         for (page, entity), names in WRITABLE.items():
             permission.set_writable(page, entity, names)
         rules = FakeRulesEngine()
         self.pack = rules.load_pack(b'{"packId": "PF", "version": 1, "coreVersion": "0.1.0", "fields": {}, "rules": [], "jdm": {}}')
         book = LockBook()
-        store = OracleDocumentStore(WAIT, views)
+        store = OracleDocumentStore(WAIT)
         directory = FakeDirectory()
         directory.add_account(t.AccountRef("990100", "pf_test_admin", "系统管理员（测试）", None, True), ["ADMIN"])
         deps = ApprovalDeps(catalog=lambda ctx: CATALOG, schema=inspector, directory=directory, documents=FakeDocumentReader(),
