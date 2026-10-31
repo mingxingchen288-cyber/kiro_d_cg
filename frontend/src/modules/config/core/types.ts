@@ -369,6 +369,8 @@ export interface MenuNode {
   title: string;
   kind: 'group' | 'page' | 'config' | 'admin';
   pageCode?: string | null;
+  /** 菜单图标（C06 v26），Iconify 图标名，例如 mdi:calculator-variant；省略时外壳用默认图标 */
+  icon?: string | null;
   children?: MenuNode[];
 }
 

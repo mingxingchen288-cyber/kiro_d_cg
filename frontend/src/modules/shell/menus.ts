@@ -16,7 +16,7 @@ export interface ShellMenu {
   title: string;
   /** 打开的路径；分组为 null */
   path: string | null;
-  /** Iconify 图标名；C09 的菜单项没有图标，为空时用默认图标 */
+  /** Iconify 图标名，取自菜单项的 `icon`（C09 v15、C06 v26，FS-08）；为空时用默认图标 VITE_MENU_ICON */
   icon?: string;
   children?: ShellMenu[];
 }
@@ -59,17 +59,20 @@ export function menuPath(item: MenuItem, modules: readonly ModuleRoutes[]): stri
   return routes.some(route => route.path === `/${item.kind}`) ? `/${item.kind}` : null;
 }
 
+/** 菜单项的图标（FS-08）：配置了才带，同旧系统 `T_COST_RESOURCE.ICON` */
+const iconOf = (item: MenuItem) => (item.icon ? { icon: item.icon } : {});
+
 /** `/api/me` 的菜单换成外壳的菜单；`page` 项要有 frontend-page 注册才显示 */
 export function buildMenus(items: MenuItem[], modules: readonly ModuleRoutes[]): ShellMenu[] {
   const hasPage = modules.some(module => module.name === 'page');
   return items.flatMap((item): ShellMenu[] => {
     if (item.kind === 'group') {
       const children = buildMenus(item.children ?? [], modules);
-      return children.length ? [{ key: item.key, title: item.title, path: null, children }] : [];
+      return children.length ? [{ key: item.key, title: item.title, path: null, ...iconOf(item), children }] : [];
     }
     if (item.kind === 'page' && !hasPage) return [];
     const path = menuPath(item, modules);
-    return path ? [{ key: item.key, title: item.title, path }] : [];
+    return path ? [{ key: item.key, title: item.title, path, ...iconOf(item) }] : [];
   });
 }
 

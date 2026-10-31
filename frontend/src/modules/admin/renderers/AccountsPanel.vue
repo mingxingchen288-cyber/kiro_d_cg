@@ -2,6 +2,7 @@
 /**
  * 人员管理（旧系统 `user-manage`）：工具栏 + 表格，表格内直接改，点"保存"提交。行为都在 accounts.ts。
  * 部门列用下拉选择（旧页面为部门ID的 Lookup 加部门名称两列，这里合成一列显示名称）。
+ * 用户名已有的行也能改（FM-05）；"高级查询"打开查询条件对话框（FM-06，同旧页面工具栏的 advancedSearch）。
  */
 import { computed, onMounted, ref, shallowRef } from 'vue';
 import { NButton, NInput, NModal, NSpace } from 'naive-ui';
@@ -17,7 +18,9 @@ import type {
   ValueSetterParams
 } from 'ag-grid-community';
 import { type AccountField, type AccountRow, AccountsModel, INITIAL_PASSWORD } from '../accounts';
+import { ACCOUNT_SEARCH_FIELDS, enabledCount } from '../advanced-search';
 import type { AdminDeps } from '../shared';
+import AdvancedSearchDialog from './AdvancedSearchDialog.vue';
 import { onShownAgain } from './shown-again';
 
 defineOptions({ name: 'AccountsPanel' });
@@ -32,6 +35,12 @@ const keyword = ref('');
 const passwordFor = ref<AccountRow | null>(null);
 const password = ref(INITIAL_PASSWORD);
 const root = ref<HTMLElement | null>(null);
+const showSearch = ref(false);
+/** 高级查询"部门"条件的选项：部门列表 */
+const searchOptions = computed(() => ({
+  departmentId: state.departments.map(d => ({ label: d.name, value: d.departmentId }))
+}));
+const searchCount = computed(() => enabledCount(ACCOUNT_SEARCH_FIELDS, state.searchDrafts));
 
 // 切回人员管理时重新读取部门和角色：刚在部门管理新建的部门马上能在"部门"下拉中选到
 onShownAgain(root, () => void model.refreshChoices());
@@ -64,7 +73,8 @@ const columnDefs = computed<ColDef<AccountRow>[]>(() => [
     headerName: '用户名',
     field: 'username',
     width: 140,
-    editable: onlyNew,
+    // FM-05：已有账号也能改用户名，同旧系统 user-manage 的"用户名"列（EDITABLE=1）
+    editable: true,
     valueSetter: setter('username')
   },
   {
@@ -201,6 +211,9 @@ onMounted(() => {
         @clear="model.search('')"
       />
       <NButton size="small" :disabled="state.saving" @click="model.search(keyword)">查询</NButton>
+      <NButton size="small" :disabled="state.saving" @click="showSearch = true">
+        高级查询{{ state.advanced ? `（${searchCount}）` : '' }}
+      </NButton>
       <span v-if="dirtyCount > 0" class="text-12px text-#999">{{ dirtyCount }} 行未保存</span>
       <span v-if="state.error" class="text-12px text-error">{{ state.error }}</span>
     </div>
@@ -219,6 +232,14 @@ onMounted(() => {
         @selection-changed="onSelectionChanged"
       />
     </div>
+    <AdvancedSearchDialog
+      v-model:show="showSearch"
+      :fields="ACCOUNT_SEARCH_FIELDS"
+      :drafts="state.searchDrafts"
+      :options="searchOptions"
+      @search="drafts => model.advancedSearch(drafts)"
+      @reset="drafts => model.advancedSearch(drafts)"
+    />
     <NModal
       :show="Boolean(passwordFor)"
       preset="card"

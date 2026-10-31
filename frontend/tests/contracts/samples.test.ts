@@ -126,6 +126,36 @@ const ROUNDTRIP: Array<[string, Schema<unknown>, unknown]> = [
     { username: 'zhangsan', displayName: '张三', departmentId: '10', password: 'p', roleCodes: ['COST_ACCOUNTANT'] }
   ],
   ['C09 修改账号', c09.AccountUpdate, { displayName: '张三', departmentId: '10', roleCodes: [], enabled: false }],
+  [
+    'C09 修改账号（改账号名）',
+    c09.AccountUpdate,
+    { username: 'zhangsan2', displayName: '张三', departmentId: '10', roleCodes: [], enabled: true }
+  ],
+  [
+    'C09 当前用户（菜单带图标、没有部门）',
+    c09.MeResponse,
+    {
+      ...s.meResponseSample,
+      user: { ...s.meResponseSample.user, departmentId: null, departmentName: null },
+      menus: [
+        {
+          key: 'cost',
+          title: '成本',
+          kind: 'group',
+          icon: 'mdi:currency-usd',
+          children: [
+            {
+              key: 'COST_PINGGU',
+              title: '成本核算',
+              kind: 'page',
+              pageCode: 'COST_PINGGU',
+              icon: 'mdi:calculator-variant'
+            }
+          ]
+        }
+      ]
+    }
+  ],
   ['C09 部门列表', c09.DepartmentList, s.departmentListSample],
   ['C09 配置项列表', c09.ConfigItemList, s.configItemListSample],
   ['C06 配置项', c09.ConfigItem, block('C06', 0)],

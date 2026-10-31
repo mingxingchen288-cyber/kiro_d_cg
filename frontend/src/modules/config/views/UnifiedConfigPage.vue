@@ -115,8 +115,8 @@ onMounted(load);
       </div>
     </div>
     <div class="unified-config__content">
-      <PageConfigPanel v-if="selected?.pageCode" :key="selected.pageCode" :page-code="selected.pageCode" :title="selected.label" @refresh="load" />
-      <DirectoryInfoPanel v-else-if="selected && (selected.kind === 'group' || selected.kind === 'menu')" :key="selected.key" :node="selected" :menus="menus" @select="key => (selected = findByKey(tree, key))" @refresh="load" />
+      <PageConfigPanel v-if="selected?.pageCode" :key="selected.pageCode" :page-code="selected.pageCode" :title="selected.label" :menus="menus" @refresh="load" />
+      <DirectoryInfoPanel v-else-if="selected && selected.kind !== 'page' && selected.kind !== 'orphans'" :key="selected.key" :node="selected" :menus="menus" @select="key => (selected = findByKey(tree, key))" @refresh="load" />
       <div v-else class="empty-state"><p>请从左侧选择一个页面或目录</p></div>
     </div>
     <NModal v-model:show="showWizard" preset="card" title="页面创建向导" :style="{ width: '900px', maxHeight: '85vh' }" :body-style="{ overflow: 'auto' }" :mask-closable="false">

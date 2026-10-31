@@ -64,3 +64,13 @@
 - 验收标准：模拟验证：输入一个字符不查询；输入"T_COST_GOODS"请求带这个关键字，下拉为 T_COST_GOODS（表）、T_COST_GOODS_PRICE_V（视图）；导入的标题为后端给出的列注释，生成请求只提交与列名不同的标题；包材批量规则保存的内容与 C06 第 5 节样例相同（不带 `dataItems`）。业务例子（浏览器、d_cg，正式用例 `frontend/tests/e2e/batch8-config-caps.spec.ts` 场景 1）：配置 →"+ 新增页面"，第 2 步目标表输入 T_COST_GOODS，下拉列出物料表和物料清单视图、先表后视图，与接口结果相同；输入 T_COST_PINGGU_LQ 选中液体成本核算主表，导入列后每盒成本、每中盒小盒数的标题为列注释，DOCID 为列名；不点生成，全程没有写配置的请求。
 - 状态与证据：进行中（模拟验证和浏览器用例通过；待独立复核）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`。模拟验证：`tests/config/wizard.test.ts` 新增 1 条、`rules-role-layout.test.ts` 改期望（不带 `dataItems`）、契约测试加 `schema/objects` 的请求、响应和替代实现；`pnpm test` 42 个文件 590 passed（`pnpm-test.txt`），`pnpm typecheck`、`pnpm lint:deps` 通过。浏览器：后端 8097（本分支代码），setup 3 个、本卡 1 个 passed（`e2e-2.txt`）；第一次运行发现 NAutoComplete 选中时把下拉文字"T_COST_PINGGU_LQ（表）"填进输入框，改为 label 只放名称、用 render-label 显示类型后通过。
   - 与旧系统的差别：下拉中名称后加"（表）""（视图）"（旧系统只显示名称）；输入框共用一份下拉、只用最后一次输入的结果，与旧系统共用 `dbObjectOptions` 相同。
+
+### T-FC-6 配置页填菜单图标（第 8 批 G4）
+
+- 归属与目标：FC-16；C06 v26 菜单项的 `icon`。盘点 `.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B13（frontend-config 缺口第 8 条"菜单图标"）；用户 2026-10-31 回复"开始"。
+- 前置输入：contracts `MenuItem.icon`（C06 v26）。
+- 负责范围：`config/core/types.ts`（`MenuNode.icon`）、`views/menu-tree.ts`、`SectionBasicInfo.vue`、`DirectoryInfoPanel.vue`、`PageConfigPanel.vue`、`UnifiedConfigPage.vue`（配置、管理入口也打开目录信息）。
+- 交付物：页面"基本信息"和"目录信息"能选或输入图标，保存到菜单配置项。
+- 验收标准：模拟验证（`tests/config/menu-icon.test.ts`）：常用图标为旧系统的 20 个，输入的图标也在选项里；给"基础信息"设 `mdi:currency-usd`、清空后去掉 `icon`，其他项不变；页面"成本核算"的图标改在菜单项 COST_PINGGU 上。浏览器：目录信息给"基础信息"换成包裹图标并保存，菜单配置项中为 `mdi:package-variant`，之后改回。
+- 状态与证据：进行中（模拟验证通过；浏览器用例已写好，要保存带 `icon` 的菜单，待主代理合并后运行，待独立复核）。2026-10-31，第 8 批 G4，`batch8/admin-shell`：前端单元全部 594 passed，`pnpm typecheck`、`pnpm lint:deps` 通过。
+  - 与旧系统的差别：旧系统只在页面"基本信息"里改图标，"目录信息"只显示；新平台的目录信息本来就能改分组名称，图标也在这里改。

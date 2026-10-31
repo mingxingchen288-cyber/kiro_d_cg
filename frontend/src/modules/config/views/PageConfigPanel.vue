@@ -11,6 +11,7 @@ import { type PageCatalog, loadPageCatalog } from '../core/catalog';
 import { useConfigContext } from '../core/context';
 import { errorText } from '../core/errors';
 import { ItemEditor } from '../core/item-editor';
+import type { TypedItem } from '../core/store';
 import SectionFormLayout from '../layout/SectionFormLayout.vue';
 import ProblemList from '../components/ProblemList.vue';
 import SectionBasicInfo from './SectionBasicInfo.vue';
@@ -18,7 +19,8 @@ import SectionBehavior from './SectionBehavior.vue';
 import SectionExport from './SectionExport.vue';
 import SectionTables from './SectionTables.vue';
 
-const props = defineProps<{ pageCode: string; title: string }>();
+/** `menus`：菜单配置项，"基本信息"里改这个页面所在菜单项的图标（FC-16）；不给时不显示图标 */
+const props = defineProps<{ pageCode: string; title: string; menus?: Array<TypedItem<'menu'>> }>();
 const emit = defineEmits<{ refresh: [] }>();
 const { shell, store, notify } = useConfigContext();
 const page = new ItemEditor(store, 'page', notify);
@@ -71,7 +73,7 @@ onMounted(load);
       <NCollapse v-if="content" :default-expanded-names="['basic', 'tables']">
         <NCollapseItem title="基本信息" name="basic">
           <template #header-extra><span class="section-summary">/page/{{ pageCode }}</span></template>
-          <SectionBasicInfo :page="page" @saved="emit('refresh')" />
+          <SectionBasicInfo :page="page" :menus="menus ?? []" @saved="emit('refresh')" />
         </NCollapseItem>
         <NCollapseItem title="表与列" name="tables">
           <template #header-extra><span class="section-summary">{{ catalog?.tables.length ?? 0 }} 张表</span></template>

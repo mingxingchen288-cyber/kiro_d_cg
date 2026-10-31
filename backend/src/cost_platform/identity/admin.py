@@ -13,6 +13,7 @@ from cost_platform.contracts.types import (
     AccountCreate,
     AccountList,
     AccountUpdate,
+    AdvancedQuery,
     Department,
     DepartmentList,
     ErrorCode,
@@ -59,9 +60,11 @@ class AccountAdmin:
 
     # ------------------------------------------------------------ 账号
 
-    def list_accounts(self, keyword: str = "", start: int = 0, end: int = 50, role_code: str | None = None) -> AccountList:
-        """`role_code` 只列分配了该角色的账号（旧系统角色管理的"角色人员"列表），C09 没有这个参数，见 contract-gaps.md。"""
-        rows, total = self._accounts.list_accounts(keyword, start, end, role_code)
+    def list_accounts(self, keyword: str = "", start: int = 0, end: int = 50, role_code: str | None = None,
+                      advanced: AdvancedQuery | None = None) -> AccountList:
+        """`role_code` 只列分配了该角色的账号（旧系统角色管理的"角色人员"列表），C09 没有这个参数，见 contract-gaps.md。
+        `advanced` 为高级查询条件（ID-12，C09 v15）。"""
+        rows, total = self._accounts.list_accounts(keyword, start, end, role_code, advanced)
         return AccountList(rows=[to_account(r) for r in rows], total=total)
 
     def create_account(self, request: AccountCreate) -> Account:
@@ -73,13 +76,14 @@ class AccountAdmin:
         return to_account(created)
 
     def update_account(self, user_id: str, request: AccountUpdate) -> Account:
-        """ID-05：在一个事务内修改；提交后写入新的账号状态，停用账号或撤销角色时发布 `session.revoked`。"""
+        """ID-05：在一个事务内修改；提交后写入新的账号状态，停用账号或撤销角色时发布 `session.revoked`。
+        ID-11：带 `username` 时改账号名，会话按新的账号状态换成新账号名，不用重新登录。"""
         current = self._accounts.get(user_id)
         if current is None:
             raise PlatformError(ErrorCode.NOT_FOUND, f"账号 {user_id} 不存在")
         self._check_roles([c for c in request.role_codes if c not in current.role_codes])
         changed = self._accounts.update_account(user_id, request.display_name, request.department_id,
-                                                request.role_codes, request.enabled)
+                                                request.role_codes, request.enabled, request.username)
         if changed is None:
             raise PlatformError(ErrorCode.NOT_FOUND, f"账号 {user_id} 不存在")
         before, after = changed
@@ -111,8 +115,9 @@ class AccountAdmin:
 
     # ------------------------------------------------------------ 部门
 
-    def departments(self) -> DepartmentList:
-        return DepartmentList(items=[to_department(d) for d in self._accounts.departments()])
+    def departments(self, advanced: AdvancedQuery | None = None) -> DepartmentList:
+        """`advanced` 为高级查询条件（ID-12，C09 v15）。"""
+        return DepartmentList(items=[to_department(d) for d in self._accounts.departments(advanced)])
 
     def create_department(self, name: str, parent_id: str | None) -> Department:
         """旧系统部门管理页的新增；C09 没有这个接口，见 contract-gaps.md。"""

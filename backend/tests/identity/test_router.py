@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -192,6 +193,37 @@ def test_departments(client: TestClient) -> None:
     assert client.get("/api/admin/departments").json() == {"items": [renamed.json(), child]}
     assert client.delete(f"/api/admin/departments/{child['departmentId']}", headers=headers).status_code == 204
     assert client.get("/api/admin/departments").json() == {"items": [renamed.json()]}
+
+
+def test_rename_account_search_and_department_name(client: TestClient, env: Env) -> None:
+    """C09 v15 经 HTTP：PUT 带 username 改账号名（重名 422）；列表的 `advanced`；`/api/me` 的 departmentName。"""
+    headers = _admin(client)
+    dept = client.post("/api/admin/departments", headers=headers, json={"name": "技术中心", "parentId": None}).json()
+    uid = env.add_account("HY221020", PASSWORD, [ACCOUNTANT], display_name="韩群", department_id=dept["departmentId"])
+
+    renamed = client.put(f"/api/admin/accounts/{uid}", headers=headers, json={
+        "username": "HY221021", "displayName": "韩群", "departmentId": dept["departmentId"], "roleCodes": [ACCOUNTANT],
+        "enabled": True})
+    assert renamed.status_code == 200 and renamed.json()["username"] == "HY221021"
+    taken = client.put(f"/api/admin/accounts/{uid}", headers=headers, json={
+        "username": "admin", "displayName": "韩群", "departmentId": None, "roleCodes": [ACCOUNTANT], "enabled": True})
+    assert taken.status_code == 422 and taken.json()["details"][0]["field"] == "username"
+
+    advanced = json.dumps({"op": "and", "conditions": [{"field": "displayName", "operator": "like", "value": "韩"},
+                                                       {"field": "departmentId", "operator": "eq",
+                                                        "value": dept["departmentId"]}]})
+    listed = client.get("/api/admin/accounts", params={"startRow": 0, "endRow": 50, "advanced": advanced}).json()
+    assert [r["username"] for r in listed["rows"]] == ["HY221021"] and listed["total"] == 1
+    by_name = json.dumps({"op": "and", "conditions": [{"field": "name", "operator": "like", "value": "技术"}]})
+    assert client.get("/api/admin/departments", params={"advanced": by_name}).json()["items"] == [dept]
+    wrong = client.get("/api/admin/departments", params={"advanced": "{"})
+    assert wrong.status_code == 422 and wrong.json()["code"] == "VALIDATION_FAILED"
+
+    user = TestClient(_app(env))
+    assert user.post("/api/auth/login", headers={"Origin": ORIGIN},
+                     json={"username": "HY221021", "password": PASSWORD}).json()["user"]["departmentName"] == "技术中心"
+    assert user.get("/api/me").json()["user"] == {"userId": uid, "username": "HY221021", "displayName": "韩群",
+                                                  "departmentId": dept["departmentId"], "departmentName": "技术中心"}
 
 
 def test_change_own_password(client: TestClient, env: Env) -> None:

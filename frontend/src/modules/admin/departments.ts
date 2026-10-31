@@ -4,10 +4,11 @@
  * - 旧页面的列：ID、部门编码、部门名称，上级部门ID、排序两列隐藏。新系统没有部门编码和排序（identity contract-gaps
  *   第 3 条：cmx 中编码就是 `DEPT_<ID>`，排序全为 0），上级部门与旧页面一样不显示，修改时原样提交。
  * - 与旧页面相同：新增、删除先记在表格里，点"保存"时一起提交（新建、修改、删除各调一次接口）。
- * - 新建、修改、删除是 C09 之外的接口（contract-gaps 第 1 条）；部门列表是 C09 的 `GET /api/admin/departments`，
- *   没有查询条件，旧页面的"高级查询"没有做。
+ * - 新建、修改、删除是 C09 之外的接口（contract-gaps 第 1 条）；部门列表是 C09 的 `GET /api/admin/departments`。
+ * - 高级查询（FM-06）：按 ID、部门名称查（旧页面勾了"查询"的列），条件见 advanced-search.ts，经 C09 v15 的 `advanced` 提交。
  */
 import { reactive } from 'vue';
+import { type ConditionDraft, DEPARTMENT_SEARCH_FIELDS, buildAdvanced, presetConditions } from './advanced-search';
 import type { AdminDeps, Department } from './shared';
 import { messageOf } from './shared';
 
@@ -37,6 +38,9 @@ export class DepartmentsModel {
     rows: [] as DepartmentRow[],
     /** 已从表格删除、等保存时提交的部门 */
     deleted: [] as DepartmentRow[],
+    /** 高级查询对话框的条件和据此提交的 `advanced`（JSON 文本，C09 v15） */
+    searchDrafts: presetConditions(DEPARTMENT_SEARCH_FIELDS) as ConditionDraft[],
+    advanced: null as string | null,
     loading: false,
     saving: false,
     error: null as string | null
@@ -54,11 +58,20 @@ export class DepartmentsModel {
     return this.state.rows.find(r => r.id === id);
   }
 
+  /** 高级查询（FM-06）：按对话框的条件重新读取；未保存的修改不保留 */
+  async advancedSearch(drafts: ConditionDraft[]) {
+    this.state.searchDrafts = drafts;
+    const query = buildAdvanced(DEPARTMENT_SEARCH_FIELDS, drafts);
+    this.state.advanced = query ? JSON.stringify(query) : null;
+    await this.load();
+  }
+
   async load() {
     this.state.loading = true;
     this.state.error = null;
     try {
-      const list = await this.deps.api.departments();
+      const advanced = this.state.advanced;
+      const list = await this.deps.api.departments(advanced ? { advanced } : undefined);
       this.state.rows = list.items.map(rowOf);
       this.state.deleted = [];
     } catch (error) {

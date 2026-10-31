@@ -143,8 +143,8 @@ def _builtin(field: EntityField, code: str, ctx: ExecutionContext | None) -> Val
         "currentUserName": who.display_name,
         "currentDeptId": who.department_id,
         "currentRoleCode": who.role_code,
-        # 执行上下文只有部门编号，没有部门名称（C04），见 .reports/modules/write-pipeline/contract-gaps.md
-        "currentDeptName": None,
+        # C04 v2：identity 登录时填部门名称，同旧系统 useWorkingSetStore.ts 第 552–553 行 userInfo.departmentName
+        "currentDeptName": who.department_name,
     }.get(code)
     if raw is None:
         return None

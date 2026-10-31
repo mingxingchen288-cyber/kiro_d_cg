@@ -6,6 +6,7 @@
  * 1069 技术中心；人员 241 程苏慧（ADMIN）、343 汪春龙（008 采购）、381 朱文俊、383 韩群（技术中心）。
  * 投递记录和命令审查用 C09 第 7、7a 节的样例格式，编号为说明用的假设值。
  */
+import { type ErrorDetail, PlatformError } from '../../src/contracts/errors';
 import type { CommandReviewList, DeliveryList } from '../../src/contracts/http';
 import { createFakeShell } from '../../src/contracts/fakes/shell';
 import type { FakeCall } from '../../src/contracts/fakes/http';
@@ -33,6 +34,22 @@ const account = (userId: string, username: string, displayName: string, departme
 
 const query = (call: FakeCall) => call.options?.query ?? {};
 const num = (value: unknown, fallback: number) => (value === undefined || value === null ? fallback : Number(value));
+
+type Condition = { field: string; operator: string; value: unknown };
+
+/** C09 v15 `advanced` 的替代实现：只实现用例用到的运算符（文本不分大小写的包含、等于、IN、是非等于），条件之间为且 */
+function matches(row: Record<string, unknown>, advanced: unknown) {
+  if (!advanced) return true;
+  const { conditions } = JSON.parse(String(advanced)) as { conditions: Condition[] };
+  return conditions.every(({ field, operator, value }) => {
+    const actual = row[field];
+    const text = String(actual ?? '').toLowerCase();
+    if (operator === 'like') return text.includes(String(value).toLowerCase());
+    if (operator === 'eq') return typeof value === 'boolean' ? actual === value : text === String(value).toLowerCase();
+    if (operator === 'in') return (value as unknown[]).map(v => String(v).toLowerCase()).includes(text);
+    throw new Error(`替代实现没有运算符 ${operator}`);
+  });
+}
 
 export class FakeAdminBackend {
   accounts: Account[] = [
@@ -87,7 +104,8 @@ export class FakeAdminBackend {
       const rows = this.accounts.filter(
         a =>
           (!word || a.username.toLowerCase().includes(word) || a.displayName.toLowerCase().includes(word)) &&
-          (!role || a.roleCodes.includes(role))
+          (!role || a.roleCodes.includes(role)) &&
+          matches(a, q.advanced)
       );
       return structuredClone({ rows: rows.slice(num(q.startRow, 0), num(q.endRow, 50)), total: rows.length });
     });
@@ -107,8 +125,15 @@ export class FakeAdminBackend {
       return structuredClone(created);
     });
     http.on('PUT', '/api/admin/accounts/:userId', (call: FakeCall) => {
-      const body = call.body as Omit<Account, 'userId' | 'username'>;
+      const body = call.body as Omit<Account, 'userId' | 'username'> & { username?: string };
       const found = this.accounts.find(a => a.userId === call.params.userId)!;
+      if (body.username !== undefined && body.username !== found.username) {
+        if (this.accounts.some(a => a.username === body.username)) {
+          const message = `账号名 ${body.username} 已存在`;
+          throw new PlatformError(422, 'VALIDATION_FAILED', message, [{ message, field: 'username' } as ErrorDetail]);
+        }
+        found.username = body.username;
+      }
       Object.assign(found, {
         displayName: body.displayName,
         departmentId: body.departmentId,
@@ -120,7 +145,9 @@ export class FakeAdminBackend {
     http.on('POST', '/api/admin/accounts/:userId/password', (call: FakeCall) => {
       this.passwords.set(call.params.userId, (call.body as { password: string }).password);
     });
-    http.on('GET', '/api/admin/departments', () => structuredClone({ items: this.departments }));
+    http.on('GET', '/api/admin/departments', (call: FakeCall) =>
+      structuredClone({ items: this.departments.filter(d => matches(d, query(call).advanced)) })
+    );
     http.on('POST', '/api/admin/departments', (call: FakeCall) => {
       const body = call.body as { name: string; parentId: string | null };
       this.nextDepartment += 1;
@@ -177,7 +204,7 @@ export class FakeAdminBackend {
 /** 管理员（ADMIN 角色）打开管理功能：后端替代、依赖、确认框的记录 */
 export function openAdmin() {
   const fake = createFakeShell({
-    user: { userId: '241', username: 'HY260404', displayName: '程苏慧', departmentId: '581' },
+    user: { userId: '241', username: 'HY260404', displayName: '程苏慧', departmentId: '581', departmentName: '市场部' },
     role: ADMIN_ROLE
   });
   const backend = new FakeAdminBackend(fake);

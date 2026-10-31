@@ -38,3 +38,12 @@
 - 验收标准：模拟验证（`tests/shell/todo-count.test.ts`）：会话就绪时以后台请求读 `box=todo` 的条数；`refresh` 后跟着变；收到审批通知重新读、其他通知不读；每 60 秒读一次，会话结束后不再读、清零。业务例子：见 frontend-approval T-FA-2 的 `batch7-approval.spec.ts`（第 2、5 步：admin 的角标等于待我审批数、通过后少一个；从"原单据"打开后地址不带 `record`）。
 - 状态与证据：模拟验证和浏览器业务例子通过，待独立复核（2026-10-31，AP 组，`batch7/approval-history`，本卡所在的提交；原始输出在 `.reports/batch7-20261030/ap-approval/`，`pnpm-test.txt`、`e2e-2.txt`）。
   - 与旧系统的差别：旧系统只靠 60 秒轮询和本页处理后刷新；新平台另按站内通知实时刷新。
+
+### T-FS-4 菜单图标（第 8 批 G4）
+- 归属与目标：FS-08；C06 v26、C09 v15 菜单项的 `icon`。盘点 `.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B13，`乙-旧系统功能对照.md` 第 2.13 节；用户 2026-10-31 回复"开始"。
+- 前置输入：config 的菜单配置带 `icon`（contracts `MenuItem.icon`）；frontend-config T-FC-6 能填图标。
+- 负责范围：`modules/shell/menus.ts`（`buildMenus` 带上 `icon`）；seed `backend/seed/config/menu.main.json` 按旧 `T_COST_RESOURCE.ICON` 补图标。
+- 交付物：左侧菜单的分组和菜单项按配置显示图标，没配的用默认图标 `mdi:menu`。
+- 验收标准：模拟验证（`tests/shell/menus.test.ts`）：成本、成本核算为 `mdi:calculator-variant`，基础信息为 `mdi:currency-usd`，配置为 `mdi:database-cog`，物料清单及成本没配时不带 `icon`。浏览器：d_cg 的 menu.main 补了图标后，左侧菜单成本核算、基础信息、系统管理的图标与 `@iconify-json/mdi` 中的 calculator-variant、currency-usd、cog 相同。
+- 状态与证据：进行中（模拟验证通过；浏览器用例已写好，待主代理合并后运行，待独立复核）。2026-10-31，第 8 批 G4，`batch8/admin-shell`：前端单元全部 594 passed。main 的代码读不了带 `icon` 的菜单（`MenuItem` 不允许多余字段），按 `共同约定.md` 第 3 节没有写 d_cg；合并后由主代理执行 `.reports/batch8-20261031/g4-admin-shell/set_menu_icons.py` 给 d_cg 的 menu.main 补图标，再跑 `frontend/tests/e2e/batch8-admin-shell.spec.ts` 的"菜单图标"。
+  - seed 的图标来源：成本核算 ← 旧"物料成本核算表"、基础信息 ← 旧"基础信息"、物料清单及成本 ← 旧 goods-price-manage、配置 ← 旧"元数据配置"、系统管理 ← 旧"系统管理"；"成本"分组旧系统没有（旧"物料成本核算表"在顶层），用它唯一下级的图标。

@@ -71,13 +71,15 @@ export function createPlatformApi(http: HttpClient) {
     selectRole: (roleCode: string) => http.post<SelectRoleResponse>('/api/auth/role', { roleCode }),
     logout: () => http.post<void>('/api/auth/logout'),
     me: (background?: boolean) => http.get<MeResponse>('/api/me', bg(background)),
-    listAccounts: (query: { keyword?: string; startRow: number; endRow: number }) =>
+    /** `advanced`（C09 v15）：高级查询条件的 JSON 文本，格式同第 4 节的 `advanced` */
+    listAccounts: (query: { keyword?: string; startRow: number; endRow: number; advanced?: string }) =>
       http.get<AccountList>('/api/admin/accounts', { query }),
     createAccount: (body: AccountCreate) => http.post<Account>('/api/admin/accounts', body),
     updateAccount: (userId: string, body: AccountUpdate) => http.put<Account>(`/api/admin/accounts/${e(userId)}`, body),
     changePassword: (userId: string, password: string) =>
       http.post<void>(`/api/admin/accounts/${e(userId)}/password`, { password }),
-    departments: () => http.get<DepartmentList>('/api/admin/departments'),
+    departments: (query?: { advanced?: string }) =>
+      http.get<DepartmentList>('/api/admin/departments', query?.advanced ? { query } : undefined),
 
     // ---- 3. config
     pageView: (pageCode: string, background?: boolean) =>

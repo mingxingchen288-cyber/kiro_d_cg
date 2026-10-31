@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * 目录信息，同旧系统 DirectoryInfoPanel.vue（名称、编码、子页面表格）；菜单是 `menu` 配置项（C06 第 9 节），
- * 这里另外可以改分组名称、新增子分组或配置 / 管理入口、删除空分组，改动后保存这个菜单配置项（先校验）。
+ * 目录信息，同旧系统 DirectoryInfoPanel.vue（名称、编码、图标、子页面表格）；菜单是 `menu` 配置项（C06 第 9 节），
+ * 这里另外可以改分组名称和图标（FC-16，旧目录信息只显示图标）、新增子分组或配置 / 管理入口、删除空分组，
+ * 改动后保存这个菜单配置项（先校验）。配置、管理入口也在这里改名称和图标。
  */
 import { computed, h, ref } from 'vue';
 import { NAlert, NButton, NDataTable, NDescriptions, NDescriptionsItem, NInput, NPopconfirm, NSelect, NSpace } from 'naive-ui';
@@ -9,14 +10,18 @@ import { useConfigContext } from '../core/context';
 import type { ConfigProblem } from '../core/errors';
 import type { TypedItem } from '../core/store';
 import type { MenuNode } from '../core/types';
-import { type TreeNode, findNode, removeNode } from './menu-tree';
+import { type TreeNode, findNode, iconOptions, removeNode, setNodeIcon } from './menu-tree';
 
 const props = defineProps<{ node: TreeNode; menus: Array<TypedItem<'menu'>> }>();
 const emit = defineEmits<{ select: [key: string]; refresh: [] }>();
 const { store, notify } = useConfigContext();
 const menu = computed(() => props.menus.find(m => m.key === props.node.menuKey));
 const group = computed(() => (menu.value && props.node.nodeKey ? findNode(menu.value.content.items, props.node.nodeKey) : null));
+/** 分组能加下级；配置、管理入口只改名称和图标 */
+const isEntry = computed(() => props.node.kind === 'config' || props.node.kind === 'admin');
 const title = ref(props.node.label);
+/** 菜单图标（FC-16，C06 v26）：菜单配置项本身没有图标 */
+const icon = ref<string | null>(group.value?.icon ?? null);
 const newKey = ref('');
 const newTitle = ref('');
 const newKind = ref<MenuNode['kind']>('group');
@@ -53,6 +58,10 @@ function rename() {
   });
 }
 
+function saveIcon() {
+  return saveMenu(items => setNodeIcon(items, props.node.nodeKey!, icon.value));
+}
+
 function addChild() {
   const item: MenuNode = { key: newKey.value.trim(), title: newTitle.value.trim(), kind: newKind.value };
   if (!item.key || !item.title) return notify.warning('请填写编码和名称');
@@ -72,7 +81,7 @@ function removeGroup() {
 
 <template>
   <div class="directory-info-panel">
-    <h3 class="panel-title">{{ node.label }} ({{ node.kind === 'menu' ? '菜单' : '目录' }})</h3>
+    <h3 class="panel-title">{{ node.label }} ({{ node.kind === 'menu' ? '菜单' : isEntry ? '入口' : '目录' }})</h3>
     <NDescriptions bordered :column="2" size="small" class="info-section">
       <NDescriptionsItem label="名称">
         <NSpace size="small">
@@ -81,17 +90,32 @@ function removeGroup() {
         </NSpace>
       </NDescriptionsItem>
       <NDescriptionsItem label="编码">{{ node.nodeKey ?? menu?.key }}</NDescriptionsItem>
+      <NDescriptionsItem v-if="group" label="图标">
+        <NSpace size="small" data-testid="menu-icon">
+          <NSelect
+            v-model:value="icon"
+            :options="iconOptions(icon)"
+            filterable
+            tag
+            clearable
+            size="small"
+            placeholder="选择或输入图标"
+            style="width: 200px"
+          />
+          <NButton size="small" type="primary" @click="saveIcon">保存</NButton>
+        </NSpace>
+      </NDescriptionsItem>
       <NDescriptionsItem label="菜单配置项">{{ menu?.name }} · {{ menu?.key }} · 版本 {{ menu?.version }}</NDescriptionsItem>
-      <NDescriptionsItem label="下级">{{ children.length }} 项</NDescriptionsItem>
+      <NDescriptionsItem v-if="!isEntry" label="下级">{{ children.length }} 项</NDescriptionsItem>
     </NDescriptions>
 
-    <div class="child-pages">
+    <div v-if="!isEntry" class="child-pages">
       <h4>下级 ({{ children.length }})</h4>
       <NDataTable v-if="children.length" :columns="columns" :data="children" :row-key="(row: TreeNode) => row.key" size="small" :bordered="false" :max-height="400" />
       <p v-else class="empty-hint">暂无下级</p>
     </div>
 
-    <div class="child-pages">
+    <div v-if="!isEntry" class="child-pages">
       <h4>新增下级</h4>
       <NSpace size="small">
         <NSelect v-model:value="newKind" size="small" style="width: 140px" :options="[{ label: '分组', value: 'group' }, { label: '配置入口', value: 'config' }, { label: '管理入口', value: 'admin' }]" />

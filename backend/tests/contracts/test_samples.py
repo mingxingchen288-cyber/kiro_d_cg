@@ -42,7 +42,7 @@ _UUID = "3f2b6c1e-8a4d-4c2e-9b1a-0d6e5f7a8b9c"
 _TMP = "tmp-6a1f2c3d-0b4e-4f5a-8c7d-9e0f1a2b3c4d"
 _FP = "sha256:5b1e0c6d9a3f47e28b1c6d0e9f3a2b4c5d6e7f8091a2b3c4d5e6f708192a3b4c"
 _ROW = {"rowKey": "1001", "values": {"QTY": "12"}, "frozen": None}
-_USER = {"userId": "112", "username": "yangna", "displayName": "杨娜", "departmentId": "10"}
+_USER = {"userId": "112", "username": "yangna", "displayName": "杨娜", "departmentId": "10", "departmentName": "成本部"}
 _ROLE = {"code": "COST_ACCOUNTANT", "name": "成本会计", "admin": False}
 
 
@@ -123,6 +123,8 @@ SAMPLES: list[tuple[str, Any, Any]] = [
 INLINE: list[tuple[str, Any, Any]] = [
     ("C09 选角色请求", {"roleCode": "COST_ACCOUNTANT"}, t.SelectRoleRequest),
     ("C09 修改账号", {"displayName": "张三", "departmentId": "10", "roleCodes": [], "enabled": False}, t.AccountUpdate),
+    ("C09 修改账号（改账号名）", {"username": "zhangsan2", "displayName": "张三", "departmentId": "10", "roleCodes": [],
+                          "enabled": True}, t.AccountUpdate),
     ("C09 部门列表", {"items": [{"departmentId": "10", "name": "成本部", "parentId": None}]}, t.DepartmentList),
     ("C09 配置项列表", {"items": [{"type": "page", "key": "COST_PINGGU", "name": "成本核算", "version": 13, "updatedBy": "1",
                                "updatedAt": "2026-10-24T10:00:00"}]}, t.ConfigItemList),
@@ -172,6 +174,11 @@ INLINE: list[tuple[str, Any, Any]] = [
     ("C09 选角色响应", {"selectedRole": _ROLE}, t.SelectRoleResponse),
     ("C09 当前用户", {"user": _USER, "role": _ROLE, "menus": [{"key": "cost", "title": "成本", "kind": "group", "children": [
         {"key": "COST_PINGGU", "title": "成本核算", "kind": "page", "pageCode": "COST_PINGGU"}]}], "configVersion": 13, "csrfToken": "c"},
+     t.MeResponse),
+    ("C09 当前用户（菜单带图标、没有部门）", {"user": {**_USER, "departmentId": None, "departmentName": None}, "role": _ROLE,
+                                  "menus": [{"key": "cost", "title": "成本", "kind": "group", "icon": "mdi:currency-usd", "children": [
+                                      {"key": "COST_PINGGU", "title": "成本核算", "kind": "page", "pageCode": "COST_PINGGU",
+                                       "icon": "mdi:calculator-variant"}]}], "configVersion": 13, "csrfToken": "c"},
      t.MeResponse),
     ("C09 账号列表", {"rows": [{"userId": "112", "username": "yangna", "displayName": "杨娜", "departmentId": "10", "enabled": True,
                                "roleCodes": ["COST_ACCOUNTANT"]}], "total": 120}, t.AccountList),

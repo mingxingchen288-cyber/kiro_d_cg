@@ -6,9 +6,12 @@
  * - 旧页面的"删除"在新系统用"停用"代替（identity contract-gaps 第 5 条）；停用前确认并提示立即下线（FM-02）。
  * - 旧页面的"初始化密码"把密码重置为固定的 `Abc123..`（旧后端 `UserService.DEFAULT_PASSWORD`）；
  *   新系统改密码接口要求给出密码，界面预填这个值，管理员可以改。新增账号的初始密码同样预填它。
- * - 账号名建好后不能改：C09 的 `AccountUpdate` 没有 `username`（contract-gaps 第 3 条）。
+ * - 已有账号的账号名可以改（FM-05，C09 v15 `AccountUpdate.username`）：同旧系统"用户名"列可编辑（cmx CostUser 的
+ *   USERNAME 为 EDITABLE=1）；改了才提交 `username`，重名时后端返回 422，提示"账号名 … 已存在"。改名后这个人用新账号名登录。
+ * - 高级查询（FM-06）：条件见 advanced-search.ts，查询时与关键字一起提交（C09 v15 `advanced`）。
  */
 import { reactive } from 'vue';
+import { ACCOUNT_SEARCH_FIELDS, type ConditionDraft, buildAdvanced, presetConditions } from './advanced-search';
 import type { AdminDeps, Department, RoleItem } from './shared';
 import { type Account, loadAll, loadRoles, messageOf } from './shared';
 
@@ -56,6 +59,9 @@ export class AccountsModel {
     departments: [] as Department[],
     roles: [] as RoleItem[],
     keyword: '',
+    /** 高级查询对话框的条件（下次打开时还在）和据此提交的 `advanced`（JSON 文本，C09 v15） */
+    searchDrafts: presetConditions(ACCOUNT_SEARCH_FIELDS) as ConditionDraft[],
+    advanced: null as string | null,
     loading: false,
     saving: false,
     error: null as string | null
@@ -122,6 +128,14 @@ export class AccountsModel {
     await this.reload();
   }
 
+  /** 高级查询（FM-06）：按对话框的条件查询，与关键字是且；没有起作用的条件时查全部。未保存的修改不保留 */
+  async advancedSearch(drafts: ConditionDraft[]) {
+    this.state.searchDrafts = drafts;
+    const query = buildAdvanced(ACCOUNT_SEARCH_FIELDS, drafts);
+    this.state.advanced = query ? JSON.stringify(query) : null;
+    await this.reload();
+  }
+
   async reload() {
     this.state.loading = true;
     this.state.error = null;
@@ -154,11 +168,11 @@ export class AccountsModel {
     return row.id;
   }
 
-  /** 表格内修改一格；账号名和初始密码只有新增的行能改 */
+  /** 表格内修改一格；初始密码只有新增的行能改，账号名已有的行也能改（FM-05） */
   edit(id: string, field: AccountField, value: string | null) {
     const row = this.row(id);
     if (!row) return;
-    if ((field === 'username' || field === 'password') && !row.isNew) return;
+    if (field === 'password' && !row.isNew) return;
     const next = { ...row, changed: !row.isNew };
     if (field === 'departmentId') next.departmentId = value || null;
     else next[field] = value ?? '';
@@ -181,6 +195,7 @@ export class AccountsModel {
               roleCodes: [...row.roleCodes]
             })
           : await this.deps.api.updateAccount(row.userId!, {
+              ...(row.username.trim() !== row.saved?.username ? { username: row.username.trim() } : {}),
               displayName: row.displayName.trim(),
               departmentId: row.departmentId,
               roleCodes: [...row.roleCodes],
@@ -250,7 +265,10 @@ export class AccountsModel {
 
   private async fetchAccounts() {
     const keyword = this.state.keyword || undefined;
-    const rows = await loadAll((startRow, endRow) => this.deps.api.listAccounts({ keyword, startRow, endRow }));
+    const advanced = this.state.advanced;
+    const rows = await loadAll((startRow, endRow) =>
+      this.deps.api.listAccounts({ keyword, startRow, endRow, ...(advanced ? { advanced } : {}) })
+    );
     return rows.map(rowOf);
   }
 

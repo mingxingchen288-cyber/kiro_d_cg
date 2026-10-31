@@ -82,7 +82,7 @@ def _same(expected: str, given: str | None) -> bool:
 
 def _current_user(data: SessionData) -> CurrentUser:
     return CurrentUser(user_id=data.user_id, username=data.username, display_name=data.display_name,
-                       department_id=data.department_id)
+                       department_id=data.department_id, department_name=data.department_name)
 
 
 class IdentityService:
@@ -127,7 +127,7 @@ class IdentityService:
         session_id = f"{account.user_id}.{self._token()}"
         data = SessionData(user_id=account.user_id, username=account.username, display_name=account.display_name,
                            department_id=account.department_id, role_code=selected.code if selected else None,
-                           csrf_token=self._token(), version=account.version)
+                           csrf_token=self._token(), version=account.version, department_name=account.department_name)
         self._sessions.put(session_id, data, self._clock.now(), self._idle)
         return session_id, LoginResponse(user=_current_user(data), roles=roles, selected_role=selected,
                                          csrf_token=data.csrf_token)
@@ -165,15 +165,24 @@ class IdentityService:
     # ------------------------------------------------------------ 会话
 
     def session(self, session_id: str | None, touch: bool = False) -> tuple[CurrentUser, str | None, str]:
-        """`/api/me` 用：会话中的用户、选定的角色（没有选定时为 None）和 CSRF 令牌。"""
+        """`/api/me` 用：会话中的用户、选定的角色（没有选定时为 None）和 CSRF 令牌。
+
+        部门名称按数据库重新读取，变了就写回会话（ID-09；同旧系统 `AuthService.getUserInfo` 每次按部门编号查部门名称，
+        旧前端在登录和刷新页面时调用），所以部门改名后，已登录的人刷新页面后，页面和保存都用新名称。"""
         data, _ = self._check(session_id, None, is_write=False, touch=touch, require_role=False)
+        found = self._accounts.department(data.department_id) if data.department_id is not None else None
+        name = found.name if found is not None else None
+        if name != data.department_name:
+            data = replace(data, department_name=name)
+            self._sessions.replace(session_id or "", data)
         return _current_user(data), data.role_code, data.csrf_token
 
     def authenticate(self, session_id: str | None, csrf_token: str | None, is_write: bool, touch: bool = True) -> Identity:
         """C08 第 3 节。失败时抛 SESSION_REQUIRED、SESSION_ROLE_REVOKED、ROLE_SELECTION_REQUIRED、CSRF_FAILED。"""
         data, _ = self._check(session_id, csrf_token, is_write=is_write, touch=touch, require_role=True)
         return Identity(user_id=data.user_id, username=data.username, display_name=data.display_name,
-                        department_id=data.department_id, role_code=data.role_code or "", session_id=session_id or "")
+                        department_id=data.department_id, role_code=data.role_code or "", session_id=session_id or "",
+                        department_name=data.department_name)
 
     def _check(self, session_id: str | None, csrf_token: str | None, *, is_write: bool, touch: bool,
                require_role: bool, allow_revoked_role: bool = False) -> tuple[SessionData, AccountState]:

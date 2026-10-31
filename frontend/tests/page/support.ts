@@ -234,7 +234,7 @@ export async function openCostPage(
   deps: Partial<PageRuntimeDeps> = {}
 ) {
   const fake = createFakeShell({
-    user: { userId: '1', username: 'zhangsan', displayName: '张三', departmentId: '10' },
+    user: { userId: '1', username: 'zhangsan', displayName: '张三', departmentId: '10', departmentName: '成本部' },
     role: { code: 'COST_ACCOUNTANT', name: '成本会计', admin: false }
   });
   setup?.(fake);

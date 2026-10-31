@@ -47,7 +47,9 @@ export const CurrentUser = object('CurrentUser', {
   userId: decimalText,
   username: str,
   displayName: str,
-  departmentId: nullable(key)
+  departmentId: nullable(key),
+  /** C09 v15：部门名称（默认值"当前部门名称"）；没有部门时为 null */
+  departmentName: nullable(str)
 });
 export type CurrentUser = Infer<typeof CurrentUser>;
 
@@ -59,6 +61,8 @@ export interface MenuItem {
   title: string;
   kind: 'group' | 'page' | 'config' | 'admin';
   pageCode?: string | null;
+  /** C09 v15、C06 v26：Iconify 图标名，例如 mdi:calculator-variant；省略时外壳用默认图标 */
+  icon?: string | null;
   children?: MenuItem[];
 }
 export const MenuItem: Schema<MenuItem> = object('MenuItem', {
@@ -66,6 +70,7 @@ export const MenuItem: Schema<MenuItem> = object('MenuItem', {
   title: str,
   kind: literal('group', 'page', 'config', 'admin'),
   pageCode: optional(nullable(code)),
+  icon: optional(nullable(str)),
   children: optional(array(lazy(() => MenuItem)))
 });
 
@@ -130,7 +135,9 @@ export const AccountUpdate = object('AccountUpdate', {
   displayName: str,
   departmentId: nullable(key),
   roleCodes: array(code),
-  enabled: bool
+  enabled: bool,
+  /** C09 v15：改账号名；省略时不改 */
+  username: optional(str)
 });
 export type AccountUpdate = Infer<typeof AccountUpdate>;
 export const PasswordChange = object('PasswordChange', { password: str });
