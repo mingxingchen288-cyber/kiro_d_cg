@@ -1,7 +1,8 @@
 /**
  * 物料清单的"产品选择(按物料)导出"（第 8 批 G3；seed `export.goods-price-pgoods-export`，同旧系统导出编码
  * goods-price-pgoods-export，cmx T_COST_EXPORT_CONFIG 21，旧页面 goods-price-manage 主表右键"自定义导出"）：
- * admin 打开物料清单（/page/GOODS_PRICE_MANAGE），按物料ID 筛选 406，主表右键 → 自定义导出 →
+ * admin 打开物料清单（/page/GOODS_PRICE_MANAGE），按物料ID 筛选 859（盐酸度硫平，3 张成本单用到；不在别的用例复制的
+ * 成本单 200680、200721 和产品 392 的 BOM 里：它们并行建的测试单据会让导出多出行），主表右键 → 自定义导出 →
  * "产品选择(按物料)导出 - 导出当前"，浏览器下载"产品选择(按物料)导出.xlsx"。
  * backend/tests/e2e/pgoods_export.py 按旧代码 CustomExportService 推出旧系统对同样筛选会写出的文件（只读查 d_cg），逐格比较：
  * 文件名、唯一一张工作表"产品选择(按物料)"、表头（旧配置没写列，取第一行结果 HashMap 的键）、每一行每一格的类型和值。
@@ -10,9 +11,9 @@
 import { backendScript, cell, expect, filterColumn, masterGrid, openPage, test, toast } from './support';
 
 const PAGE = 'GOODS_PRICE_MANAGE';
-const GOODS = '406';
+const GOODS = '859';
 
-test('admin 按物料ID 筛选 406，右键"产品选择(按物料)导出 - 导出当前"，下载的文件与旧系统逐格一致', async ({
+test('admin 按物料ID 筛选 859，右键"产品选择(按物料)导出 - 导出当前"，下载的文件与旧系统逐格一致', async ({
   page
 }, testInfo) => {
   await openPage(page, PAGE);
@@ -31,7 +32,7 @@ test('admin 按物料ID 筛选 406，右键"产品选择(按物料)导出 - 导�
     current.click()
   ]);
   await toast(page, '导出已开始');
-  // 导出当前带主表当前的筛选（物料ID 406）：旧系统接 WHERE EXISTS (页面视图 p.GOODSID = m.GOODSID 且筛选)
+  // 导出当前带主表当前的筛选（物料ID 859）：旧系统接 WHERE EXISTS (页面视图 p.GOODSID = m.GOODSID 且筛选)
   const body = request.postDataJSON();
   expect(body).toMatchObject({ mode: 'config', exportCode: 'goods-price-pgoods-export', scope: 'current' });
   expect(String(body.request.filterModel.GOODSID.filter)).toBe(GOODS);

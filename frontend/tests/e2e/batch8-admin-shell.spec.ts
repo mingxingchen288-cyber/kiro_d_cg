@@ -187,7 +187,20 @@ test(
   { lock: 'page.COST_PINGGU', tag: '@shared-config' },
   async ({ fresh, apiOf, data, adminApi }) => {
     const department = await testDepartment(adminApi, data);
-    const account = await data.account({ roleCodes: ['COST_ACCOUNTANT'], departmentId: department.departmentId });
+    // 新建成本单要主表的"新增"（第 7 批区域权限 master:addRow）；d_cg 的成本会计没有，用测试角色
+    const suffix = crypto.randomUUID().slice(0, 6).toUpperCase();
+    const code = `PF_TEST_DEPT_${suffix}`;
+    const name = `PF_TEST部门默认值${suffix}`;
+    data.adoptConfig(`role/${code}`);
+    await adminApi.ok('PUT', `/api/config/items/role/${code}`, {
+      name,
+      content: {
+        name,
+        admin: false,
+        pages: { COST_PINGGU: { buttons: ['system:save', 'master:addRow', 'master:modify'] } }
+      }
+    });
+    const account = await data.account({ roleCodes: [code], departmentId: department.departmentId });
     const entity = await adminApi.get('/api/config/items/entity/COST_PINGGU');
     const content = structuredClone(entity.content);
     const field = content.fields.find((f: { name: string }) => f.name === 'PACKTYPE');

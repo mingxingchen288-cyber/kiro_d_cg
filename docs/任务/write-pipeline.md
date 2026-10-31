@@ -154,7 +154,7 @@
 - 负责范围：`pipeline/migrations/wp_0003_audit_log_view.py`（`CREATE OR REPLACE VIEW PF_AUDIT_LOG_V`，依赖 id_0001、cf_0001）。审计差异中字段是对象的键，Oracle 19c 的 JSON_TABLE 取不到键名，先用正则改写成数组再展开（写法见迁移文件开头）。
 - 交付物：视图 `PF_AUDIT_LOG_V`。
 - 验收标准：真实验证（d_cg）：admin 在成本核算改了单据 200680 主表的备注（空 → PF_TEST审计）、原辅料一行的客户指定（否 → 是），又删了一行原辅料：视图给出每个字段一行，操作类型为 UPDATE、DELETE，字段标题、表名称取实体配置，用户为登录名 admin，时间为命令的开始、完成时间。
-- 状态与证据：进行中（真实验证通过；视图待主代理合并后执行 `platform db upgrade` 建立，待独立复核）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`，报告 `.reports/batch8-20261031/g3-audit-export/报告.md`。
+- 状态与证据：进行中（真实验证通过；视图已在 d_cg（G3 起本分支后端时启动迁移建的，合并后 `platform db upgrade` 报已是最新），待独立复核）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`，报告 `.reports/batch8-20261031/g3-audit-export/报告.md`。
   - 真实验证：`tests/pipeline/test_oracle_audit_log_view.py`（测试自己插一条命令记录，审计差异按 `command_log.audit_rows` 生成，直接执行迁移中的查询，结束时删掉这条记录）1 passed，`.reports/batch8-20261031/g3-audit-export/pytest-wp22-oracle.txt`；本组相关真实测试合计 30 passed（`pytest-real-g3.txt`）。
   - 没有在 d_cg 执行 `platform db upgrade`：执行后 `PF_ALEMBIC_VERSION` 多出 wp_0003，别的分支的代码找不到这个版本。
 

@@ -63,5 +63,5 @@
 - 状态与证据：进行中（模拟、真实、浏览器业务例子通过，待独立复核）。2026-10-31，第 8 批 G4，分支 `batch8/admin-shell`，原始输出在 `.reports/batch8-20261031/g4-admin-shell/`：
   - 模拟：`tests/identity/test_rename_and_department_name.py` 5 个、`test_search.py` 4 个、`test_router.py::test_rename_account_search_and_department_name`、`tests/pipeline/test_default_dept_name.py`；后端模拟全部 1322 passed。
   - 真实：`tests/identity/test_oracle.py::test_rename_account_on_oracle`、`test_advanced_search_and_department_name_on_oracle`；`-m "oracle or redis" tests/identity` 16 passed（含 Redis 会话）。
-  - 浏览器：`frontend/tests/e2e/batch8-admin-shell.spec.ts` 的"改已有账号的用户名"、"人员管理高级查询"、"部门管理高级查询"3 个 passed（`e2e-2.txt`）。"默认值'当前部门名称'"用例要临时改成本核算的实体配置，按 `共同约定.md` 第 3 节待主代理合并后运行。
+  - 浏览器：`frontend/tests/e2e/batch8-admin-shell.spec.ts` 的"改已有账号的用户名"、"人员管理高级查询"、"部门管理高级查询"3 个 passed（`e2e-2.txt`）。"默认值'当前部门名称'"用例要临时改成本核算的实体配置，按 `共同约定.md` 第 3 节待主代理合并后运行；合并后运行时发现测试账号用的成本会计没有主表"新增"（第 7 批区域权限），改用测试角色（保存、主表新增、主表修改）后通过（`e2e-6.txt`）。
   - 与旧系统的差别：改名后已登录的会话马上换成新账号名（新平台的会话按账号版本刷新）；旧系统 JWT 带旧账号名到重新登录为止。历史 `UPDATE_BY` 都不改，与旧系统相同。

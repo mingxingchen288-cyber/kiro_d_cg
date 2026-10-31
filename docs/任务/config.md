@@ -100,7 +100,7 @@
 - 交付物：三个页面由通用页面按页面编码打开（`/page/GOODS_MANAGE`、`/page/CUSTOMER_MANAGE`、`/page/FORMONEY_MANAGE`）。菜单项由主代理加在"基础信息"（`basic`）下：产品信息维护（排序 2，`mdi:package-variant`）、客户信息（3，`mdi:account-box`）、外币管理（10，`mdi:currency-usd`）。
 - 接入责任：主代理合并后执行 `.reports/batch8-20261031/g1-basic-pages/save_g1_config.py after-merge`（经 8080 写外币管理的 4 项、把产品实体换成带 `createdByColumn` 的内容、ADMIN 加外币管理），再加菜单项。
 - 验收标准：业务例子（浏览器、d_cg，`frontend/tests/e2e/basic-pages-1031.spec.ts` 第一个用例）：客户信息新增客户和一个分销商；产品信息维护新增产品，客户 ID 经客户 Lookup 选这个客户，带出客户名称、国家、分销商；保存后华益代码为 `OV` 加产品ID、创建人为 admin；成本核算的客户选择、产品选择能选到它们（产品的 BOM 状态为"ERP未搭建BOM"）；ERP 产品 392、ERP 客户 86 和它的分销商整行绿底、不能改。真实验证：同一流程经真实写入管道在 d_cg 上执行（`tests/operations/test_basic_pages_oracle.py`）。
-- 状态与证据：进行中（模拟验证、真实验证通过；浏览器用例已写好，待主代理合并后运行；待独立复核）。2026-10-31 第 8 批 G1，分支 `batch8/basic-pages`，报告 `.reports/batch8-20261031/g1-basic-pages/报告.md`。
+- 状态与证据：进行中（模拟验证、真实验证、浏览器用例通过；待独立复核）。合并后（2026-10-31，main）主代理运行：浏览器用例全部通过（`.reports/batch8-20261031/merge/e2e-6.txt`，57 passed），后端真实测试 217 passed（`pytest-real-1.txt`）。2026-10-31 第 8 批 G1，分支 `batch8/basic-pages`，报告 `.reports/batch8-20261031/g1-basic-pages/报告.md`。
   - 模拟验证：后端 `pytest -m "not oracle and not redis"` 1311 passed（`pytest-all-3.txt`），其中 `tests/config` 的 seed 整体校验、页面视图和规则包生成（新增 3 个页面视图、3 个规则包）、seed 条数 62（原 45 条加本组 17 条）。
   - 真实验证：`tests/operations/test_basic_pages_oracle.py` 2 passed（`pytest-real-basic-2.txt`）：客户和分销商一次保存、改客户名称后两个 Lookup 视图都是新名称、删除客户连同分销商；产品经视图带出客户名称、国家、分销商名称，创建人、修改人为 admin。
   - d_cg：产品信息维护、客户信息的 13 项已在 2026-10-31 13:46 经 8080 保存（`save-now.log`），第三位代理经 8080 只读核对 12 项与 seed 相同，产品实体只差 `createdByColumn`（`check-d_cg-config.log`）。外币管理 4 项没有保存（8080 的代码只锁一行时对读取视图 FOR UPDATE，会落到 ERP 链接上）。
@@ -135,7 +135,7 @@
 - 负责范围：`contracts/types.py`（`PageConfig.save_operation`、`PageView.save_operation` 可为 null）、`config/validation.py`（实体的 `table` 可以是视图，不要序列）、`config/catalog.py` 和 `contracts/fakes/config.py`（只读页面不引用保存操作）、`config/views.py`、`config/page_view.py`（只读页面不给 `save`）；前端 `contracts/page-view.ts`、`config/core/types.ts`、`page/page-runtime.ts`（只读页面不保存）、`config/views/table-fields.ts`（保存列时只读页面不同步可写字段）；seed `entity.AUDIT_LOG.json`、`page.AUDIT_LOG.json`、`role.ADMIN.json`。
 - 交付物：审计追踪页 `/page/AUDIT_LOG`：列为操作用户、操作时间、页面编码、表编码、表名称、记录ID、操作类型、字段编码、字段、修改前、修改后、创建时间（旧视图的 ID 是拼出来的长文本，不显示；旧的"字段变更"一列拆成四列，见 WP-22），可见列都设为高级查询的预置条件（旧列元数据 SEARCHABLE 全为 1），按 ID 升序（同旧页面）；只读，没有保存按钮；只给 ADMIN。菜单由主代理合并后统一加：顶层、最后一个，标题"审计追踪"，页面编码 `AUDIT_LOG`，图标 `mdi:file-document-outline`（旧 `T_COST_RESOURCE` 105，SORT_ORDER 99，无父级）。
 - 验收标准：模拟验证：seed 的审计页生成的页面视图 `saveOperation` 为 null、`systemButtons` 只有高级查询、字段都不能编辑；实体的 `table` 为视图时校验通过、不查序列。业务例子（浏览器、d_cg，正式用例 `frontend/tests/e2e/audit-log-1031.spec.ts`）：admin 改测试成本单的备注后，审计追踪按记录ID 查出 INSERT 和 UPDATE 的备注行，字段"备注"、修改前、修改后、操作用户 admin 正确；没有保存按钮、格子不能编辑；chengben01 读这个页面视图为 403。
-- 状态与证据：进行中（模拟验证通过；配置和浏览器用例待主代理合并后执行，待独立复核）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`，报告 `.reports/batch8-20261031/g3-audit-export/报告.md`。
+- 状态与证据：进行中（模拟验证、浏览器用例通过；待独立复核）。合并后主代理按下面的顺序执行了：迁移 wp_0003 已在 d_cg（视图 14:38 已由G3 起本分支后端时的启动迁移建好，`platform db upgrade` 报已是最新），重启 8080，`save_audit_log_config.py` 保存 entity、page，role/ADMIN 加 AUDIT_LOG（`.reports/batch8-20261031/merge/save-audit.log`），加菜单。合并后（2026-10-31，main）主代理运行：浏览器用例全部通过（`.reports/batch8-20261031/merge/e2e-6.txt`，57 passed），后端真实测试 217 passed（`pytest-real-1.txt`）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`，报告 `.reports/batch8-20261031/g3-audit-export/报告.md`。
   - 模拟验证：`uv run --with <rules-core wheel> pytest -q -p no:cacheprovider -m "not oracle and not redis"` 全部通过（条数见报告），其中 `tests/config/test_views.py::test_read_only_page_audit_log`；config 测试中按编码取成本核算页、seed 条数 45 → 48（本组新增 3 条）；`tests/contracts/test_samples.py` 的 C06 可为 null 的必填字段加 `PageConfig.save_operation`。前端 `pnpm typecheck`、`pnpm test`、`pnpm lint:deps` 通过。
   - 没有在 d_cg 保存：main 的代码校验不过这两种新写法。合并后主代理按顺序执行：`platform db upgrade`（建 `PF_AUDIT_LOG_V`）→ 重启 8080 → `.reports/batch8-20261031/g3-audit-export/save_audit_log_config.py`（保存 entity、page，role/ADMIN 只加 `AUDIT_LOG`）→ 加菜单 → 跑 `audit-log-1031.spec.ts`。
 ### T-CF-12 页面视图带默认值和对比的显示方式
@@ -146,7 +146,7 @@
 - 交付物：页面视图的字段带出实体字段的 `default`，配了 `compare` 时带出 `{"format": ...}`，没有配置时省略。
 - 接入责任：frontend-page 的 T-FP-18 使用；合并后主代理经配置接口重新生成页面视图（任何一次保存都会按新代码重新生成）。
 - 验收标准：模拟验证：成本核算主表实体的商务人员配 `builtin` 当前用户姓名、状态配 `options`、每批物料成本配对比只显示百分比时，页面视图中这三个字段分别带出相同的 `default` 和 `{"format": "percent"}`，没有配置的字段省略这两项，页面视图能被解析回来。
-- 状态与证据：进行中（模拟验证通过；浏览器用例待主代理合并后运行；待独立复核）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`，报告 `.reports/batch8-20261031/g5-config-caps/报告.md`。模拟验证：`tests/config/test_views.py::test_field_default_and_compare_format`；`pytest -m "not oracle and not redis"` 1316 passed（`pytest.txt`），`lint-imports` 5 kept。seed 的实体都没有配默认值和对比，页面视图不变。浏览器用例见 T-FP-18。
+- 状态与证据：进行中（模拟验证、浏览器用例通过；待独立复核）。合并后（2026-10-31，main）主代理运行：浏览器用例全部通过（`.reports/batch8-20261031/merge/e2e-6.txt`，57 passed），后端真实测试 217 passed（`pytest-real-1.txt`）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`，报告 `.reports/batch8-20261031/g5-config-caps/报告.md`。模拟验证：`tests/config/test_views.py::test_field_default_and_compare_format`；`pytest -m "not oracle and not redis"` 1316 passed（`pytest.txt`），`lint-imports` 5 kept。seed 的实体都没有配默认值和对比，页面视图不变。浏览器用例见 T-FP-18。
 
 ### T-CF-13 新建页面向导取列注释、按关键字搜表和视图；规则去掉数据项
 

@@ -72,5 +72,5 @@
 - 负责范围：`config/core/types.ts`（`MenuNode.icon`）、`views/menu-tree.ts`、`SectionBasicInfo.vue`、`DirectoryInfoPanel.vue`、`PageConfigPanel.vue`、`UnifiedConfigPage.vue`（配置、管理入口也打开目录信息）。
 - 交付物：页面"基本信息"和"目录信息"能选或输入图标，保存到菜单配置项。
 - 验收标准：模拟验证（`tests/config/menu-icon.test.ts`）：常用图标为旧系统的 20 个，输入的图标也在选项里；给"基础信息"设 `mdi:currency-usd`、清空后去掉 `icon`，其他项不变；页面"成本核算"的图标改在菜单项 COST_PINGGU 上。浏览器：目录信息给"基础信息"换成包裹图标并保存，菜单配置项中为 `mdi:package-variant`，之后改回。
-- 状态与证据：进行中（模拟验证通过；浏览器用例已写好，要保存带 `icon` 的菜单，待主代理合并后运行，待独立复核）。2026-10-31，第 8 批 G4，`batch8/admin-shell`：前端单元全部 594 passed，`pnpm typecheck`、`pnpm lint:deps` 通过。
+- 状态与证据：进行中（模拟验证、浏览器用例通过；待独立复核）。合并后（2026-10-31，main）主代理运行：浏览器用例全部通过（`.reports/batch8-20261031/merge/e2e-6.txt`，57 passed），后端真实测试 217 passed（`pytest-real-1.txt`）。2026-10-31，第 8 批 G4，`batch8/admin-shell`：前端单元全部 594 passed，`pnpm typecheck`、`pnpm lint:deps` 通过。
   - 与旧系统的差别：旧系统只在页面"基本信息"里改图标，"目录信息"只显示；新平台的目录信息本来就能改分组名称，图标也在这里改。

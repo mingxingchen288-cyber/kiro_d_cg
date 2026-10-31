@@ -195,7 +195,8 @@ async function sumColumn(grid: Locator) {
         for (const row of Array.from(root.querySelectorAll('.ag-center-cols-container .ag-row'))) {
           const name = row.querySelector('[col-id="name"]')?.textContent?.trim();
           const box = row.querySelector<HTMLInputElement>('[col-id="aggregate"] input[type="checkbox"]');
-          if (name && !rows[name])
+          // 行先画出来、勾选框所在的格子后画（机器忙时隔几帧）：先记下的没有勾选框，之后画出来了再补上
+          if (name && (!rows[name] || (rows[name].disabled === null && box)))
             rows[name] = {
               checked: box ? box.checked : null,
               disabled: box ? box.disabled : null,

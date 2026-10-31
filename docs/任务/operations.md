@@ -57,7 +57,7 @@
 - 交付物：外币管理工具栏"同步ERP汇率"。
 - 接入责任：主代理合并后执行 `save_g1_config.py after-merge`。
 - 验收标准：业务例子（浏览器、d_cg，`frontend/tests/e2e/basic-pages-1031.spec.ts` 第二个用例；真实验证 `tests/operations/test_basic_pages_oracle.py`）：两行测试外币（system 建的本地汇率 9.99，PF_TEST 建的 2.5），点按钮后 system 的那行本地汇率清空，PF_TEST 的不变；人民币、欧元、英镑、美元显示 ERP 的汇率；加锁只锁 T_COST_FORMONEY，不对经 ERP 链接的视图 FOR UPDATE；本地汇率本来为空的 4 行没有被写。
-- 状态与证据：进行中（真实验证通过；浏览器用例待主代理合并后运行；待独立复核）。`tests/operations/test_basic_pages_oracle.py` 2 passed（`.reports/batch8-20261031/g1-basic-pages/pytest-real-basic-2.txt`）。
+- 状态与证据：进行中（真实验证、浏览器用例通过；待独立复核）。合并后主代理执行 `save_g1_config.py after-merge`（`save-g1.log`）。合并后（2026-10-31，main）主代理运行：浏览器用例全部通过（`.reports/batch8-20261031/merge/e2e-6.txt`，57 passed），后端真实测试 217 passed（`pytest-real-1.txt`）。`tests/operations/test_basic_pages_oracle.py` 2 passed（`.reports/batch8-20261031/g1-basic-pages/pytest-real-basic-2.txt`）。
 ### T-OP-6 液体成本核算的"由BOM生成明细"
 
 - 归属与目标：实现 OP-12：旧 P_COST_BOM_INSERT_LQ 转成两个 `replaceDetails`，计算交给写入管道里的液体规则。来源同 config 的 T-CF-10；旧过程 `my-project/sql20260523/03_program_units.sql` 第 770–790 行。

@@ -140,6 +140,8 @@ test('客户信息新增客户和分销商，产品信息维护经客户 Lookup 
 
   // ERP 客户 86：整行绿底、不能改；它的 ERP 分销商同样
   await filterColumn(page, 'CUSTOMID', ERP_CUSTOMER);
+  // 筛选后表格换上新的一页之前，旧的同一行可能还在（淡出中）：等只剩筛出的这一行
+  await expect(customers.locator('.ag-center-cols-container .ag-row')).toHaveCount(1);
   const erpCustomer = customers.locator(`.ag-center-cols-container .ag-row[row-id="${ERP_CUSTOMER}"]`);
   await expect(erpCustomer).toHaveCSS('background-color', ERP_GREEN);
   expect(await canEdit(page, await cell(customers, ERP_CUSTOMER, 'CUSTOMNAME'))).toBe(false);
@@ -203,6 +205,7 @@ test('客户信息新增客户和分销商，产品信息维护经客户 Lookup 
 
   // ERP 产品 392：整行绿底、不能改
   await filterColumn(page, 'GOODSID', ERP_GOODS);
+  await expect(products.locator('.ag-center-cols-container .ag-row')).toHaveCount(1);
   await expect(products.locator(`.ag-center-cols-container .ag-row[row-id="${ERP_GOODS}"]`)).toHaveCSS(
     'background-color',
     ERP_GREEN

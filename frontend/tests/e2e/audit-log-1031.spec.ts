@@ -64,9 +64,11 @@ test('admin 改测试成本单的备注后，审计追踪按记录ID 查出 INSE
   });
   expect(memo('INSERT')?.values).toMatchObject({ OLD_VALUE: null, NEW_VALUE: data.marker });
 
-  // 表格里这一行（row-id 为视图的 ID）显示同样的值
+  // 表格里这一行（row-id 为视图的 ID）显示同样的值。复制时新增的行每个字段一行，有几十行，修改的那一行排在最后、
+  // 在可视区外不会渲染：再按字段编码筛出备注的几行
   const grid = masterGrid(page);
   const rowId = String(updated!.values.ID);
+  await filterColumn(page, 'FIELD_CODE', 'MEMO');
   await expect(await cell(grid, rowId, 'FIELD_NAME')).toHaveText('备注');
   await expect(await cell(grid, rowId, 'OLD_VALUE')).toHaveText(data.marker);
   await expect(await cell(grid, rowId, 'NEW_VALUE')).toHaveText('审计测试');

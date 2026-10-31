@@ -8,7 +8,6 @@
         "key": "cost",
         "title": "成本",
         "kind": "group",
-        "icon": "mdi:calculator-variant",
         "children": [
           {
             "key": "COST_PINGGU",
@@ -16,23 +15,52 @@
             "kind": "page",
             "pageCode": "COST_PINGGU",
             "icon": "mdi:calculator-variant"
+          },
+          {
+            "key": "COST_PINGGU_LQ",
+            "title": "液体成本核算",
+            "kind": "page",
+            "pageCode": "COST_PINGGU_LQ",
+            "icon": "mdi:calculator-variant"
           }
-        ]
+        ],
+        "icon": "mdi:calculator-variant"
       },
       {
         "key": "basic",
         "title": "基础信息",
         "kind": "group",
-        "icon": "mdi:currency-usd",
         "children": [
+          {
+            "key": "GOODS_MANAGE",
+            "title": "产品信息维护",
+            "kind": "page",
+            "pageCode": "GOODS_MANAGE",
+            "icon": "mdi:package-variant"
+          },
+          {
+            "key": "CUSTOMER_MANAGE",
+            "title": "客户信息",
+            "kind": "page",
+            "pageCode": "CUSTOMER_MANAGE",
+            "icon": "mdi:account-box"
+          },
           {
             "key": "GOODS_PRICE_MANAGE",
             "title": "物料清单及成本",
             "kind": "page",
             "pageCode": "GOODS_PRICE_MANAGE",
             "icon": "mdi:tag-outline"
+          },
+          {
+            "key": "FORMONEY_MANAGE",
+            "title": "外币管理",
+            "kind": "page",
+            "pageCode": "FORMONEY_MANAGE",
+            "icon": "mdi:currency-usd"
           }
-        ]
+        ],
+        "icon": "mdi:currency-usd"
       },
       {
         "key": "config",
@@ -45,6 +73,13 @@
         "title": "系统管理",
         "kind": "admin",
         "icon": "mdi:cog"
+      },
+      {
+        "key": "AUDIT_LOG",
+        "title": "审计追踪",
+        "kind": "page",
+        "pageCode": "AUDIT_LOG",
+        "icon": "mdi:file-document-outline"
       }
     ]
   }

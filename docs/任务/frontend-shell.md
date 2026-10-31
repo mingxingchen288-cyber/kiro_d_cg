@@ -45,5 +45,5 @@
 - 负责范围：`modules/shell/menus.ts`（`buildMenus` 带上 `icon`）；seed `backend/seed/config/menu.main.json` 按旧 `T_COST_RESOURCE.ICON` 补图标。
 - 交付物：左侧菜单的分组和菜单项按配置显示图标，没配的用默认图标 `mdi:menu`。
 - 验收标准：模拟验证（`tests/shell/menus.test.ts`）：成本、成本核算为 `mdi:calculator-variant`，基础信息为 `mdi:currency-usd`，配置为 `mdi:database-cog`，物料清单及成本没配时不带 `icon`。浏览器：d_cg 的 menu.main 补了图标后，左侧菜单成本核算、基础信息、系统管理的图标与 `@iconify-json/mdi` 中的 calculator-variant、currency-usd、cog 相同。
-- 状态与证据：进行中（模拟验证通过；浏览器用例已写好，待主代理合并后运行，待独立复核）。2026-10-31，第 8 批 G4，`batch8/admin-shell`：前端单元全部 594 passed。main 的代码读不了带 `icon` 的菜单（`MenuItem` 不允许多余字段），按 `共同约定.md` 第 3 节没有写 d_cg；合并后由主代理执行 `.reports/batch8-20261031/g4-admin-shell/set_menu_icons.py` 给 d_cg 的 menu.main 补图标，再跑 `frontend/tests/e2e/batch8-admin-shell.spec.ts` 的"菜单图标"。
+- 状态与证据：进行中（模拟验证、浏览器用例通过；待独立复核）。合并后（2026-10-31，main）主代理运行：浏览器用例全部通过（`.reports/batch8-20261031/merge/e2e-6.txt`，57 passed），后端真实测试 217 passed（`pytest-real-1.txt`）。2026-10-31，第 8 批 G4，`batch8/admin-shell`：前端单元全部 594 passed。main 的代码读不了带 `icon` 的菜单（`MenuItem` 不允许多余字段），按 `共同约定.md` 第 3 节没有写 d_cg；合并后由主代理执行 `.reports/batch8-20261031/g4-admin-shell/set_menu_icons.py` 给 d_cg 的 menu.main 补图标，再跑 `frontend/tests/e2e/batch8-admin-shell.spec.ts` 的"菜单图标"。
   - seed 的图标来源：成本核算 ← 旧"物料成本核算表"、基础信息 ← 旧"基础信息"、物料清单及成本 ← 旧 goods-price-manage、配置 ← 旧"元数据配置"、系统管理 ← 旧"系统管理"；"成本"分组旧系统没有（旧"物料成本核算表"在顶层），用它唯一下级的图标。
