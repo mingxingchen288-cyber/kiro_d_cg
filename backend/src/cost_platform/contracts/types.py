@@ -595,6 +595,9 @@ class ViewField(Wire):
     """新增行的默认值：取自实体字段（C06 第 2 节），写法相同（C05 v9）；没有配置时省略。"""
     compare: FieldCompareView | None = None
     """对比的显示方式：实体字段配了 `compare` 时给出它的 `format`（C05 v9）；没有配置时省略。"""
+    copy_: Bool = Field(default=True, alias="copy")
+    """复制（C05 v11）：页面配置的 `copy` 为 false 时为 false，复制出的行这一列留空（frontend-page FP-25、write-pipeline WP-24）；
+    为 true 时省略。Python 中叫 `copy_`，避开 BaseModel 的 `copy` 方法。"""
 
 
 class ViewButton(Wire):
@@ -807,6 +810,9 @@ class FieldSetting(Wire):
     aggregate: Aggregate | None = None
     searchable: Bool | None = None
     """查询（C06 第 3 节，旧系统列配置的"查询"）：为 true 时高级查询对话框一打开就列出这个字段的条件；省略为不预置。"""
+    copy_: Bool = Field(default=True, alias="copy")
+    """复制（C06 v30 第 3 节）：为 false 时复制主表（连明细）、复制明细时都不复制这一列，新行留空；省略时为 true（复制）。
+    Python 中叫 `copy_`，避开 BaseModel 的 `copy` 方法。"""
 
 
 class ButtonConfig(Wire):

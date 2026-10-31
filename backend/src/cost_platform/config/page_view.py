@@ -38,6 +38,7 @@ def _view_field(field: EntityField, entity: EntityConfig, setting: FieldSetting 
         aggregate=setting.aggregate if setting else None, grouping=field.grouping,
         dict_free_text=bool(setting and setting.dict_type and setting.dict_free_text),
         searchable=visible and setting is not None and setting.searchable is True,
+        copy_=setting is None or setting.copy_,
     )
 
 
