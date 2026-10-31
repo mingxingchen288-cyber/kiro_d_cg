@@ -175,3 +175,12 @@
 - 交付物：上述功能。
 - 验收标准：模拟验证：读取视图只读本表时只锁一行一条加锁读出，关联了别的表、经数据库链接或不知道读哪些表时先锁表、再读视图（`tests/pipeline/test_document_store_sql.py`）；插件 start 时预读已发布实体的读取视图（`tests/pipeline/test_warmup.py`）；`view_sources` 的契约测试（替代实现和 d_cg 共用）。真实验证（d_cg）：三个读取视图读取的表（`tests/db_core/test_ports.py::test_view_sources_on_d_cg`）；物料清单页保存 7 条（`tests/pipeline/test_oracle_goods_save_sql_count.py`）；外币管理"同步ERP汇率"仍只锁 T_COST_FORMONEY（`tests/operations/test_basic_pages_oracle.py`）。
 - 状态与证据：进行中（模拟验证和真实验证通过，待独立复核）。后端模拟 1338 passed；真实 `tests/db_core/test_ports.py`、`tests/pipeline`、`tests/operations/test_basic_pages_oracle.py`、`test_sql_actions_oracle.py`、`tests/approval/test_oracle_or_sign.py` 67 passed；`lint-imports` 5 kept。两个真实测试的组装（`test_oracle_updated_by.py`、`approval/test_oracle_or_sign.py`）和 `lock_order_support.py` 改成与插件相同，带上 `ReadViews`。
+
+### T-WP-16 复制出的行不取"不复制"的列的源行值
+
+- 归属与目标：实现 WP-24（C05 v11 字段的 `copy`）。依据用户 2026-10-31："复制主表要把明细表一起复制过来，这个是通用方法，但是也可以配置哪些列可以不复制，这个在元数据中配置即可"，前后台一致。旧系统没有这项配置。
+- 前置输入：T-WP-10（WP-21）、T-CF-15。
+- 负责范围：`pipeline/merge.py`（`DocumentMerger._copy_fields`、`_Rows.new_values`、`_Rows._copied_values`）。
+- 交付物：复制出的行中，页面视图 `copy` 为 false 的不可写字段不取源行的值、不写；可写的照常取命令中的值；都不补默认值。
+- 验收标准：模拟验证：成本核算页把创建人（不可写）、批量（可写）配成不复制，复制 1001 时命令带了源行的创建人"王五"（页面在改配置之前打开）、批量为 null：新单据创建人、批量为空，INSERT 不含创建人，产品名称照旧取源行的值、备注取命令中的值。
+- 状态与证据：进行中（模拟验证通过；待独立复核）。2026-10-31 第 9 批 B 组，分支 `batch9/copy-config`。模拟验证：`tests/pipeline/test_copy.py::test_not_copied_fields_are_left_empty`；`pytest -m "not oracle and not redis"` 1340 passed（`.reports/batch9-20261031/b-copy-config/pytest-1.txt`）。真实验证（d_cg + Redis，不写配置）：复制相关的 `tests/e2e/test_copy_approval.py`、`tests/pipeline/test_oracle_updated_by.py` 2 passed（`real-1.txt`），说明没有配 `copy` 时复制照旧；配了 `copy: false` 的真实保存在 T-FP-19 用例 2（合并后运行）。

@@ -157,3 +157,13 @@
 - 接入责任：frontend-config 的 T-FC-5 使用。
 - 验收标准：模拟验证：液体成本核算主表 T_COST_PINGGU_LQ 导入列时 COST_PERBOX、M_PERPACK 的标题为"每盒成本""每中盒小盒数"，没有注释的列为列名，有视图时取视图的注释；输入"t_cost_goods"列出物料表和物料清单视图、先表后视图；接口返回同样的结果；写了 `dataItems` 的规则保存时拒绝，提示不允许出现 dataItems。真实验证（只读，只查 d_cg 的数据字典）：输入"T_COST_GOODS"列出 T_COST_GOODS（表）、T_COST_GOODS_PRICE_V（视图），名称都含关键字、先表后视图；T_COST_PINGGU_LQ 导入列的主键 DOCID、序列已存在，两列标题为列注释。
 - 状态与证据：进行中（模拟验证、只读真实验证和浏览器用例通过；待独立复核）。2026-10-31 第 8 批 G5，分支 `batch8/config-caps`。模拟验证：`tests/config/test_wizard.py` 新增 2 条、`test_router.py::test_wizard_and_schema_endpoints` 加 `schema/objects`、`test_validation.py::test_rule_with_data_items_rejected`；`pytest -m "not oracle and not redis"` 1316 passed。真实验证：`tests/config/test_wizard_schema_oracle.py` 1 条，连同 T-DB-5 的 4 条只读用例 5 passed（`pytest-real-readonly.txt`）；`test_oracle.py::test_wizard_on_d_cg` 会写 d_cg 配置，没有跑。只读核对：d_cg `PF_CONFIG_ITEM` 中含 `dataItems` 的配置 0 行（`01-规则数据项.out.txt`），seed 也没有；审批流的数据项不是这一项，没有动（新平台审批流 C06 第 7 节本来没有数据项字段）。浏览器见 T-FC-5。
+
+### T-CF-15 页面视图带出"不复制"的列
+
+- 归属与目标：实现 CF-22（C06 v30 第 3 节 `copy`、C05 v11）。依据用户 2026-10-31："跟着复制（复制主表要把明细表一起复制过来，这个是通用方法，但是也可以配置哪些列可以不复制，这个在元数据中配置即可）"。旧系统没有这项配置（`copy-row-fields.ts` 第 3–12 行只排除 id 和主键），是新增能力。
+- 前置输入：开始前 T-CF-2。
+- 负责范围：`contracts/types.py`（`FieldSetting.copy_`、`ViewField.copy_`，别名 `copy`）、`config/views.py`、`config/page_view.py`。
+- 交付物：页面字段设置可以写 `copy: false`；页面视图的字段只在为 false 时带 `"copy": false`。
+- 接入责任：frontend-page 的 T-FP-19、write-pipeline 的 T-WP-16 使用；合并后主代理经配置接口保存一次任何配置即按新代码重新生成页面视图。这项配置 main 的后端（8080）校验不过，合并、重启 8080 之前不往 d_cg 保存。
+- 验收标准：模拟验证（E45）：seed 的客户信息页把主表 ZONE、分销商明细 TRANPOSNAME 写成 `copy: false`，系统管理员的页面视图中只有这两个字段带 `"copy": false`；没有配置时页面视图序列化后没有 `copy`，与原来相同；页面视图能被解析回来。
+- 状态与证据：进行中（模拟验证通过；待独立复核）。2026-10-31 第 9 批 B 组，分支 `batch9/copy-config`，报告 `.reports/batch9-20261031/b-copy-config/报告.md`。模拟验证：`tests/config/test_views.py::test_not_copied_field_in_page_view`；`pytest -m "not oracle and not redis"` 1340 passed、217 deselected（`pytest-1.txt`），`lint-imports` 5 kept、0 broken；C06 第 1.1 节表格补 `copy`（`tests/contracts/test_samples.py::test_c06_omittable_fields_match_section_1_1`）。浏览器用例见 T-FP-19。
