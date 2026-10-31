@@ -16,7 +16,7 @@ import json
 import pytest
 
 from cost_platform.contracts import types as t
-from cost_platform.pipeline.writer import UPDATED_BY
+from cost_platform.pipeline.writer import CREATED_BY, UPDATED_BY
 
 from . import support
 from .support import GOODS, GOODS_PAGE, GOODS_SAVE, TMP_1, MemoryStore, Pipeline, command, master_modify
@@ -82,3 +82,23 @@ def test_approval_write_uses_approver_username() -> None:
     result = pipeline.execute(command([], page=None, operation="approval.pass", params={"approvalId": "203"}), ctx)
     assert result.outcome == "saved"
     assert _writes(pipeline, "update", GOODS) == [{"rowKey": "115", "ZX_PRICE": 80, UPDATED_BY: "user1"}]
+
+
+def test_created_by_written_on_insert_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """C06 v28 `createdByColumn`：旧系统 insert 写 CREATE_BY = 当前用户名，update 不写（DynamicDataService.java 第
+    290–293 行）；产品信息维护的"创建人"由它写。新增的物料带创建人和修改人，修改只带修改人。"""
+    entity = support.GOODS_ENTITY.model_copy(update={"updated_by_column": "UPDATE_BY", "created_by_column": "CREATE_BY"})
+    monkeypatch.setitem(support.ENTITIES, GOODS, entity)
+    pipeline = Pipeline(store=TableStore())
+    cmd = command([{"entity": GOODS, "master": {"op": "add", "clientRowId": TMP_1, "values": {"NAME": "新物料", "ZX_PRICE": "3"}},
+                    "details": []}], page=GOODS_PAGE, operation=GOODS_SAVE)
+    result = pipeline.execute(cmd, pipeline.setup.context())
+    [inserted] = _writes(pipeline, "insert", GOODS)
+    assert inserted[CREATED_BY] == "user112" and inserted[UPDATED_BY] == "user112"
+    [row] = [r for r in result.rows if isinstance(r, t.ResultRow)]
+    assert CREATED_BY not in row.values
+
+    pipeline = Pipeline(store=TableStore())
+    pipeline.execute(command([master_modify("116", {"ZX_PRICE": "48"}, entity=GOODS)], page=GOODS_PAGE,
+                             operation=GOODS_SAVE), pipeline.setup.context())
+    assert _writes(pipeline, "update", GOODS) == [{"rowKey": "116", "ZX_PRICE": 48, UPDATED_BY: "user112"}]

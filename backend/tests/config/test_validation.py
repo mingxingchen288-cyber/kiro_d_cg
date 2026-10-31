@@ -51,10 +51,12 @@ def test_whole_world_passes(env: Env) -> None:
 def test_every_page_view_and_pack_generated(env: Env) -> None:
     records = env.records()
     assert {k for k, r in records.items() if r.type == "rulesPack"} == {
-        "rulesPack/COST_PINGGU", "rulesPack/COST_GOODS_PRICE", "rulesPack/COST_PINGGU_LQ"}
+        "rulesPack/COST_PINGGU", "rulesPack/COST_GOODS_PRICE", "rulesPack/COST_PINGGU_LQ",
+        "rulesPack/COST_GOODS", "rulesPack/COST_CUSTOMER", "rulesPack/COST_FORMONEY"}
     assert {k for k, r in records.items() if r.type == "pageView"} == {
         "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心", "pageView/GOODS_PRICE_MANAGE|ADMIN",
-        "pageView/GOODS_PRICE_MANAGE|技术中心"}
+        "pageView/GOODS_PRICE_MANAGE|技术中心", "pageView/GOODS_MANAGE|ADMIN", "pageView/CUSTOMER_MANAGE|ADMIN",
+        "pageView/FORMONEY_MANAGE|ADMIN"}
 
 
 # ---------------------------------------------------------------- 引用的实体、字段、操作、页面、审批流、Lookup、字典都存在
@@ -185,9 +187,11 @@ def test_pack_compiles_pass(env: Env) -> None:
     """新规则和 seed 的 17 条计算规则一起编进成本核算的规则包（按规则编码排列）。"""
     assert problems(env, MEMO_RULE) == []
     assert env.engine.packs[-1].pack.pack_id == "COST_PINGGU"
-    # 物料清单页的行底色规则（target GOODS_PRICE_MANAGE）在物料清单的规则包里
+    # 物料清单页的行底色规则（target GOODS_PRICE_MANAGE）在物料清单的规则包里；产品信息维护、客户信息（含分销商）的
+    # ERP 行规则在各自的规则包里
+    others = {"GOODS_PRICE_MANAGE", "GOODS_MANAGE", "CUSTOMER_MANAGE", "COST_TRANPOSER"}
     seed_rules = [key for (config_type, key), d in WORLD.items()
-                  if config_type == "rule" and d.content["target"] != "GOODS_PRICE_MANAGE"]
+                  if config_type == "rule" and d.content["target"] not in others]
     assert [r.id for r in env.engine.packs[-1].pack.rules] == sorted([*seed_rules, "R_MEMO"])
 
 

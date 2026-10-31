@@ -1,0 +1,16 @@
+{
+  "type": "operation",
+  "key": "FORMONEY_MANAGE.save",
+  "name": "外币管理保存",
+  "content": {
+    "label": "保存",
+    "kind": "save",
+    "writableFields": {
+      "COST_FORMONEY": []
+    },
+    "impact": [
+      "COST_FORMONEY"
+    ],
+    "propagation": "continue"
+  }
+}

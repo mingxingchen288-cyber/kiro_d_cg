@@ -1,0 +1,26 @@
+{
+  "type": "operation",
+  "key": "FORMONEY_MANAGE.syncErpRate",
+  "name": "同步ERP汇率",
+  "content": {
+    "label": "同步ERP汇率",
+    "kind": "action",
+    "writableFields": {
+      "COST_FORMONEY": [
+        "FMRATE"
+      ]
+    },
+    "impact": [
+      "COST_FORMONEY"
+    ],
+    "actions": [
+      {
+        "action": "updateRows",
+        "entity": "COST_FORMONEY",
+        "sql": "SELECT FMID, CAST(NULL AS NUMBER) AS FMRATE FROM T_COST_FORMONEY WHERE CREATE_BY = 'system' AND FMRATE IS NOT NULL",
+        "recordKeyColumn": "FMID"
+      }
+    ],
+    "propagation": "end"
+  }
+}

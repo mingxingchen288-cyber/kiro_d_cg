@@ -777,6 +777,8 @@ class EntityConfig(Wire):
     erp_row: ErpRow | None = None
     updated_by_column: str | None = None
     """写入修改人的列（`table` 中的列名，不是实体字段）：新增、修改这个实体的行时写当前用户的登录名（C06 第 2 节、WP-20）。"""
+    created_by_column: str | None = None
+    """写入创建人的列（`table` 中的列名，不是实体字段写入的列）：新增这个实体的行时写当前用户的登录名（C06 v28 第 2 节、WP-20）。"""
     fields: list[EntityField]
     details: list[DetailLink] = []
     field_defaults: dict[str, FieldFlags] = {}

@@ -53,11 +53,13 @@ def _kinds(sql: list[str]) -> list[str]:
     return ["LOCK" if "FOR UPDATE" in s else "DUAL" if " FROM DUAL" in s else s.split(" ")[0] for s in sql]
 
 
-def test_goods_page_save_without_approval_7_statements(engine: Engine, local_goods: str) -> None:  # noqa: F811
+def test_goods_page_save_without_approval_8_statements(engine: Engine, local_goods: str) -> None:  # noqa: F811
     """admin 在物料清单页改本地物料的规格（不改执行价，GOODS_TO_COST 的入口条件不成立）：插入命令记录、加锁前普通读取、
-    入口条件、锁住物料并读出数据（一条，锁住后用它核对）、查冻结、改物料（同一条写修改人）、完成命令记录，共 7 条；
-    原来锁和核对重读各一条，共 8 条（`.reports/batch5-20261030/b1-pipeline/`）。不推迟加锁的保存（例如成本核算改主表）
-    没有加锁前的普通读取，其余相同，所以只多这 1 条。"""
+    入口条件、锁住物料表的这一行、经读取视图读出数据（锁住后用它核对）、查冻结、改物料（同一条写修改人）、完成命令记录，
+    共 8 条。第 5 批把锁和读合成一条（对视图 FOR UPDATE），共 7 条；第 8 批起有 readView 的实体只锁表、再普通读视图：
+    读取视图可以关联别的表或经 ERP 数据库链接的视图（产品信息维护的 T_COST_GOODS_V、外币管理的 T_COST_FORMONEY_V），
+    对它们 FOR UPDATE 会锁住关联的行、把锁请求带到链接上（C06 v28 第 2 节）。不推迟加锁的保存（例如成本核算改主表）
+    没有加锁前的普通读取，其余相同。"""
     platform = Platform(engine)
     try:
         ctx = platform.ctx("admin")
@@ -68,8 +70,8 @@ def test_goods_page_save_without_approval_7_statements(engine: Engine, local_goo
         sql = trace.texts
         _log.info("物料清单页保存 %s 条：%s", len(sql), sql)
         assert result.outcome == "saved"
-        assert _kinds(sql) == ["INSERT", "SELECT", "DUAL", "LOCK", "SELECT", "UPDATE", "UPDATE"], sql
-        assert "FROM T_COST_GOODS_PRICE_V" in sql[3] and "GOODSTYPE" in sql[3]  # 加锁语句同时读出物料的数据
+        assert _kinds(sql) == ["INSERT", "SELECT", "DUAL", "LOCK", "SELECT", "SELECT", "UPDATE", "UPDATE"], sql
+        assert "FROM T_COST_GOODS " in sql[3] and "FROM T_COST_GOODS_PRICE_V" in sql[4]  # 锁表的行，再读视图
         with engine.connect() as conn:
             row = conn.execute(text("SELECT goodstype, update_by FROM t_cost_goods WHERE goodsid = :g"),
                                {"g": int(local_goods)}).one()

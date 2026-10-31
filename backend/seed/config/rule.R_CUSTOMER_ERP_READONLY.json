@@ -1,0 +1,26 @@
+{
+  "type": "rule",
+  "key": "R_CUSTOMER_ERP_READONLY",
+  "name": "ERP客户整行不能改",
+  "content": {
+    "layer": "page",
+    "target": "CUSTOMER_MANAGE",
+    "category": "ui",
+    "field": null,
+    "order": 2,
+    "when": {
+      "logic": "AND",
+      "conditions": [
+        {
+          "source": "row",
+          "field": "ISERP",
+          "op": "eq",
+          "value": "1"
+        }
+      ]
+    },
+    "effect": {
+      "editable": false
+    }
+  }
+}

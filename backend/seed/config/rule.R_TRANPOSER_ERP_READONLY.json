@@ -1,0 +1,26 @@
+{
+  "type": "rule",
+  "key": "R_TRANPOSER_ERP_READONLY",
+  "name": "ERP分销商整行不能改",
+  "content": {
+    "layer": "entity",
+    "target": "COST_TRANPOSER",
+    "category": "ui",
+    "field": null,
+    "order": 2,
+    "when": {
+      "logic": "AND",
+      "conditions": [
+        {
+          "source": "row",
+          "field": "ISERP",
+          "op": "eq",
+          "value": "1"
+        }
+      ]
+    },
+    "effect": {
+      "editable": false
+    }
+  }
+}

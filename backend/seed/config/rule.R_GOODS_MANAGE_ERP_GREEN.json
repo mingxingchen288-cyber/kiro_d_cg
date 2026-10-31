@@ -1,0 +1,28 @@
+{
+  "type": "rule",
+  "key": "R_GOODS_MANAGE_ERP_GREEN",
+  "name": "ERP产品整行绿底",
+  "content": {
+    "layer": "page",
+    "target": "GOODS_MANAGE",
+    "category": "ui",
+    "field": null,
+    "order": 1,
+    "when": {
+      "logic": "AND",
+      "conditions": [
+        {
+          "source": "row",
+          "field": "ISERP",
+          "op": "eq",
+          "value": "1"
+        }
+      ]
+    },
+    "effect": {
+      "rowStyle": {
+        "backgroundColor": "#e6ffed"
+      }
+    }
+  }
+}

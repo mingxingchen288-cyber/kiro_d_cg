@@ -1,0 +1,23 @@
+{
+  "type": "operation",
+  "key": "CUSTOMER_MANAGE.save",
+  "name": "客户信息保存",
+  "content": {
+    "label": "保存",
+    "kind": "save",
+    "writableFields": {
+      "COST_CUSTOMER": [
+        "CUSTOMNAME",
+        "ZONE"
+      ],
+      "COST_TRANPOSER": [
+        "TRANPOSNAME"
+      ]
+    },
+    "impact": [
+      "COST_CUSTOMER",
+      "COST_TRANPOSER"
+    ],
+    "propagation": "continue"
+  }
+}

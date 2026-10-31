@@ -46,12 +46,15 @@ class EntityDirectoryContract:
         assert directory.master_of("COST_PINGGU") is None
 
     def test_entities_on_table(self, directory: Any) -> None:
-        """成本核算的两个明细在同一张表上；物料清单的实体是主表。"""
+        """成本核算的两个明细在同一张表上；物料清单的实体是主表。T_COST_GOODS 上还可以有产品信息维护的实体 COST_GOODS
+        （第 8 批 G1，同一张表两个主表实体，同旧系统 CostGoods、CostGoodsPrice 都写 T_COST_GOODS），按实体编码排列。"""
         assert directory.entities_on_table("T_COST_PINGGU_DTL") == [
             t.TableEntity(entity="COST_MATERIAL", master="COST_PINGGU", parent_key="DOCID"),
             t.TableEntity(entity="COST_PACKAGE", master="COST_PINGGU", parent_key="DOCID")]
-        assert directory.entities_on_table("T_COST_GOODS") == [
-            t.TableEntity(entity="COST_GOODS_PRICE", master="COST_GOODS_PRICE", parent_key=None)]
+        goods = directory.entities_on_table("T_COST_GOODS")
+        assert t.TableEntity(entity="COST_GOODS_PRICE", master="COST_GOODS_PRICE", parent_key=None) in goods
+        assert all(e.parent_key is None and e.master == e.entity for e in goods)
+        assert [e.entity for e in goods] == sorted(e.entity for e in goods)
         assert directory.entities_on_table("T_COST_NOT_REGISTERED") == []
 
     def test_tables(self, directory: Any) -> None:

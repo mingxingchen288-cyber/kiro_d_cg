@@ -1,0 +1,23 @@
+{
+  "type": "operation",
+  "key": "GOODS_MANAGE.save",
+  "name": "产品信息维护保存",
+  "content": {
+    "label": "保存",
+    "kind": "save",
+    "writableFields": {
+      "COST_GOODS": [
+        "GOODSNAME",
+        "GOODSTYPE",
+        "PACKTYPE",
+        "TRANPOSID",
+        "ZX_CUSTOMERID",
+        "GOODSNAME_EN"
+      ]
+    },
+    "impact": [
+      "COST_GOODS"
+    ],
+    "propagation": "continue"
+  }
+}

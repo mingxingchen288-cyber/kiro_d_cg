@@ -248,6 +248,15 @@ def _entity(run: Run, entry: Entry) -> None:
             run.err(entry, "updatedByColumn", f"列 {column} 不在表 {entity.table} 中")
         if any(f.column is not None and f.column.upper() == column.upper() for f in entity.fields):
             run.err(entry, "updatedByColumn", f"列 {column} 已是实体字段的列，修改人的列只能由平台写")
+    if entity.created_by_column is not None:
+        # 写入创建人的列（C06 v28 第 2 节），要求同修改人的列；页面要显示时配一个 column 为 null 的字段，从 readView 读
+        column = entity.created_by_column
+        if kind == "table" and column not in table_columns:
+            run.err(entry, "createdByColumn", f"列 {column} 不在表 {entity.table} 中")
+        if any(f.column is not None and f.column.upper() == column.upper() for f in entity.fields):
+            run.err(entry, "createdByColumn", f"列 {column} 已是实体字段的列，创建人的列只能由平台写")
+        if entity.updated_by_column is not None and entity.updated_by_column.upper() == column.upper():
+            run.err(entry, "createdByColumn", f"列 {column} 已是修改人的列")
     for i, link in enumerate(entity.details):
         detail = run.catalog.entity(link.entity)
         if detail is not None and link.parent_key not in {f.name for f in detail.fields}:
