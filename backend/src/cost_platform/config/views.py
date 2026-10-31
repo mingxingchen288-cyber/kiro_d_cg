@@ -16,6 +16,9 @@
 
 修改：区域的 `canModify` 为角色有没有 `<区域>:modify`（C05 v8）。没有时前端把这个区域已经保存的行整行设为只读，
 新增、复制出的行照常按 `editable` 填写；字段的 `editable` 不因此改变。后端按同一规则拒绝（authz 的 AZ-01）。
+
+只读页面（页面配置的 `saveOperation` 为 null，CF-18，依据旧系统审计追踪页 auditLog）：没有保存操作，可写字段为空，
+所以字段都不能编辑；`systemButtons` 不给出 `save`，角色有 `*` 也一样（C05 v10）。
 """
 
 from __future__ import annotations
@@ -159,7 +162,8 @@ def build_page_view(page_code: str, page: PageConfig, entities: Mapping[str, Ent
     return PageView(
         page_code=page_code, title=page.title, version=version, layout=page.layout, detail_mode=page.detail_mode,
         audit=page.audit, save_operation=page.save_operation, rules_pack=pack, master=master, details=details,
-        system_buttons=[b for b in SYSTEM_BUTTONS if _allowed(grant, f"system:{b}")],
+        system_buttons=[b for b in SYSTEM_BUTTONS if _allowed(grant, f"system:{b}")
+                        and not (b == "save" and page.save_operation is None)],
     )
 
 
@@ -177,7 +181,7 @@ def build_views(catalog: Catalog, version: int, pack_versions: Mapping[str, int]
     for page_code, role_code in view_pairs(catalog):
         page = pages[page_code]
         pack = PackRef(pack_id=page.master.entity, version=pack_versions.get(page.master.entity, version))
-        operation = catalog.operation(page.save_operation)
+        operation = catalog.operation(page.save_operation) if page.save_operation is not None else None
         writable = operation.writable_fields if operation is not None else {}
         views[(page_code, role_code)] = build_page_view(page_code, page, entities, roles[role_code], version, pack, writable,
                                                         lookups=lookups)

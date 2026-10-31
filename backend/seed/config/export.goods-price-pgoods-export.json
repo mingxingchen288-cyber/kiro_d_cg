@@ -1,0 +1,60 @@
+{
+  "type": "export",
+  "key": "goods-price-pgoods-export",
+  "name": "产品选择(按物料)导出",
+  "content": {
+    "page": "GOODS_PRICE_MANAGE",
+    "name": "产品选择(按物料)导出",
+    "fileName": "产品选择(按物料)导出",
+    "font": "Calibri",
+    "detailLayout": "perMaster",
+    "master": {
+      "sheet": "产品选择(按物料)",
+      "sql": "SELECT m.GOODSID, m.GOODSNAME, m.DTL_USEFLAG, m.FACTORYNAME, m.PRICE, m.GOODSNO, m.PGOODSID, m.PGOODSNO, m.APEX_PL, m.BATCH_QTY FROM (SELECT a.GOODSID, b.GOODSNAME, b.USEFLAG DTL_USEFLAG, b.FACTORYNAME, a.PRICE, (SELECT g.GOODSNO FROM CMX.T_COST_GOODS g WHERE g.GOODSID = b.GOODSID) GOODSNO, d.GOODSID PGOODSID, (SELECT g.GOODSNO FROM CMX.T_COST_GOODS g WHERE g.GOODSID = d.GOODSID) PGOODSNO, d.GOODSNAME PGOODSNAME, c.APEX_PL, a.BATCH_QTY FROM T_COST_PINGGU_DTL a, T_COST_GOODS b, T_COST_PINGGU c, T_COST_GOODS d WHERE a.GOODSID = b.GOODSID AND a.DOCID = c.DOCID AND c.GOODSID = d.GOODSID) m",
+      "keyColumn": "GOODSID",
+      "columns": [
+        {
+          "field": "PGOODSID",
+          "header": "PGOODSID"
+        },
+        {
+          "field": "GOODSNAME",
+          "header": "GOODSNAME"
+        },
+        {
+          "field": "GOODSID",
+          "header": "GOODSID"
+        },
+        {
+          "field": "PRICE",
+          "header": "PRICE"
+        },
+        {
+          "field": "GOODSNO",
+          "header": "GOODSNO"
+        },
+        {
+          "field": "BATCH_QTY",
+          "header": "BATCH_QTY"
+        },
+        {
+          "field": "PGOODSNO",
+          "header": "PGOODSNO"
+        },
+        {
+          "field": "APEX_PL",
+          "header": "APEX_PL"
+        },
+        {
+          "field": "DTL_USEFLAG",
+          "header": "DTL_USEFLAG"
+        },
+        {
+          "field": "FACTORYNAME",
+          "header": "FACTORYNAME"
+        }
+      ]
+    },
+    "details": []
+  }
+}

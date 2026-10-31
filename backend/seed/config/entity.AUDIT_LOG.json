@@ -1,0 +1,116 @@
+{
+  "type": "entity",
+  "key": "AUDIT_LOG",
+  "name": "审计追踪",
+  "content": {
+    "table": "PF_AUDIT_LOG_V",
+    "primaryKey": "ID",
+    "freezable": false,
+    "fields": [
+      {
+        "name": "ID",
+        "column": "ID",
+        "label": "ID",
+        "type": "text",
+        "source": "own",
+        "role": "system"
+      },
+      {
+        "name": "USER_NAME",
+        "column": "USER_NAME",
+        "label": "操作用户",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "OPERATION_TIME",
+        "column": "OPERATION_TIME",
+        "label": "操作时间",
+        "type": "datetime",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "PAGE_CODE",
+        "column": "PAGE_CODE",
+        "label": "页面编码",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "TABLE_CODE",
+        "column": "TABLE_CODE",
+        "label": "表编码",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "TABLE_NAME",
+        "column": "TABLE_NAME",
+        "label": "表名称",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "RECORD_ID",
+        "column": "RECORD_ID",
+        "label": "记录ID",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "OPERATION_TYPE",
+        "column": "OPERATION_TYPE",
+        "label": "操作类型",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "FIELD_CODE",
+        "column": "FIELD_CODE",
+        "label": "字段编码",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "FIELD_NAME",
+        "column": "FIELD_NAME",
+        "label": "字段",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "OLD_VALUE",
+        "column": "OLD_VALUE",
+        "label": "修改前",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "NEW_VALUE",
+        "column": "NEW_VALUE",
+        "label": "修改后",
+        "type": "text",
+        "source": "own",
+        "role": "input"
+      },
+      {
+        "name": "CREATE_TIME",
+        "column": "CREATE_TIME",
+        "label": "创建时间",
+        "type": "datetime",
+        "source": "own",
+        "role": "input"
+      }
+    ]
+  }
+}

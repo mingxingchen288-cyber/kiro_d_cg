@@ -56,3 +56,19 @@
 - 验收标准：业务例子 E29、E30；模拟验证：对比值为 0 时不给百分比；Lookup 的 `filter.column` 不是 Lookup 的列时返回 422；`keywordColumns` 为空的 Lookup 用只有空白的关键字和 `filter` 查询时，照常按 `filter` 过滤并分页（QE-09）；真实验证：在 d_cg 上 E30 查出的成本单与旧系统同样条件查出的相同。
 - 状态与证据：进行中（模拟验证和真实验证通过，待独立复核）。2026-10-29 实现对比（`compare.py`，对照旧系统 `DynamicDataService.mergeHistoryData/processDynamicQueryCompare/calculateAndSetDiff`，改为十进制计算）、Lookup 过滤和高级查询的明细 EXISTS（`sql.advanced_sql`，对照旧系统 `buildQueryWhereClause`）。模拟验证：E29（`test_compare.py` 4 个）、E30 和明细条件（`test_lists.py` 中 2 个）、Lookup 过滤（`test_lookups.py` 中 3 个）通过。真实验证（未运行）：`test_e30_on_d_cg`，与旧系统同样写法的 EXISTS 查询比较（d_cg 中物料 115 且单价大于 3 的成本单 291 张，`02-d_cg业务表.out.txt`）。
   - 2026-10-31 核对（`.reports/inventory-20261030/甲-任务卡核对.md`）：状态由"进行中"改为"完成"：`tests/queries/test_oracle.py::test_e30_on_d_cg` 在 d_cg 上通过，第 7 批合并后 `-m "oracle or redis"` 196 passed、0 failed、0 skipped，`.reports/batch7-20261030/merge/pytest-real-1.txt`。`.reports/review/` 中没有本卡的复核记录，状态里补写"待独立复核"；按用户规则（`.kiro/steering/测试范围.md`）不阻断完成。
+
+### T-QE-5 审计追踪的查询、物料清单的"产品选择(按物料)导出"
+
+- 归属与目标：QE-13（只读实体从视图读取），以及按旧系统给物料清单配"产品选择(按物料)导出"。来源：盘点 `.reports/inventory-20261030/乙-旧系统功能对照.md` 第 2 节（物料清单"产品选择(按物料)导出"）、第 4 节；用户 2026-10-30 对第 4 节回复"要"、2026-10-31 回复"开始"。旧配置：cmx `T_COST_EXPORT_CONFIG` 21（EXPORT_NAME `产品选择(按物料)导出`、页面 goods-price-manage、MASTER_SHEET_NAME `产品选择(按物料)`、字体 Calibri、COLUMNS 为空、没有明细），主表 SQL 读视图 `V_COST_PGOODS_BY_MGOODS`（成本明细、物料、成本单、产品四表关联）；授权：系统管理员 `["*"]`，海外营销中心 121～125、采购 127 有 `自定义导出:goods-price-pgoods-export`，技术中心没有。旧代码 `CustomExportService.java`：文件名为导出名称 + .xlsx（第 141 行），工作表名为 MASTER_SHEET_NAME（第 151 行），导出当前接 `WHERE EXISTS (页面查询视图 p WHERE p.GOODSID = m.GOODSID 且页面筛选)`（第 236 行），COLUMNS 为空时列取第一行结果 Map 的键、表头就是键名（第 987 行），不排序（第 502 行）。
+- 前置输入：T-QE-3（导出）、T-QE-1（列表）；config 的 T-CF-11（只读实体）。
+- 负责范围：seed `export.goods-price-pgoods-export.json`；比较工具 `backend/tests/e2e/pgoods_export.py`；QE-13 不用改代码（`queries/sql.py` 的 `Source.of` 读实体的 `table`，视图同表）。
+- 交付物：物料清单主表右键 → 自定义导出 → "产品选择(按物料)导出 - 导出当前 / 导出所有"。导出配置与旧系统一致和不同的地方：
+  - 一致：文件名、工作表名、字体、没有明细、导出当前的条件（平台按 QE-06 把条件放在行号那一层，行顺序同旧系统）、列和表头。
+  - 列按旧系统写明：旧配置没写列，旧代码取第一行结果 MyBatis HashMap 的键（值为空的列不进 Map），平台的导出配置必须写列，按 HashMap 的顺序写出 10 列（PGOODSID、GOODSNAME、GOODSID、PRICE、GOODSNO、BATCH_QTY、PGOODSNO、APEX_PL、DTL_USEFLAG、FACTORYNAME，`.reports/batch8-20261031/g3-audit-export/hashmap_order.py`）。不同：第一行某列为空时旧系统少这一列，平台照常写出、格子为空。
+  - SQL 把旧视图展开写进配置：d_cg 没有 `V_COST_PGOODS_BY_MGOODS`；d_cg 的明细表没有 GOODSNAME、DTL_USEFLAG，物料名称、用途取物料表（同 MG-12、MG-13 的做法）；d_cg 的物料表没有 GOODSNO，从 `CMX.T_COST_GOODS` 读；旧 SQL 选了两次 GOODSNAME，新平台包装时同名列报 ORA-00918，只选一次（旧系统 Map 里也只有一个）；旧视图的四个 `deleted = 0` 去掉（d_cg 复制的业务表没有 DELETED 列，同 cost-pinggu-export）。
+  - 授权：d_cg 只有 ADMIN（物料清单 `*`，可以用）、COST_ACCOUNTANT、技术中心，没有海外营销、采购角色；技术中心旧系统也没有，角色不用改。
+- 验收标准：真实验证（d_cg）：本组代码以 seed 配置在物料清单按物料ID 406 筛选"导出当前"，与按旧代码推出的文件逐格一致。业务例子（浏览器，正式用例 `frontend/tests/e2e/pgoods-export-1031.spec.ts`）：admin 在物料清单按物料ID 406 筛选，右键导出当前，下载的文件与旧系统逐格一致。
+- 状态与证据：进行中（真实验证通过、8080 接口导出逐格一致；浏览器用例待主代理合并后运行，待独立复核）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`，报告 `.reports/batch8-20261031/g3-audit-export/报告.md`。
+  - d_cg：导出配置已经经 8080（main 的代码）保存，version 1（`save_export_config.out.txt`）；只读核对与 seed 相同（`check_8080.out.txt`）。8080 以 admin 导出 406：3 行，与旧系统推算 0 处不同（`compare-8080-406.txt`）。
+  - 真实验证：`tests/queries/test_oracle.py::test_pgoods_export_matches_old_system_on_d_cg` 1 passed（`pytest-qe-oracle.txt`）；`tests/queries/test_oracle.py` 全部和本组 pipeline 真实测试合计 30 passed（`pytest-real-g3.txt`）。
+  - 浏览器用例没有在本组端口 8093 跑：本分支（基于 87f9d21）的后端读不了 d_cg 的 menu.main（主代理合并 G4 后加了 `icon`），启动失败（`e2e-1.txt`）。

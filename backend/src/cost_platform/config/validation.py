@@ -200,6 +200,8 @@ def _references(run: Run, entry: Entry) -> None:
             run.err(entry, at, f"引用的{_TYPE_NAMES.get(ref_type, ref_type)} {ref_key} 不存在")
 
 
+_KIND_NAMES = {"table": "表", "view": "视图"}
+
 _TYPE_NAMES = {"entity": "实体", "page": "页面", "operation": "操作", "approvalFlow": "审批流", "lookup": "Lookup", "dict": "字典",
                "role": "角色", "rule": "规则"}
 
@@ -210,12 +212,12 @@ def _entity(run: Run, entry: Entry) -> None:
     table_columns = run.columns(entity.table) or {}
     if kind is None:
         run.err(entry, "table", f"表 {entity.table} 在数据库中不存在")
-    elif kind != "table":
-        run.err(entry, "table", f"{entity.table} 是视图，实体的 table 必须是表")
     else:
-        run.sequence(entry, "table", entity.table)
+        # table 是视图时为只读实体（CF-18，审计追踪读 PF_AUDIT_LOG_V）：只用于只读页面，不写入，不要序列
+        if kind == "table":
+            run.sequence(entry, "table", entity.table)
         if entity.primary_key not in table_columns:
-            run.err(entry, "primaryKey", f"主键列 {entity.primary_key} 不在表 {entity.table} 中")
+            run.err(entry, "primaryKey", f"主键列 {entity.primary_key} 不在{_KIND_NAMES[kind]} {entity.table} 中")
     view_columns: dict[str, ColumnInfo] | None = None
     if entity.read_view is not None:
         view_columns = run.columns(entity.read_view)
@@ -233,8 +235,8 @@ def _entity(run: Run, entry: Entry) -> None:
         if f.column is None:
             if entity.read_view is None:
                 run.err(entry, f"fields[{i}].column", f"字段 {f.name} 的 column 为 null，只能来自 readView，但实体没有设置 readView")
-        elif kind == "table" and f.column not in table_columns:
-            run.err(entry, f"fields[{i}].column", f"列 {f.column} 不在表 {entity.table} 中")
+        elif kind is not None and f.column not in table_columns:
+            run.err(entry, f"fields[{i}].column", f"列 {f.column} 不在{_KIND_NAMES[kind]} {entity.table} 中")
         if isinstance(f.compare, QueryCompare):
             _compare(run, entry, f"fields[{i}].compare", f.compare, entity)
         elif f.compare is not None and f.compare.field not in {x.name for x in entity.fields}:

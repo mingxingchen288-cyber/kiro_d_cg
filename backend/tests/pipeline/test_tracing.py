@@ -34,8 +34,26 @@ def test_counts_statements_executemany_once_and_not_commit() -> None:
     assert insert.binds == {"rows": [{"1": 1, "2": "3.50"}, {"1": 2, "2": "3.80"}]}
     assert update.text == "UPDATE t_wp SET price = ? WHERE id = ?" and update.rows == 1
     assert update.binds == {"1": "4", "2": 1}
-    assert select.rows is None and select.error is None
+    assert select.rows == 1 and select.error is None  # WP-23：查询为取出的行数
     assert trace.total_ms >= 0
+
+
+def test_query_rows_are_rows_fetched() -> None:
+    """WP-23（B16，旧系统 SQL 追踪记返回行数）：查询的行数为调用方取出的行数，一次取完、按批取（yield_per，导出用）都记；
+    不多发 SQL。"""
+    factory = FakeUnitOfWorkFactory()
+    tracer = SqlTracer()
+    with factory.engine.connect() as connection:
+        connection.execute(text("CREATE TABLE t_wp23 (id INTEGER PRIMARY KEY)"))
+        connection.execute(text("INSERT INTO t_wp23 (id) VALUES (1), (2), (3)"))
+        connection.commit()
+    with tracer.capture() as trace, factory.begin() as uow:
+        uow.connection.execute(text("SELECT id FROM t_wp23 ORDER BY id")).all()
+        batched = list(uow.connection.execute(text("SELECT id FROM t_wp23"), execution_options={"yield_per": 2}))
+        uow.connection.execute(text("SELECT id FROM t_wp23 WHERE id > 5")).all()
+    assert len(batched) == 3
+    assert trace.count == 3
+    assert [s.rows for s in trace.statements] == [3, 3, 0]
 
 
 def test_failed_statement_recorded_with_error() -> None:

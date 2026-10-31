@@ -43,7 +43,7 @@ def client(env: Env) -> TestClient:
 
 
 def _page() -> dict[str, Any]:
-    return next(d for d in seed_drafts() if d.type == "page").content
+    return next(d for d in seed_drafts() if d.type == "page" and d.key == "COST_PINGGU").content
 
 
 def test_page_view_and_rules_pack(client: TestClient, env: Env) -> None:
@@ -62,7 +62,7 @@ def test_config_items_admin_only(client: TestClient) -> None:
     items = client.get("/api/config/items", params={"type": "page"})
     assert items.status_code == 200
     assert [(i["type"], i["key"], i["version"]) for i in items.json()["items"]] == [
-        ("page", "COST_PINGGU", 1), ("page", "GOODS_PRICE_MANAGE", 1)]
+        ("page", "AUDIT_LOG", 1), ("page", "COST_PINGGU", 1), ("page", "GOODS_PRICE_MANAGE", 1)]
     denied = client.get("/api/config/items", headers={"X-Test-Role": "R"})
     assert denied.status_code == 403 and denied.json()["code"] == "PERMISSION_DENIED"
     item = client.get("/api/config/items/page/COST_PINGGU")

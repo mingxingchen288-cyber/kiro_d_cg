@@ -51,10 +51,10 @@ def test_whole_world_passes(env: Env) -> None:
 def test_every_page_view_and_pack_generated(env: Env) -> None:
     records = env.records()
     assert {k for k, r in records.items() if r.type == "rulesPack"} == {
-        "rulesPack/COST_PINGGU", "rulesPack/COST_GOODS_PRICE", "rulesPack/COST_PINGGU_LQ"}
+        "rulesPack/AUDIT_LOG", "rulesPack/COST_PINGGU", "rulesPack/COST_GOODS_PRICE", "rulesPack/COST_PINGGU_LQ"}
     assert {k for k, r in records.items() if r.type == "pageView"} == {
-        "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心", "pageView/GOODS_PRICE_MANAGE|ADMIN",
-        "pageView/GOODS_PRICE_MANAGE|技术中心"}
+        "pageView/AUDIT_LOG|ADMIN", "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心",
+        "pageView/GOODS_PRICE_MANAGE|ADMIN", "pageView/GOODS_PRICE_MANAGE|技术中心"}
 
 
 # ---------------------------------------------------------------- 引用的实体、字段、操作、页面、审批流、Lookup、字典都存在

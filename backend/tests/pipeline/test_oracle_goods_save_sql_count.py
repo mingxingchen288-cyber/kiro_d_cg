@@ -70,6 +70,9 @@ def test_goods_page_save_without_approval_7_statements(engine: Engine, local_goo
         assert result.outcome == "saved"
         assert _kinds(sql) == ["INSERT", "SELECT", "DUAL", "LOCK", "SELECT", "UPDATE", "UPDATE"], sql
         assert "FROM T_COST_GOODS_PRICE_V" in sql[3] and "GOODSTYPE" in sql[3]  # 加锁语句同时读出物料的数据
+        # WP-23（B16）：命令审查记下的查询有返回行数：加锁前的普通读取、加锁读取各读出这个物料 1 行；改物料影响 1 行
+        rows = [s.rows for s in trace.statements]
+        assert rows[1] == 1 and rows[3] == 1 and rows[5] == 1, rows
         with engine.connect() as conn:
             row = conn.execute(text("SELECT goodstype, update_by FROM t_cost_goods WHERE goodsid = :g"),
                                {"g": int(local_goods)}).one()

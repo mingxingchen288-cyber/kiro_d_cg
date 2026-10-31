@@ -673,7 +673,8 @@ class PageView(Wire):
     layout: PageLayout
     detail_mode: DetailMode
     audit: Bool
-    save_operation: Code
+    save_operation: Code | None
+    """C05 v10：只读页面（页面配置的 `saveOperation` 为 null，C06 v29 第 3 节）为 null，`system_buttons` 不含 `save`。"""
     rules_pack: PackRef
     master: ViewMaster
     details: list[ViewDetail]
@@ -837,7 +838,8 @@ class PageConfig(Wire):
     layout: PageLayout
     detail_mode: DetailMode
     audit: Bool
-    save_operation: Code
+    save_operation: Code | None
+    """必须写；为 null 时是只读页面（C06 v29 第 3 节，依据旧系统审计追踪页 auditLog）：没有保存，只能查询、筛选、排序、导出。"""
     master: PageMasterConfig
     details: list[PageDetailConfig] = []
 

@@ -72,7 +72,8 @@ def _references(config_type: str, content: Any) -> list[tuple[str, str, str]]:
         refs += [("page", p, f".approvalRequired[{i}].sourcePages[{j}]")
                  for i, rule in enumerate(content.approval_required) for j, p in enumerate(rule.source_pages)]
     elif config_type == "page":
-        refs.append(("operation", content.save_operation, ".saveOperation"))
+        if content.save_operation is not None:  # 只读页面没有保存操作（C06 v29 第 3 节）
+            refs.append(("operation", content.save_operation, ".saveOperation"))
         areas = [(".master", content.master), *((f".details[{i}]", d) for i, d in enumerate(content.details))]
         for at, area in areas:
             refs.append(("entity", area.entity, f"{at}.entity"))

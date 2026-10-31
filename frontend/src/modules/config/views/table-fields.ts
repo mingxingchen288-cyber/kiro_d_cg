@@ -317,6 +317,8 @@ export async function saveColumns(s: ColumnsSave): Promise<boolean> {
     s.notify.error(errorText(error));
     return false;
   }
+  // 只读页面（C06 v29）没有保存操作，不用同步可写字段
+  if (!page.saveOperation) return true;
   await s.operation.open(page.saveOperation);
   const operation = s.operation.state.current;
   if (!operation) return false;

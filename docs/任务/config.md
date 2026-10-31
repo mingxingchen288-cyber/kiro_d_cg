@@ -92,6 +92,16 @@
 - 状态与证据：进行中（模拟验证和浏览器业务例子通过，待独立复核）。2026-10-31 第 7 批 CF 组，提交 fd1f3b1（`batch7/cost-config`），报告 `.reports/batch7-20261030/cf-cost-config/报告.md`。合并后主代理执行 `platform db copy-business-tables`，只新建了 `T_COST_FORMONEY_V`（4 列、4 行，其余对象"已存在，未改动"，`.reports/batch7-20261030/merge/copy-business-tables.txt`），再经配置接口写进 d_cg（`save_config.out.txt`）；整套端到端 42 passed，其中本卡 2 条（`e2e-6.txt`）。
   - d_cg 现有 700 张成本单中 256 张的状态不在这 5 个值里（自主 125、委托研发 43、委托转移 40、"0" 24 等，另有 21 张为空，cmx 分布相同，是旧数据本来就有的）：照常显示原值，打开下拉时列表里没有它们的原值，选了才会改；保存不按字典校验。
 
+### T-CF-11 只读页面和审计追踪页的配置
+
+- 归属与目标：实现 CF-18（C06 v29、C05 v10），按旧系统审计追踪页 auditLog 配一个只读通用页。来源：盘点 `.reports/inventory-20261030/乙-旧系统功能对照.md` 第 1 节（审计追踪 auditLog）、第 4 节；用户 2026-10-30 对第 4 节回复"要"、2026-10-31 回复"开始"。旧系统的依据见 CF-18。
+- 前置输入：write-pipeline 的 T-WP-13（视图 `PF_AUDIT_LOG_V`，迁移 wp_0003）。
+- 负责范围：`contracts/types.py`（`PageConfig.save_operation`、`PageView.save_operation` 可为 null）、`config/validation.py`（实体的 `table` 可以是视图，不要序列）、`config/catalog.py` 和 `contracts/fakes/config.py`（只读页面不引用保存操作）、`config/views.py`、`config/page_view.py`（只读页面不给 `save`）；前端 `contracts/page-view.ts`、`config/core/types.ts`、`page/page-runtime.ts`（只读页面不保存）、`config/views/table-fields.ts`（保存列时只读页面不同步可写字段）；seed `entity.AUDIT_LOG.json`、`page.AUDIT_LOG.json`、`role.ADMIN.json`。
+- 交付物：审计追踪页 `/page/AUDIT_LOG`：列为操作用户、操作时间、页面编码、表编码、表名称、记录ID、操作类型、字段编码、字段、修改前、修改后、创建时间（旧视图的 ID 是拼出来的长文本，不显示；旧的"字段变更"一列拆成四列，见 WP-22），可见列都设为高级查询的预置条件（旧列元数据 SEARCHABLE 全为 1），按 ID 升序（同旧页面）；只读，没有保存按钮；只给 ADMIN。菜单由主代理合并后统一加：顶层、最后一个，标题"审计追踪"，页面编码 `AUDIT_LOG`，图标 `mdi:file-document-outline`（旧 `T_COST_RESOURCE` 105，SORT_ORDER 99，无父级）。
+- 验收标准：模拟验证：seed 的审计页生成的页面视图 `saveOperation` 为 null、`systemButtons` 只有高级查询、字段都不能编辑；实体的 `table` 为视图时校验通过、不查序列。业务例子（浏览器、d_cg，正式用例 `frontend/tests/e2e/audit-log-1031.spec.ts`）：admin 改测试成本单的备注后，审计追踪按记录ID 查出 INSERT 和 UPDATE 的备注行，字段"备注"、修改前、修改后、操作用户 admin 正确；没有保存按钮、格子不能编辑；chengben01 读这个页面视图为 403。
+- 状态与证据：进行中（模拟验证通过；配置和浏览器用例待主代理合并后执行，待独立复核）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`，报告 `.reports/batch8-20261031/g3-audit-export/报告.md`。
+  - 模拟验证：`uv run --with <rules-core wheel> pytest -q -p no:cacheprovider -m "not oracle and not redis"` 全部通过（条数见报告），其中 `tests/config/test_views.py::test_read_only_page_audit_log`；config 测试中按编码取成本核算页、seed 条数 45 → 48（本组新增 3 条）；`tests/contracts/test_samples.py` 的 C06 可为 null 的必填字段加 `PageConfig.save_operation`。前端 `pnpm typecheck`、`pnpm test`、`pnpm lint:deps` 通过。
+  - 没有在 d_cg 保存：main 的代码校验不过这两种新写法。合并后主代理按顺序执行：`platform db upgrade`（建 `PF_AUDIT_LOG_V`）→ 重启 8080 → `.reports/batch8-20261031/g3-audit-export/save_audit_log_config.py`（保存 entity、page，role/ADMIN 只加 `AUDIT_LOG`）→ 加菜单 → 跑 `audit-log-1031.spec.ts`。
 ### T-CF-12 页面视图带默认值和对比的显示方式
 
 - 归属与目标：实现 CF-19（盘点 `.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B8、B9；用户 2026-10-31 回复"开始"）。契约 C05 v9。来源：旧系统 `cost-web/src/v3/composables/meta-v3/useWorkingSetStore.ts` 第 543–585 行、`useMetaColumns.ts` 第 166–176、204–219、423–455 行。

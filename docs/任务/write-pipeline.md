@@ -146,3 +146,23 @@
 - 负责范围：`pipeline/locks.py` 的 `PipelineLocks.lock`（`expected` 中的单据按顺序轮到时用"锁一行并读出数据"的语句，锁住后用它核对；其余对象照旧只锁；本事务已持有锁的单据仍普通重读）、`KeyLocker.lock_document`；`pipeline/document_store.py` 的 `lock_document`（与普通保存的 `lock_load` 一个主键时同一条语句，有明细时另一条普通查询读明细）。
 - 验收标准：一次锁多行仍按统一顺序每行一条（规则 7）；本命令单据在加锁前读取之后被改时仍整个回滚重来（规则 4）；`tests/pipeline/test_oracle_lock_order.py` 原有 8 个场景照样通过；物料清单页保存的 SQL 条数比原来少 1 条。
 - 状态与证据：模拟验证和真实验证通过（2026-10-30，B1 组，`batch5/pipeline-defaults`，`.reports/batch5-20261030/b1-pipeline/`）。模拟：`tests/pipeline/test_locks.py` 的 `test_lock_with_expected_reads_own_documents_in_the_lock_statements`（先锁成本单 1001、再锁住并读出物料 115，`read_documents` 只有加锁前的一次）、`test_lock_with_expected_changed_meanwhile_raises`；`test_document_store_sql.py` 的 `test_deferred_lock_reads_the_own_document_in_the_lock_statement`（SQL 文本）；`tests/contracts/test_business_locker.py` 照常通过。真实（d_cg）：`test_oracle_lock_order.py` 8 个场景通过（规则 4 的场景 d 仍执行两次），新加 e1（PF_TEST 物料清单页改名称 8 → 7 条）、e2（改执行价进审批、冻结成本单 16 → 15 条，加锁语句只有成本单、物料两条）；`tests/pipeline/test_oracle_goods_save_sql_count.py`（seed 配置的物料清单页 GOODS_PRICE_MANAGE，测试自建本地物料、改规格不触发审批）8 → 7 条。
+
+### T-WP-13 审计追踪视图
+
+- 归属与目标：实现 WP-22，给审计追踪页（config 的 T-CF-11）一个按字段展开的视图。来源：盘点 `.reports/inventory-20261030/乙-旧系统功能对照.md` 第 1、4 节（审计追踪 auditLog）；用户 2026-10-30 对第 4 节回复"要"、2026-10-31 回复"开始"。
+- 前置输入：T-WP-3（审计差异 WP-11）；identity 的 `PF_USER`（id_0001）、config 的 `PF_CONFIG_ITEM`（cf_0001）。
+- 负责范围：`pipeline/migrations/wp_0003_audit_log_view.py`（`CREATE OR REPLACE VIEW PF_AUDIT_LOG_V`，依赖 id_0001、cf_0001）。审计差异中字段是对象的键，Oracle 19c 的 JSON_TABLE 取不到键名，先用正则改写成数组再展开（写法见迁移文件开头）。
+- 交付物：视图 `PF_AUDIT_LOG_V`。
+- 验收标准：真实验证（d_cg）：admin 在成本核算改了单据 200680 主表的备注（空 → PF_TEST审计）、原辅料一行的客户指定（否 → 是），又删了一行原辅料：视图给出每个字段一行，操作类型为 UPDATE、DELETE，字段标题、表名称取实体配置，用户为登录名 admin，时间为命令的开始、完成时间。
+- 状态与证据：进行中（真实验证通过；视图待主代理合并后执行 `platform db upgrade` 建立，待独立复核）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`，报告 `.reports/batch8-20261031/g3-audit-export/报告.md`。
+  - 真实验证：`tests/pipeline/test_oracle_audit_log_view.py`（测试自己插一条命令记录，审计差异按 `command_log.audit_rows` 生成，直接执行迁移中的查询，结束时删掉这条记录）1 passed，`.reports/batch8-20261031/g3-audit-export/pytest-wp22-oracle.txt`；本组相关真实测试合计 30 passed（`pytest-real-g3.txt`）。
+  - 没有在 d_cg 执行 `platform db upgrade`：执行后 `PF_ALEMBIC_VERSION` 多出 wp_0003，别的分支的代码找不到这个版本。
+
+### T-WP-14 命令审查里查询语句的行数
+
+- 归属与目标：实现 WP-23（盘点 `.reports/inventory-20261030/甲-任务卡核对.md` 第四节 B16）：命令审查中 SELECT 语句也有行数，不多发 SQL。用户 2026-10-31 回复"开始"。
+- 前置输入：T-WP-4（`SqlTracer`）、T-WP-5（命令审查）。
+- 负责范围：`pipeline/tracing.py`（`_Counted`：包住执行上下文的 `cursor_fetch_strategy`，委托给原来的方式，`fetchone`、`fetchmany`、`fetchall` 时累加；要分批取的语句先换成分批的方式再包上，`yield_per` 换掉方式后再包一层）。
+- 交付物：命令审查（C09 第 7a 节 `CommandLog.sql[].rows`）中查询语句的行数。
+- 验收标准：模拟验证：一次取完、按批取（`yield_per`，导出用）都记取出的行数，没有结果的查询为 0，SQL 条数不变；真实验证（d_cg）：物料清单页保存（seed 的 GOODS_PRICE_MANAGE，测试自建本地物料）中加锁前的普通读取、加锁读取各为 1 行，改物料影响 1 行，SQL 条数仍是 7 条。
+- 状态与证据：进行中（模拟验证和真实验证通过，待独立复核）。2026-10-31 第 8 批 G3，分支 `batch8/audit-export`。模拟：`tests/pipeline/test_tracing.py` 的 `test_query_rows_are_rows_fetched`、原用例的查询行数改为 1。真实：`tests/pipeline/test_oracle_goods_save_sql_count.py` 加行数断言，连同 `test_oracle_sql_count.py`、`test_oracle_lock_order.py` 16 passed（`.reports/batch8-20261031/g3-audit-export/pytest-wp23-oracle.txt`）。前端命令审查面板照旧显示 `rows`，没有改。

@@ -495,8 +495,9 @@ def test_c06_omittable_fields_match_section_1_1() -> None:
     assert problems == []
 
 
-# C06 中必须写、但值可以为 null 的字段：实体字段的 column 为 null 表示只在 readView 中存在（C06 第 2 节）。
-_C06_REQUIRED_NULLABLE = {"EntityField.column"}
+# C06 中必须写、但值可以为 null 的字段：实体字段的 column 为 null 表示只在 readView 中存在（C06 第 2 节）；页面的
+# saveOperation 为 null 表示只读页面（C06 v29 第 3 节）。
+_C06_REQUIRED_NULLABLE = {"EntityField.column", "PageConfig.save_operation"}
 
 
 def test_c06_required_fields_reject_null() -> None:

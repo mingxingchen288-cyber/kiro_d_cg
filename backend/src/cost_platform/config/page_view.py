@@ -73,5 +73,6 @@ def build_page_view(page_code: str, page: PageConfig, entities: Mapping[str, Ent
         page_code=page_code, title=page.title, version=version, layout=page.layout, detail_mode=page.detail_mode,
         audit=page.audit, save_operation=page.save_operation, rules_pack=PackRef(pack_id=page_code, version=version),
         master=master, details=details,
-        system_buttons=[b for b in SYSTEM_BUTTONS if "*" in allowed or f"system:{b}" in allowed],
+        system_buttons=[b for b in SYSTEM_BUTTONS if ("*" in allowed or f"system:{b}" in allowed)
+                        and not (b == "save" and page.save_operation is None)],  # 只读页面（C06 v29）
     )

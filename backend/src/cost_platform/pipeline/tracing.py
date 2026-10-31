@@ -6,8 +6,9 @@
 `capture()` 和执行在同一个线程里，照样记得到；别的线程、协程同时执行的语句不记。
 
 计数口径：一次 `execute` 或 `executemany` 计 1 条；提交、回滚和连接池探活（不经过游标事件）不计。
-影响行数取驱动的 `rowcount`，只对 INSERT、UPDATE、DELETE、MERGE 给出；查询为空：游标事件发生时查询结果还没有取完，
-旧系统记的"返回行数"这里不记。
+行数：INSERT、UPDATE、DELETE、MERGE 取驱动的 `rowcount`（影响行数）；返回结果的语句（查询，含加锁读取）为取出的行数
+（WP-23，同旧系统 SQL 追踪的返回行数）。游标事件发生时查询结果还没有取，所以在这时把这条语句的取数方式换成会计数的包装
+（`_Counted`，委托给原来的取数方式），调用方取结果时累加，不多发 SQL；结果一行都没取的语句（例如只加锁、不读结果）为空。
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import Engine, event
+from sqlalchemy.engine.cursor import BufferedRowCursorFetchStrategy, CursorFetchStrategy, ResultFetchStrategy
 
 from cost_platform.contracts.decimal_text import format_decimal
 from cost_platform.contracts.types import SqlTrace
@@ -69,6 +71,71 @@ class TracedStatement:
 
     def to_wire(self) -> SqlTrace:
         return SqlTrace(text=self.text, binds=self.binds, ms=self.ms, rows=self.rows, error=self.error)
+
+
+class _Counted(ResultFetchStrategy):
+    """查询结果的取数方式的包装（WP-23）：照原来的方式取，数取出的行，记到这条语句上。
+
+    SQLAlchemy 在游标事件之后用执行上下文的 `cursor_fetch_strategy` 建结果对象；原来是默认方式、且要分批取
+    （`yield_per`、`stream_results`）时，SQLAlchemy 会换成分批的方式，这里先换好再包上，取数的方式不变。
+    `yield_per` 会换掉取数方式，换完再包一层。取完后 SQLAlchemy 换成"没有游标"的方式，不再经过这里。"""
+
+    __slots__ = ("_inner", "_entry")
+
+    def __init__(self, inner: ResultFetchStrategy, entry: TracedStatement) -> None:
+        self._inner = inner
+        self._entry = entry
+
+    @property  # type: ignore[override]
+    def alternate_cursor_description(self) -> Any:
+        return self._inner.alternate_cursor_description
+
+    def _add(self, count: int) -> None:
+        self._entry.rows = (self._entry.rows or 0) + count
+
+    def soft_close(self, result: Any, dbapi_cursor: Any) -> None:
+        self._inner.soft_close(result, dbapi_cursor)
+
+    def hard_close(self, result: Any, dbapi_cursor: Any) -> None:
+        self._inner.hard_close(result, dbapi_cursor)
+
+    def handle_exception(self, result: Any, dbapi_cursor: Any, err: BaseException) -> Any:
+        return self._inner.handle_exception(result, dbapi_cursor, err)
+
+    def yield_per(self, result: Any, dbapi_cursor: Any, num: int) -> None:
+        result.cursor_strategy = self._inner
+        self._inner.yield_per(result, dbapi_cursor, num)
+        result.cursor_strategy = _Counted(result.cursor_strategy, self._entry)
+
+    def fetchone(self, result: Any, dbapi_cursor: Any, hard_close: bool = False) -> Any:
+        row = self._inner.fetchone(result, dbapi_cursor, hard_close)
+        self._add(0 if row is None else 1)
+        return row
+
+    def fetchmany(self, result: Any, dbapi_cursor: Any, size: int | None = None) -> Any:
+        rows = self._inner.fetchmany(result, dbapi_cursor, size)
+        self._add(len(rows))
+        return rows
+
+    def fetchall(self, result: Any, dbapi_cursor: Any) -> Any:
+        rows = self._inner.fetchall(result, dbapi_cursor)
+        self._add(len(rows))
+        return rows
+
+
+def _count_rows(context: Any, cursor: Any, entry: TracedStatement) -> None:
+    """返回结果的语句（游标有列说明）：把执行上下文的取数方式换成 `_Counted`。"""
+    inner = getattr(context, "cursor_fetch_strategy", None)
+    if inner is None or getattr(cursor, "description", None) is None:
+        return
+    # 与 SQLAlchemy 建结果对象时相同（DefaultExecutionContext._setup_result_proxy）：服务端游标，或者编译出的查询
+    # 带 stream_results 时分批取
+    plain = bool(getattr(context, "is_crud", False) or getattr(context, "is_text", False))
+    batched = getattr(context, "_is_server_side", False) or (
+        not plain and bool(context.execution_options.get("stream_results", False)))
+    if type(inner) is CursorFetchStrategy and batched:
+        inner = BufferedRowCursorFetchStrategy(cursor, context.execution_options)
+    context.cursor_fetch_strategy = _Counted(inner, entry)
 
 
 @dataclass
@@ -129,6 +196,8 @@ class SqlTracer:
         if entry.text.lstrip().upper().startswith(_DML):
             rowcount = getattr(cursor, "rowcount", None)
             entry.rows = rowcount if isinstance(rowcount, int) and rowcount >= 0 else None
+        elif not executemany:
+            _count_rows(context, cursor, entry)
 
     def _error(self, context: Any) -> None:
         trace = self._current.get()

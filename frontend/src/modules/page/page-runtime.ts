@@ -830,7 +830,8 @@ export class PageRuntime {
 
   async save(): Promise<CommandResult | null> {
     const view = this.view.value;
-    if (!view || this.state.saving || !view.systemButtons.includes('save')) return null;
+    // 只读页面（C05 v10）没有保存操作，systemButtons 也不含 save
+    if (!view || this.state.saving || !view.systemButtons.includes('save') || !view.saveOperation) return null;
     for (const port of this.ports.values()) port.stopEditing();
     const buffer = this.model.buffer;
     const documents = buffer.documents();
