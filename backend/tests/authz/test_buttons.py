@@ -96,7 +96,11 @@ def test_tech_center_sample_matches_seed() -> None:
     """样例中技术中心的权限与 seed 的 `role.技术中心.json` 相同（seed 按同一规则从旧系统转换）。"""
     seeded = seed("role", "技术中心")
     assert seeded.pages[COST_PINGGU].buttons == TECH_CENTER_PINGGU_BUTTONS
-    assert seeded.pages == role("技术中心").pages
+    # 液体成本核算（第 8 批）不在样例中：按钮由旧 T_COST_ROLE_PAGE 261 按同一规则转换，与成本核算只差明细的区域编码
+    liquid = [b.replace("COST_MATERIAL:", "COST_MATERIAL_LQ:").replace("COST_PACKAGE:", "COST_PACKAGE_LQ:")
+              for b in TECH_CENTER_PINGGU_BUTTONS]
+    assert seeded.pages["COST_PINGGU_LQ"].buttons == liquid
+    assert {k: v for k, v in seeded.pages.items() if k != "COST_PINGGU_LQ"} == role("技术中心").pages
 
 
 def test_e07_tech_center_copies_master_row_and_saves() -> None:

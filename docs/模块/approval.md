@@ -50,6 +50,11 @@
   - `todo` 的条数也是顶栏铃铛的角标"待我审批数"（frontend-shell FS-06），同旧系统 `ApprovalNotificationService.summary` 第 49 行。
 - AP-25：审批详情带审批记录（C09 v14 的 `history`）：提交一条（发起人、提交时间、第 1 级），之后每次通过、驳回、撤回一条（处理记录中的处理人、时间、所在级别、意见），按处理顺序；撤回时填的原因记在意见中。对照旧系统 `WF_APPROVAL_LOG`（`ApprovalRuntimeService.progress` 第 161–166 行按 LOG_ID 排序）：APPLY、APPROVE、REJECT、CANCEL 对应提交、通过、驳回、撤回，撤回原因在 ACTION_COMMENT（d_cg 旧审批 236：撤回原因"线上发布烟测结束：撤回200680测试改价……"）；旧系统另记的 FINISH（审批结束）和 SKIP（跳过的节点）不单列，结束看状态，跳过的审批人在进度中显示。
 - AP-26："修改内容"各表带列宽（C09 v14 的 `widths`），取 C06 7.5 `display[].columns[].width`，没配的为空；没有配置 `master`、`detail` 块时（按有变化的字段显示）都为空。v14 之前结束时存下的修改内容没有列宽。对照旧系统 `ApprovalPresentationGrid.vue` 第 188 行 `width: column.width || 170`。
+- AP-27：物料清单改价审批（GOODS_TO_COST，C06 7.10）对液体成本单的行为（2026-10-31 第 8 批 G2，T-AP-10）。液体成本核算注册成实体（config CF-17）后，T_COST_PINGGU_DTL_LQ 是注册过的表，按已有的 AP-02、AP-08、AP-10 处理，不改本模块的代码：
+  - 提交时含这个物料的液体明细所属的整张液体成本单冻结（冻结记录登记在 T_COST_PINGGU_LQ，原来没注册时只冻结那一行明细）。
+  - 详情的液体两块可以用 `master.` 列：seed 改回 C06 7.10 正文的写法（`master.DOCID` 单据号、`master.GOODSNAME` 产品）；修改后的金额按液体页面的规则重算。
+  - 通过后勾选的液体明细单价写成新执行价，经液体页面的保存（COST_PINGGU_LQ.save）校验、按液体规则重算这一行的每批成本和这张单据的主表合计、记审计；原来没注册时只改单价、金额不变。
+  - 与旧系统：旧 `PKG_APPROVAL_PRICE_ACTIONS.GOODS_TO_COST` 对液体目标改单价后调 `RECALCULATE`（P_PINGGU_DTL_COMPUTE_LQ、P_PINGGU_COMPUTE_LQ，`my-project/docs/approval-refactor-20261026-ordinary-install.sql` 第 350–359、589–658 行），即改价后重算，新平台相同，只是重算用页面规则、不用有错的存储过程（用户 2026-10-29）。旧系统后来的配置化运行时因"液体公式不一致"暂不支持液体（`ApprovalCostPreviewService.java` 第 23–26 行、`ApprovalDefinitionService.java` 第 402–412 行），cmx 的 82 号流程只写成本核算的明细；新平台按 C06 7.10 两种都写。
 
 ## 4. 依赖
 

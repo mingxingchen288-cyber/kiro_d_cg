@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_Y_JG_RE",
+  "name": "液体主表年加工费",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU_LQ",
+    "category": "calc",
+    "field": "Y_JG_RE",
+    "order": 5,
+    "expression": "JGF_PERQP * ANNUAL_QTY"
+  }
+}

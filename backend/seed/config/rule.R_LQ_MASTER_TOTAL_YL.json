@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_TOTAL_YL",
+  "name": "液体主表每批原料成本",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU_LQ",
+    "category": "calc",
+    "field": "TOTAL_YL",
+    "order": 8,
+    "expression": "sum(map(filter(COST_MATERIAL_LQ, #.DTL_USEFLAG == '原料'), #.COST_BATCH)) * (sum(map(filter(COST_MATERIAL_LQ, #.DTL_USEFLAG == '原料'), #.COST_BATCH)) > 0 ? 1 / 1.13 : 1)"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_COST_PERBOX",
+  "name": "液体主表每盒成本",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU_LQ",
+    "category": "calc",
+    "field": "COST_PERBOX",
+    "order": 2,
+    "expression": "TOTAL_COST / APEX_PL"
+  }
+}

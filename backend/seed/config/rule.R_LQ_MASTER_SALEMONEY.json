@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_SALEMONEY",
+  "name": "液体主表每批销售额",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU_LQ",
+    "category": "calc",
+    "field": "SALEMONEY",
+    "order": 0,
+    "expression": "OUT_PRICE_RMB * APEX_PL * (YIELD / 100)"
+  }
+}

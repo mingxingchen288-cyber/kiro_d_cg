@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_TOTAL_COST",
+  "name": "液体主表每批物料成本",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU_LQ",
+    "category": "calc",
+    "field": "TOTAL_COST",
+    "order": 11,
+    "expression": "TOTAL_YL + TOTAL_FL + TOTAL_BC"
+  }
+}

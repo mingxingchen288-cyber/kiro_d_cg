@@ -35,6 +35,7 @@ def test_save_writes_new_version_views_and_packs_in_one_generation(env: Env) -> 
         "pageView/AUDIT_LOG|ADMIN", "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心",
         "pageView/GOODS_PRICE_MANAGE|ADMIN", "pageView/GOODS_PRICE_MANAGE|技术中心", "rulesPack/AUDIT_LOG",
         "rulesPack/COST_PINGGU", "rulesPack/COST_GOODS_PRICE",
+        "pageView/COST_PINGGU_LQ|ADMIN", "pageView/COST_PINGGU_LQ|技术中心", "rulesPack/COST_PINGGU_LQ",
         # 第 8 批 G1 的三个基础资料页：旧系统技术中心没有这三个页面的权限，只有 ADMIN 的页面视图
         "pageView/GOODS_MANAGE|ADMIN", "pageView/CUSTOMER_MANAGE|ADMIN", "pageView/FORMONEY_MANAGE|ADMIN",
         "rulesPack/COST_GOODS", "rulesPack/COST_CUSTOMER", "rulesPack/COST_FORMONEY"}
@@ -106,8 +107,8 @@ def test_ensure_admin_role(env: Env) -> None:
     admin = env.stored("role", "ADMIN")
     assert admin == {"name": "系统管理员", "admin": True,
                      "pages": {"AUDIT_LOG": {"buttons": ["*"]}, "COST_PINGGU": {"buttons": ["*"]},
-                               "CUSTOMER_MANAGE": {"buttons": ["*"]}, "FORMONEY_MANAGE": {"buttons": ["*"]},
-                               "GOODS_MANAGE": {"buttons": ["*"]},
+                               "COST_PINGGU_LQ": {"buttons": ["*"]}, "CUSTOMER_MANAGE": {"buttons": ["*"]},
+                               "FORMONEY_MANAGE": {"buttons": ["*"]}, "GOODS_MANAGE": {"buttons": ["*"]},
                                "GOODS_PRICE_MANAGE": {"buttons": ["*"]}}}
     env.save([menu])
     generation = env.generation()
@@ -119,8 +120,9 @@ def test_list_and_get_items(env: Env) -> None:
     env.save(seed_drafts())
     pages = env.service.list_items("page")
     assert [(i.type, i.key, i.version, i.updated_by) for i in pages] == [
-        ("page", "AUDIT_LOG", 1, "1"), ("page", "COST_PINGGU", 1, "1"), ("page", "CUSTOMER_MANAGE", 1, "1"),
-        ("page", "FORMONEY_MANAGE", 1, "1"), ("page", "GOODS_MANAGE", 1, "1"), ("page", "GOODS_PRICE_MANAGE", 1, "1")]
+        ("page", "AUDIT_LOG", 1, "1"), ("page", "COST_PINGGU", 1, "1"), ("page", "COST_PINGGU_LQ", 1, "1"),
+        ("page", "CUSTOMER_MANAGE", 1, "1"), ("page", "FORMONEY_MANAGE", 1, "1"), ("page", "GOODS_MANAGE", 1, "1"),
+        ("page", "GOODS_PRICE_MANAGE", 1, "1")]
     assert {i.type for i in env.service.list_items()} == {"approvalFlow", "dict", "entity", "export", "lookup", "menu",
                                                            "operation", "page", "role", "rule"}
     item = env.service.get_item("entity", "COST_PINGGU")

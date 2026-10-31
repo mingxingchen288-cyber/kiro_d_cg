@@ -56,7 +56,8 @@ def test_every_page_view_and_pack_generated(env: Env) -> None:
     assert {k for k, r in records.items() if r.type == "pageView"} == {
         "pageView/AUDIT_LOG|ADMIN", "pageView/COST_PINGGU|ADMIN", "pageView/COST_PINGGU|技术中心",
         "pageView/GOODS_PRICE_MANAGE|ADMIN", "pageView/GOODS_PRICE_MANAGE|技术中心", "pageView/GOODS_MANAGE|ADMIN",
-        "pageView/CUSTOMER_MANAGE|ADMIN", "pageView/FORMONEY_MANAGE|ADMIN"}
+        "pageView/CUSTOMER_MANAGE|ADMIN", "pageView/FORMONEY_MANAGE|ADMIN", "pageView/COST_PINGGU_LQ|ADMIN",
+        "pageView/COST_PINGGU_LQ|技术中心"}
 
 
 # ---------------------------------------------------------------- 引用的实体、字段、操作、页面、审批流、Lookup、字典都存在
@@ -188,10 +189,11 @@ def test_pack_compiles_pass(env: Env) -> None:
     assert problems(env, MEMO_RULE) == []
     assert env.engine.packs[-1].pack.pack_id == "COST_PINGGU"
     # 物料清单页的行底色规则（target GOODS_PRICE_MANAGE）在物料清单的规则包里；产品信息维护、客户信息（含分销商）的
-    # ERP 行规则在各自的规则包里
+    # ERP 行规则在各自的规则包里；液体成本核算的规则（target 以 _LQ 结尾）在液体的规则包里
     others = {"GOODS_PRICE_MANAGE", "GOODS_MANAGE", "CUSTOMER_MANAGE", "COST_TRANPOSER"}
     seed_rules = [key for (config_type, key), d in WORLD.items()
-                  if config_type == "rule" and d.content["target"] not in others]
+                  if config_type == "rule" and d.content["target"] not in others
+                  and not d.content["target"].endswith("_LQ")]
     assert [r.id for r in env.engine.packs[-1].pack.rules] == sorted([*seed_rules, "R_MEMO"])
 
 

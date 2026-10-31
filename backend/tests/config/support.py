@@ -7,8 +7,8 @@
   rules-core 的 `RulesEngine`。
 
 表的列取自只读查询 `.reports/modules/config/01～03-*.sql`（d_cg：T_COST_PINGGU、T_COST_PINGGU_DTL、T_COST_GOODS 和两个明细视图；
-cmx：T_COST_GOODS_PRICE_V 和液体成本的表、视图）。液体成本主表 T_COST_PINGGU_LQ 在这里按 T_COST_PINGGU 的列建（cmx 中为 50 列，
-测试只用到 DOCID、GOODSNAME、COST_PERBOX、JGF_PERQP），这一点是简化的。
+cmx：T_COST_GOODS_PRICE_V 和液体成本的表、视图）。液体成本主表 T_COST_PINGGU_LQ 在这里按 T_COST_PINGGU 的列建（包含 d_cg
+液体主表的全部 42 列，另多几列），这一点是简化的。
 """
 
 from __future__ import annotations
@@ -290,31 +290,7 @@ def goods_price_items() -> list[ConfigDraft]:
             draft("page", "GOODS_PRICE_MANAGE", page, "物料清单及成本")]
 
 
-def liquid_items() -> list[ConfigDraft]:
-    """液体成本核算（C06 7.10 冻结和受影响的 T_COST_PINGGU_DTL_LQ）。"""
-    def f(name: str, kind: str = "number", role: str = "input", column: str | None = "") -> dict[str, Any]:
-        return {"name": name, "column": name if column == "" else column, "label": name, "type": kind, "source": "own", "role": role}
-
-    master = {"table": "T_COST_PINGGU_LQ", "primaryKey": "DOCID", "freezable": True,
-              "fields": [f("DOCID", role="system"), f("GOODSNAME", "text"), f("COST_PERBOX", role="calculated"),
-                         f("JGF_PERQP", role="calculated")],
-              "details": [{"entity": "COST_MATERIAL_LQ", "parentKey": "DOCID"}, {"entity": "COST_PACKAGE_LQ", "parentKey": "DOCID"}]}
-    # 物料名由明细视图从物料表取，明细表自存的那份不复制（DB-03）；与 seed 的 COST_MATERIAL 相同，column 为 null
-    detail_fields = [f("DTLID", role="system"), f("DOCID", role="system"), f("GOODSID"), f("GOODSNAME", "text", column=None), f("PRICE"),
-                     f("COST_BATCH", role="calculated")]
-    items = [draft("entity", "COST_PINGGU_LQ", master, "液体成本核算")]
-    for code, view in (("COST_MATERIAL_LQ", "V_COST_PINGGU_MATERIAL_LQ"), ("COST_PACKAGE_LQ", "V_COST_PINGGU_PACKAGE_LQ")):
-        items.append(draft("entity", code, {"table": "T_COST_PINGGU_DTL_LQ", "readView": view, "primaryKey": "DTLID",
-                                            "freezable": True, "fields": detail_fields}))
-    page = {"title": "液体成本核算", "layout": "masterDetail", "detailMode": "tabs", "audit": True,
-            "saveOperation": "COST_PINGGU_LQ.save", "master": {"entity": "COST_PINGGU_LQ", "grid": GRID},
-            "details": [{"entity": "COST_MATERIAL_LQ", "title": "原辅料", "grid": GRID},
-                        {"entity": "COST_PACKAGE_LQ", "title": "包材", "grid": GRID}]}
-    operation = {"label": "保存", "kind": "save", "writableFields": {"COST_MATERIAL_LQ": ["PRICE"], "COST_PACKAGE_LQ": ["PRICE"]},
-                 "impact": ["COST_PINGGU_LQ", "COST_MATERIAL_LQ", "COST_PACKAGE_LQ"], "propagation": "continue"}
-    return [*items, draft("operation", "COST_PINGGU_LQ.save", operation), draft("page", "COST_PINGGU_LQ", page, "液体成本核算")]
-
-
 def base_world() -> list[ConfigDraft]:
-    """seed 的成本核算配置，加上物料清单和液体成本核算：三个审批流样例引用的页面、实体都在其中。"""
-    return [*seed_drafts(), *goods_price_items(), *liquid_items()]
+    """seed 的配置（含第 8 批注册的液体成本核算），物料清单换成上面不带 approvalRequired 的那份：三个审批流样例引用的
+    页面、实体都在其中。"""
+    return [*seed_drafts(), *goods_price_items()]

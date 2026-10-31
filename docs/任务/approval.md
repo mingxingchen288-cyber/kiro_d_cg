@@ -114,3 +114,16 @@
   - 真实（`-m "oracle or redis" tests/approval`）：14 个通过（`pytest-oracle.txt`），新增 `test_oracle.py::test_lists_and_history_read_existing_approvals_on_d_cg`。
   - 浏览器：`frontend/tests/e2e/batch7-approval.spec.ts`（见 frontend-approval T-FA-2）。
   - 与旧系统的差别：全部审批另算处理过的、不算没进入的节点（AP-24）；一张单据的审批列出全部，由前端挑选显示（AP-24）；审批记录不单列 FINISH、SKIP（AP-25）。
+
+### T-AP-10 物料清单改价审批对液体成本单
+
+- 归属与目标：实现 AP-27：液体成本核算注册成实体后，物料清单改价审批（GOODS_TO_COST，C06 7.10）对液体成本单按旧系统的行为：改单价后重算。来源：旧 `PKG_APPROVAL_PRICE_ACTIONS.GOODS_TO_COST` 对液体目标调 `RECALCULATE`（`my-project/docs/approval-refactor-20261026-ordinary-install.sql` 第 350–359、589–658 行）；盘点 `.reports/inventory-20261030/乙-旧系统功能对照.md` 第 1 节、第 4 节，用户 2026-10-30 对第 4 项回复"要"。
+- 前置输入：config 的 T-CF-10（液体实体、页面、规则）；T-AP-3；assembly T-AS-6、T-AS-7 的样例二。
+- 负责范围：seed 的 `approvalFlow.GOODS_TO_COST.json` 液体两块的列；`backend/tests/e2e/test_sample_two.py`、`sample_two.py`，`frontend/tests/e2e/sample-two.spec.ts`。不改 approval 的代码。
+- 交付物：同上。
+- 接入责任：主代理合并后执行 `.reports/batch8-20261031/g2-liquid-cost/save_goods_to_cost.py`（经 8080 只把 d_cg 中 GOODS_TO_COST 液体两块的列改成 seed 的写法；其余内容与 seed 不同时停下、不覆盖），再运行 `tests/e2e/test_sample_two.py`。
+- 验收标准：样例二 7.10：jishu01 在物料清单把 ERP 物料的单价 10 改成 12 提交审批，含这个物料的液体成本单（批量 1000000，明细 mg/ml 5、单价 10、每批成本 50）整张冻结（冻结记录在 T_COST_PINGGU_LQ）；详情"液体成本核算（原辅料）"一行，单价 10.00 → 12.00、金额 50.00 → 60.00；admin 通过后液体明细单价 12、每批数量 5、每批成本 60，主表每批辅料成本、每批物料成本 60。
+- 状态与证据：进行中（浏览器业务例子在 main 代码上通过；后端真实用例写好、待主代理合并后运行；待独立复核）。2026-10-31 第 8 批 G2，分支 `batch8/liquid-cost`，报告 `.reports/batch8-20261031/g2-liquid-cost/报告.md`。
+  - 浏览器（用户的 8080、9527，main 代码加 d_cg 已写的液体实体）：`frontend/tests/e2e/sample-two.spec.ts` 2 passed（`e2e-2-sample-two.txt`），7.10 通过后液体明细每批成本 60。d_cg 上 GOODS_TO_COST 的液体两块这时还是旧的列（单据号取视图自己的 DOCID），这个用例不看这两列。测试数据和审批结束时删除（`q15-dcg-residue.out.txt`：冻结 0，液体 493/5148、成本单 700、物料 14419 不变）。
+  - `tests/e2e/test_sample_two.py` 的 7.10 改了三处期望（液体整张冻结、详情金额 50.00 → 60.00、通过后每批成本 60 和主表合计）。它由本分支的代码起两个后端，本分支读不了 d_cg 中已带 G4 `icon` 的 `menu.main`（`MenuConfig items.0.icon Extra inputs are not permitted`），起不来，待主代理合并后运行。
+  - 与旧系统的差别：重算用液体页面的规则，不用旧存储过程（用户 2026-10-29）；旧系统后来的配置化运行时不支持液体、cmx 的 82 号流程不写液体表，新平台按 C06 7.10 都写（AP-27）。

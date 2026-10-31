@@ -114,6 +114,20 @@
 - 接入责任：主代理合并即可，不改插件清单。
 - 验收标准：模拟验证：新增的行同一条 INSERT 写创建人和修改人，修改只写修改人（`tests/pipeline/test_updated_by.py`）；有 `readView` 的实体只锁一行时，先锁表的这一行、再普通读视图（`tests/pipeline/test_document_store_sql.py`）。真实验证：外币管理"同步ERP汇率"的加锁语句都锁 T_COST_FORMONEY，不对经 ERP 链接的视图 FOR UPDATE；物料清单页保存的 SQL 条数（`tests/pipeline/test_oracle_goods_save_sql_count.py`）。
 - 状态与证据：进行中（模拟验证、真实验证通过；物料清单页保存由 7 条变为 8 条，按 WP-10 待用户确认；待独立复核）。模拟 1311 passed（`pytest-all-3.txt`）；真实 `tests/db_core`、`tests/pipeline`、`tests/operations/test_sql_actions_oracle.py`、`test_basic_pages_oracle.py` 91 passed（`pytest-real-3.txt`）；`lint-imports` 5 kept。
+### T-CF-10 液体成本核算页
+
+- 归属与目标：实现 CF-17：按旧页面 cost-pinggu-lq（物料成本核算表_液体）用配置做出液体成本核算页。来源：盘点 `.reports/inventory-20261030/乙-旧系统功能对照.md` 第 1 节（旧系统有这个页面、新平台没有，物料清单改价审批却会改液体明细单价）、第 4 节（问用户液体页面是否还要），用户 2026-10-30 对第 4 项回复"要"，2026-10-31 回复"开始"。旧配置和源码的出处见 CF-17。
+- 前置输入：db-core T-DB-3 已复制的液体表、视图和序列（T_COST_PINGGU_LQ_SEQ、T_COST_PINGGU_DTL_LQ_SEQ，2026-10-31 只读核对都在，不用补）；operations 的 `replaceDetails`（T-OP-3）。
+- 负责范围：seed 的 `entity.COST_PINGGU_LQ`、`entity.COST_MATERIAL_LQ`、`entity.COST_PACKAGE_LQ`、`page.COST_PINGGU_LQ`、`operation.COST_PINGGU_LQ.save`、`operation.COST_PINGGU_LQ.generateFromBom`（见 operations 的 T-OP-6）、`rule.R_LQ_*` 17 条、`lookup.costMaterial`，`role.ADMIN`、`role.技术中心` 的 COST_PINGGU_LQ；`tests/config` 的支撑和计数（seed 由 45 项变成 69 项）。不改 config 的代码。
+- 交付物：通用页面按页面编码 COST_PINGGU_LQ 打开液体成本核算，列、明细、按钮、规则都来自配置。
+- 接入责任：主代理合并后在 `menu.main` 的"成本"分组、"成本核算"之后加菜单项"液体成本核算"（页面编码 COST_PINGGU_LQ，图标 `mdi:calculator-variant`，同旧 T_COST_RESOURCE 124）。
+- 验收标准：模拟验证：业务例子 E43；seed 整体校验通过。真实验证（d_cg）：seed 的液体配置在 d_cg 的表结构上校验通过；规则对 d_cg 全部液体单据重算，结果与按旧计算引擎直接算的相同，与库里旧值不同的每一处都说明原因。浏览器：复制液体单据、改原辅料单价，预览和保存后每批成本、主表合计按规则重算，重新打开一致；备注"ERP未搭建BOM"的单据整行红底。
+- 状态与证据：进行中（模拟验证、真实验证和浏览器业务例子通过，待独立复核）。2026-10-31 第 8 批 G2，分支 `batch8/liquid-cost`，报告 `.reports/batch8-20261031/g2-liquid-cost/报告.md`。
+  - 命令（原始输出都在报告目录）：后端 `backend` 目录 `uv run --with ..\rules-core\dist\python\cost_rules_core-0.1.0-cp313-cp313-win_amd64.whl pytest -q -p no:cacheprovider -m "not oracle and not redis"`；真实 `-m "oracle or redis" tests/config/test_liquid_recompute_oracle.py tests/operations/test_liquid_oracle.py`（加 `--override-ini=log_cli=true --log-cli-level=INFO` 输出分类数字）；浏览器 `frontend` 目录 `pnpm exec playwright test -c <报告目录>\playwright.g2.config.ts tests/e2e/liquid-cost.spec.ts --project e2e`（`run-e2e.ps1`）。
+  - 写进 d_cg（经用户的 8080，`save_liquid_config.py`）：24 项新配置都是 version 1；`role.ADMIN` 38 → 39、`role.技术中心` 2 → 3，回读液体的键都在。admin、jishu01 读 COST_PINGGU_LQ 的页面视图 200，chengben01 为 403（成本会计角色在旧系统也没有液体页面）；三人读 COST_PINGGU 都是 200。
+  - 模拟验证：`tests/config/test_packs.py::test_seed_liquid_rules_sample_e43`；后端模拟全量 1310 passed（`unit-1.txt`）。
+  - 真实验证：`tests/config/test_liquid_recompute_oracle.py` 2 passed（只读，`recompute-5.txt`）。d_cg 493 张液体单据、15342 个计算值：规则包的结果与按旧计算引擎（空值按 0、除以 0 得 0、分支都不匹配时不变）直接算的全部相同。与库里旧系统存下的值相比，11 张单据全部一致；不一致 6511 处，每一处都归了类（`sum_recompute.txt`）：只因用到的字段不同、本条公式没错的 3054；旧过程 P_PINGGU_DTL_COMPUTE_LQ 把包材每批数量按包装规格除 1445；成本核算（固体）的页面公式算的 1153（每批销售额除包装规格、每盒加工费乘 1000 等）；库里为空 691；旧过程 P_PINGGU_COMPUTE_LQ 的合计按明细表自己的分类求和、含两个视图看不到的 435 行明细 108；原辅料每批数量没乘（1 + 额外投料量）27；年销售额少除 100 共 1 处；逐条查过的旧数据 32（2931～2937、2950 主表的批量或合计后来清空或改过，2559 明细单价改过、主表没重算，2556 玉米淀粉每批成本没随每批数量重算，10007～10009 主表没有产品、包材数量手填）。这些单据在新平台保存一次，计算字段就按页面规则整单重算（WP-07）。seed 的液体配置在 d_cg 上校验通过见 `tests/operations/test_liquid_oracle.py` 第一个用例（T-OP-6）。
+  - 浏览器（用户的 8080、9527，main 代码加 d_cg 已写的液体配置；配置 `playwright.g2.config.ts`）：`frontend/tests/e2e/liquid-cost.spec.ts` 第一个用例通过（与"由BOM生成明细"共 2 passed，`e2e-1.txt`）：2573 整行红底；复制 2571、改第一行原辅料单价，预览中每批成本等于精确值、主表合计变化，保存后重新打开显示与预览相同，接口读出的主表原料、辅料、包材合计等于明细按分类求和（有原料时除以 1.13）。测试单据结束时经平台删除，d_cg 液体主表 493、明细 5148 行不变（`q15-dcg-residue.out.txt`）。
 ### T-CF-11 只读页面和审计追踪页的配置
 
 - 归属与目标：实现 CF-18（C06 v29、C05 v10），按旧系统审计追踪页 auditLog 配一个只读通用页。来源：盘点 `.reports/inventory-20261030/乙-旧系统功能对照.md` 第 1 节（审计追踪 auditLog）、第 4 节；用户 2026-10-30 对第 4 节回复"要"、2026-10-31 回复"开始"。旧系统的依据见 CF-18。

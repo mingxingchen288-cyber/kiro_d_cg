@@ -73,6 +73,67 @@
           }
         }
       },
+      "COST_PINGGU_LQ": {
+        "buttons": [
+          "system:save",
+          "system:advancedSearch",
+          "master:modify",
+          "master:copyRow",
+          "master:generateFromBom",
+          "master:saveGridConfig",
+          "COST_MATERIAL_LQ:addRow",
+          "COST_MATERIAL_LQ:deleteRow",
+          "COST_MATERIAL_LQ:modify",
+          "COST_MATERIAL_LQ:copyRow",
+          "COST_MATERIAL_LQ:saveGridConfig",
+          "COST_PACKAGE_LQ:addRow",
+          "COST_PACKAGE_LQ:deleteRow",
+          "COST_PACKAGE_LQ:modify",
+          "COST_PACKAGE_LQ:copyRow",
+          "COST_PACKAGE_LQ:saveGridConfig"
+        ],
+        "rows": {
+          "mode": "visual",
+          "logic": "OR",
+          "conditions": [
+            {"field": "USESTATUS", "fieldLabel": "状态", "op": "eq", "valueType": "static", "value": "评估中"},
+            {"field": "USESTATUS", "fieldLabel": "状态", "op": "eq", "valueType": "static", "value": "已立项"}
+          ],
+          "sql": "USESTATUS = '评估中' OR USESTATUS = '已立项'"
+        },
+        "columns": {
+          "master": {
+            "S_PERBACK": {"editable": false},
+            "X_PERBACK": {"editable": false},
+            "TOTAL_YL": {"visible": false},
+            "TOTAL_FL": {"visible": false},
+            "TOTAL_BC": {"visible": false},
+            "TOTAL_COST": {"visible": false},
+            "OUT_PRICE_RMB": {"visible": false, "editable": false},
+            "SALEMONEY": {"visible": false},
+            "JGF_BATCH": {"visible": false},
+            "COST_PERQP": {"visible": false, "editable": false},
+            "COST_PERBOX": {"visible": false},
+            "JGF_PERQP": {"visible": false},
+            "ML_PERQP": {"visible": false},
+            "Y_JG_RE": {"visible": false},
+            "Y_ML": {"visible": false},
+            "Y_SALE": {"visible": false},
+            "OUT_PRICE_F": {"visible": false, "editable": false},
+            "M_PERPACK": {"editable": false}
+          },
+          "COST_MATERIAL_LQ": {
+            "PRICE": {"visible": false, "editable": false},
+            "COST_BATCH": {"visible": false},
+            "BASE_PRICE": {"visible": false}
+          },
+          "COST_PACKAGE_LQ": {
+            "PRICE": {"visible": false, "editable": false},
+            "COST_BATCH": {"visible": false},
+            "BASE_PRICE": {"visible": false}
+          }
+        }
+      },
       "GOODS_PRICE_MANAGE": {
         "buttons": [
           "master:addRow",

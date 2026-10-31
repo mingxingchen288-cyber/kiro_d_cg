@@ -1,0 +1,13 @@
+{
+  "type": "rule",
+  "key": "R_LQ_MASTER_Y_SALE",
+  "name": "液体主表年销售额",
+  "content": {
+    "layer": "entity",
+    "target": "COST_PINGGU_LQ",
+    "category": "calc",
+    "field": "Y_SALE",
+    "order": 7,
+    "expression": "ANNUAL_QTY * OUT_PRICE_RMB * (YIELD / 100)"
+  }
+}

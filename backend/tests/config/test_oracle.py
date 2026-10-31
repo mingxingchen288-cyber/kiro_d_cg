@@ -21,7 +21,7 @@ from tests.contracts.test_config_snapshot_reader import ConfigSnapshotReaderCont
 from tests.contracts.test_entity_directory import EntityDirectoryContract
 
 from .real_support import OracleEnv, engine  # noqa: F401 - fixture
-from .support import draft, flow_samples, goods_price_items, liquid_items, seed_drafts
+from .support import draft, flow_samples, goods_price_items, seed_drafts
 from .test_entities import entity_drafts
 
 pytestmark = pytest.mark.oracle
@@ -90,7 +90,7 @@ def test_flow_fragments_are_parsed_by_oracle(ora: OracleEnv) -> None:
 
 def test_c06_flow_samples_save_on_d_cg(ora: OracleEnv) -> None:
     """T-CF-1：C06 7.8、7.9、7.10 三个样例在 d_cg 上校验通过（SQL 片段按 7.2 包好后交给数据库解析通过）。只校验，不写入。"""
-    world = [*seed_drafts(), *goods_price_items(), *liquid_items(), *flow_samples()]
+    world = [*seed_drafts(), *goods_price_items(), *flow_samples()]
     assert ora.service.validate(world) == []
 
 

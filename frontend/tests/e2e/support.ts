@@ -10,7 +10,8 @@
  *   不用横向滚动找列；只有悬停列头前用 `scrollToColumn` 滚一次（格子由 Playwright 在操作前自己滚到可见）。
  * - 提示：`toast(page, 文字)`。
  * - 接口：`api`（默认页面的账号）、`adminApi`、`apiOf(page)`：经平台接口读数据、准备数据。
- * - 测试数据：`data.copyDoc('2550')` 复制出自己的测试成本单（备注带 PF_TEST）；`data.goods()` 测试物料；
+ * - 测试数据：`data.copyDoc('2550')` 复制出自己的测试成本单（备注带 PF_TEST）；`data.copyLiquid('2571')` 液体成本单；
+ *   `data.goods()` 测试物料；
  *   `data.account()` 测试账号……用例结束时按依赖顺序自动删除（先驳回还在审批中的审批）。
  * - 平台记录：本 worker 提交的命令和发起的审批，worker 结束时由 backend/tests/e2e/cleanup.py 删掉（命令记录、投递、
  *   站内通知、审批记录）。
@@ -128,6 +129,9 @@ export type ApiResult<T = any> = { status: number; body: T };
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 type Target = { page: string; operation: string };
 export const COST_SAVE: Target = { page: 'COST_PINGGU', operation: 'COST_PINGGU.save' };
+/** 液体成本核算（第 8 批注册） */
+export const LIQUID = 'COST_PINGGU_LQ';
+export const LIQUID_SAVE: Target = { page: LIQUID, operation: 'COST_PINGGU_LQ.save' };
 
 /**
  * 平台接口（C09），带这个账号的会话 Cookie；写请求带 CSRF 令牌（读 `/api/me`）和 Origin。
@@ -263,13 +267,15 @@ type CopyOptions = {
 
 /**
  * 本用例建的测试数据，用例结束时删除：先驳回本用例发起、还在审批中的审批（解冻），再删成本单（经平台），
- * 再删账号（直接删表，平台没有删除账号的接口）、部门、配置项，最后删测试物料、液体成本单（平台写不了，直接删表）。
+ * 再删液体成本单（经平台），再删账号（直接删表，平台没有删除账号的接口）、部门、配置项，最后删测试物料和直接写表建的液体
+ * 成本单（直接删表）。
  */
 export class TestData {
   readonly docs: string[] = [];
   readonly approvals = new Set<string>();
   private readonly goodsIds: string[] = [];
   private readonly liquids: string[] = [];
+  private readonly liquidDocs: string[] = [];
   private readonly users: string[] = [];
   private readonly departments: string[] = [];
   private readonly configItems: string[] = [];
@@ -330,6 +336,26 @@ export class TestData {
     return { docId, rows: ids.map(id => String(result.idMap[id])) };
   }
 
+  /** 经平台复制一张液体成本单（主表新增、明细全部新增），备注带 PF_TEST 标记 */
+  async copyLiquid(source: string) {
+    const view = await this.api.view(LIQUID);
+    const record = await this.api.record(source, LIQUID);
+    const plan = copyPlan(view, record, {
+      keep: () => true,
+      master: { MEMO: this.marker },
+      tmp: () => `tmp-${crypto.randomUUID()}`
+    });
+    const result = mustSave(await this.api.command([plan.document], LIQUID_SAVE));
+    const docId = String(result.idMap[plan.masterId]);
+    this.liquidDocs.push(docId);
+    return new TestDoc(docId, new Map([...plan.rows].map(([from, tmp]) => [from, String(result.idMap[tmp])])));
+  }
+
+  /** 页面上新建的液体成本单（例如复制后保存）也记下，结束时删除 */
+  adoptLiquid(docId: string) {
+    this.liquidDocs.push(docId);
+  }
+
   /** 页面上新建的单据（例如 Lookup 选产品后保存）也记下，结束时删除 */
   adopt(docId: string) {
     this.docs.push(docId);
@@ -342,7 +368,7 @@ export class TestData {
     return goodsid as string;
   }
 
-  /** 液体成本单一张，明细一行这个物料（液体成本核算没有在平台注册，直接写表） */
+  /** 液体成本单一张（批量 1000000），明细一行这个物料（直接写表，见 backend/tests/e2e/sample_two.py） */
   liquid(goodsId: string, price = '10') {
     const made = JSON.parse(
       backendScript('tests.e2e.sample_two', ['liquid', '--goods', goodsId, '--price', price]).at(-1)!
@@ -418,6 +444,16 @@ export class TestData {
       );
       if (result?.outcome === 'saved') left.length = 0;
     });
+    const leftLiquid: string[] = [];
+    await attempt('删除测试液体成本单', async () => {
+      for (const docId of this.liquidDocs) if (await this.api.exists(docId, LIQUID)) leftLiquid.push(docId);
+      if (!leftLiquid.length) return;
+      const result = await this.api.command(
+        leftLiquid.map(rowKey => ({ entity: LIQUID, master: { op: 'delete', rowKey }, details: [] })),
+        LIQUID_SAVE
+      );
+      if (result?.outcome === 'saved') leftLiquid.length = 0;
+    });
     if (this.users.length) {
       await attempt('删除测试账号', () => backendScript('tests.e2e.cleanup', ['--users', this.users.join(',')]));
     }
@@ -430,15 +466,16 @@ export class TestData {
         if (result.status >= 300 && result.status !== 404)
           throw new Error(`返回 ${result.status}：${JSON.stringify(result.body)}`);
       });
-    if (left.length || this.goodsIds.length || this.liquids.length) {
-      // 平台删不了的（测试物料、液体成本单，以及中途失败留下的成本单）直接按主键删
+    const liquids = [...this.liquids, ...leftLiquid];
+    if (left.length || this.goodsIds.length || liquids.length) {
+      // 平台删不了的（测试物料）、直接写表建的液体成本单，以及中途失败留下的单据直接按主键删
       await attempt('删除测试物料', () =>
         backendScript('tests.e2e.sample_two', [
           'drop',
           '--goods',
           this.goodsIds.join(','),
           '--lq',
-          this.liquids.join(','),
+          liquids.join(','),
           '--docs',
           left.join(',')
         ])

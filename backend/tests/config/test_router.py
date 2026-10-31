@@ -62,8 +62,8 @@ def test_config_items_admin_only(client: TestClient) -> None:
     items = client.get("/api/config/items", params={"type": "page"})
     assert items.status_code == 200
     assert [(i["type"], i["key"], i["version"]) for i in items.json()["items"]] == [
-        ("page", "AUDIT_LOG", 1), ("page", "COST_PINGGU", 1), ("page", "CUSTOMER_MANAGE", 1), ("page", "FORMONEY_MANAGE", 1),
-        ("page", "GOODS_MANAGE", 1), ("page", "GOODS_PRICE_MANAGE", 1)]
+        ("page", "AUDIT_LOG", 1), ("page", "COST_PINGGU", 1), ("page", "COST_PINGGU_LQ", 1), ("page", "CUSTOMER_MANAGE", 1),
+        ("page", "FORMONEY_MANAGE", 1), ("page", "GOODS_MANAGE", 1), ("page", "GOODS_PRICE_MANAGE", 1)]
     denied = client.get("/api/config/items", headers={"X-Test-Role": "R"})
     assert denied.status_code == 403 and denied.json()["code"] == "PERMISSION_DENIED"
     item = client.get("/api/config/items/page/COST_PINGGU")
