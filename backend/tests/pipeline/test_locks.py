@@ -55,6 +55,26 @@ def test_loader_locks_in_unified_order_whatever_the_input_order() -> None:
     assert set(state.current) == {DOC_1001, DOC_1002, GOODS_115}
 
 
+def test_loader_locks_details_with_the_master() -> None:
+    """规则 5（用户 2026-10-31："如果是主从保存，那么主从都要锁"）：锁住成本单 1001、1002 的主表行之后，再锁它们的明细
+    （明细表 T_COST_PINGGU_DTL 一条）；不读明细的单据也锁。物料 115 没有明细，不锁明细。"""
+    store, setup = MemoryStore(), Setup()
+    state = _state()
+    DocumentLoader(store, setup.permission).lock(RecordingUnitOfWork(), state, setup.context(),  # type: ignore[arg-type]
+                                                 [DOC_1002, GOODS_115, DOC_1001], needs_details=lambda ref: False)
+    assert store.detail_locks == [("T_COST_PINGGU_DTL", ["1001", "1002"])]
+    assert store.detail_loads == []
+    assert state.current[DOC_1001].details == {}
+
+
+def test_loader_defer_lock_does_not_lock_details() -> None:
+    """`defer_lock`：只普通读取，明细也不锁（锁住后核对时由 `lock_document` 连明细一起锁）。"""
+    store, setup = MemoryStore(), Setup()
+    DocumentLoader(store, setup.permission).lock(RecordingUnitOfWork(), _state(defer=True), setup.context(),  # type: ignore[arg-type]
+                                                 [DOC_1001])
+    assert store.detail_locks == []
+
+
 def test_loader_later_lock_must_sort_after_held() -> None:
     """往后找可以执行到一半再锁（成本单 → 物料清单）；反过来先锁物料清单、再锁成本单是实现错误，500。"""
     store, setup = MemoryStore(), Setup()
@@ -103,6 +123,17 @@ def test_lock_with_expected_changed_meanwhile_raises() -> None:
     store.rows[GOODS]["115"]["ZX_PRICE"] = "别人改了"
     with pytest.raises(t.LockScopeChanged):
         locks.lock(uow, ctx, [locks.document(ctx, GOODS_115)], expected)  # type: ignore[arg-type]
+
+
+def test_lock_with_expected_locks_details_of_own_document() -> None:
+    """规则 4、5：推迟加锁的本命令单据是成本单 1001 时，轮到它时锁住主表行并读出，再锁它的明细。"""
+    store, setup = MemoryStore(), Setup()
+    uow, ctx = RecordingUnitOfWork(), setup.context()
+    locks = PipelineLocks(LockBook(), store, scales_inspector())  # type: ignore[arg-type]
+    expected = locks.read(uow, ctx, [DOC_1001])  # type: ignore[arg-type]
+    locks.lock(uow, ctx, [locks.document(ctx, DOC_1001)], expected)  # type: ignore[arg-type]
+    assert store.document_locks == [DOC_1001]
+    assert store.detail_locks == [("T_COST_PINGGU_DTL", ["1001"])]
 
 
 def test_loader_defer_lock_reads_without_locking() -> None:

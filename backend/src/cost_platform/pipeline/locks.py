@@ -13,8 +13,14 @@
    （`document_store.lock_load`）；只读本表的视图（物料清单）仍是一条。
 4. 加锁前普通读到的本命令单据，锁住后核对；不同时抛 `LockScopeChanged`，编排回滚整个事务、整条命令重来。核对用的数据由
    加锁语句本身读出：这些单据按顺序轮到时用"锁一行并读出数据"的语句（`lock_select_sql`，与普通保存的加锁读取同一条），
-   仍是一行一条；其余对象只锁不读（`lock_key_sql`）。有明细的单据另用一条普通查询读明细（明细不加锁，单据锁在主表行上）。
+   仍是一行一条；其余对象只锁不读（`lock_key_sql`）。有明细的单据另用一条普通查询读明细。
    这样往前冻结的页面（物料清单）保存只比普通保存多 1 条加锁前的普通读取。
+5. 主从单据连明细一起锁（用户 2026-10-31："如果是主从保存，那么主从都要锁"）：保存、按钮、审批处理锁住本命令的单据
+   （`DocumentLoader.lock`、`document_store.lock_document`）时，锁住主表行之后，每张明细表再一条 `lock_children_sql`，
+   锁住这些单据在这张明细表中的全部行，不读数据（明细另用一条普通查询读，见上）；两个明细实体在同一张表上时只锁一次
+   （成本核算的物料、包材都在 T_COST_PINGGU_DTL）。明细行只在持有主表行锁之后才锁，所以一条语句锁多行不会和平台的其他
+   事务交叉等待。要写的单据（动作、审批展开出的意图所属的单据）都经加锁读取，同样连明细一起锁；只冻结、不写的单据
+   （`PipelineLocks.lock` 的 `lock_key`）只锁主表行。
 
 本文件是平台业务代码中唯一写 `FOR UPDATE` 的地方（`backend/tests/architecture/test_lock_entry.py` 检查）；例外是 config 的
 代号行、identity 的账号行、delivery 的 SKIP LOCKED，它们不和业务锁同时持有。
@@ -57,6 +63,14 @@ def lock_select_sql(select: str, source: str, key_column: str, wait: int) -> str
 def lock_row_sql(table: str, key_column: str, wait: int) -> str:
     """锁没注册的表中的一行并读出整行（WP-19）。"""
     return f"SELECT * FROM {table} WHERE {key_column} = :k FOR UPDATE WAIT {wait}"
+
+
+def lock_children_sql(table: str, key_column: str, parent_column: str, binds: Sequence[str], wait: int) -> str:
+    """锁住这些单据在一张明细表中的全部行，不读数据（规则 5，一张明细表一条）：
+    `SELECT 明细主键 FROM 明细表 WHERE 关联列 IN (:p0, …) ORDER BY 明细主键 FOR UPDATE WAIT n`。"""
+    keys = ", ".join(":" + b for b in binds)
+    return (f"SELECT {key_column} FROM {table} WHERE {parent_column} IN ({keys}) "
+            f"ORDER BY {key_column} FOR UPDATE WAIT {wait}")
 
 
 # ---------------------------------------------------------------- 读取视图读取哪些表（只锁一行时用哪种加锁语句）

@@ -97,6 +97,7 @@ class DocumentLoader:
         要锁的单据排在本事务已持有的锁之前时 500（`LockBook.claim`）：往前、同层找到的单据应在"确定涉及的单据"
         一起锁住。本事务已持有锁的单据（例如审批处理在"确定涉及的单据"已锁住）再锁一次并读出。
         `state.defer_lock` 为 True 时只普通读取、不加锁（由"触发审批"按顺序一次锁完并核对，AP-02）。
+        主从单据锁住主表行后连明细一起锁（`RowStore.lock_details`，每张明细表一条，`locks.py` 规则 5），不读明细的单据也锁。
 
         `needs_details` 给出哪些单据要读明细（页面保存用 `calc.patch_needs_details`，WP-08、WP-10）；省略时都读。
         不读明细的单据 `details` 为空，这张单据不会求值（`calc.needs_recalculation`）。
@@ -133,6 +134,8 @@ class DocumentLoader:
             found = [k for k in keys if k in masters]
             with_details = [k for k in found if needs_details is None or needs_details(DocumentRef(code, k))]
             sources = [DetailSource(link.entity, ctx.config.entity(link.entity), link.parent_key) for link in entity.details]
+            if sources and found and not state.defer_lock:
+                self._store.lock_details(uow, sources, found)
             details = self._store.load_details_many(uow, sources, with_details) if sources and with_details else {}
             for key in found:
                 ref = DocumentRef(code, key)

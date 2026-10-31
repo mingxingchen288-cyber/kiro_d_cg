@@ -263,6 +263,8 @@ class MemoryStore:
         """`lock_document` 锁住并读出的单据（按先后）。"""
         self.document_reads: list[list[t.DocumentRef]] = []
         """每次 `read_documents`（不加锁的普通读取）的单据。"""
+        self.detail_locks: list[tuple[str, list[str]]] = []
+        """每次锁明细（`lock_details`，一张明细表一条）：（明细表、单据主键）；`lock_document` 锁的也记。"""
         self.denied: set[tuple[str, str]] = set()
         self._next = 9001
 
@@ -290,6 +292,8 @@ class MemoryStore:
         found = self._documents([ref]).get(ref)
         if found is None:
             return None
+        tables = sorted({ENTITIES[link.entity].table for link in ENTITIES[ref.entity].details})
+        self.detail_locks += [(name, [ref.record_key]) for name in tables]
         return t.DocumentData(ref=ref, master=found.master, details={e: rows for e, rows in found.details.items() if e in details})
 
     def read_documents(self, uow: UnitOfWork, ctx: t.ExecutionContext,
@@ -319,6 +323,12 @@ class MemoryStore:
                 raise t.PlatformError(t.ErrorCode.PERMISSION_DENIED, "超出行权限",
                                       [t.ErrorDetail(entity=entity_code, row_key=k) for k in outside])
         return found
+
+    def lock_details(self, uow: UnitOfWork, sources: Sequence[Any], record_keys: Sequence[str]) -> None:
+        if not record_keys:
+            return
+        for name in sorted({source.entity.table for source in sources}):
+            self.detail_locks.append((name, sorted(record_keys, key=int)))
 
     def load_details_many(self, uow: UnitOfWork, sources: Sequence[Any], record_keys: Sequence[str]) -> dict[str, dict[str, list[t.Row]]]:
         self.detail_loads.append(list(record_keys))

@@ -5,7 +5,8 @@
 2. 新增和删除明细、删除主表：admin 新建一张成本单（主表 + 两行原辅料），再在一次保存里新增一行、删除一行，
    最后删除主表，明细一起删除。
 3. SQL 条数（WP-10）：用命令审查（WP-17，`/api/admin/command-review`，在命令事务内用 SqlTracer 计数）读取上面各次
-   保存的语句。成本核算是可冻结业务，每次多 1 条冻结查询；改原辅料的行时，审批流 COST_TO_GOODS 的入口条件对这一行
+   保存的语句。成本核算是可冻结业务，每次多 1 条冻结查询；主从单据连明细一起锁（2026-10-31），每次多 1 条锁明细；
+   改原辅料的行时，审批流 COST_TO_GOODS 的入口条件对这一行
    执行 1 条（approval AP-01），WP-10 没有计这一条，单独列出；进程启动后第一次写某张表的命令，另有 1 条读取列定义
    （user_tab_columns，WP-15 的小数位，每个进程每张表只读一次），也单独列出。
 4. 规则拒绝时整笔回滚：同一次保存改了主表备注、206323 的备注，又把 206324 的每片含量改成 0，规则 R_MAT_PER_HL_GT0
@@ -164,39 +165,42 @@ def test_one_cell_saves_and_sql_counts(admin: Browser, dcg: Engine, cleanup: Cle
     master_before, details_before = restore_2550
     memo = master_before["memo"]
 
-    # 改主表一个字段：WP-10 的 4 条，加冻结查询 1 条
+    # 改主表一个字段：WP-10 的 4 条和锁明细 1 条（2026-10-31 起主从单据连明细一起锁，write-pipeline locks.py 规则 5），
+    # 加冻结查询 1 条
     key, result = save(admin, cleanup, [master_memo("2550", "G5 联调备注")])
     assert result["outcome"] == "saved"
     sql = sql_of(admin, key, "改主表一个字段（MEMO）")
     assert sum(map(is_freeze_query, sql)) == 1 and sum(map(is_schema_query, sql)) <= 1, "\n".join(sql)
-    assert kinds(counted(sql)) == ["INSERT", "SELECT", "UPDATE", "UPDATE"], "\n".join(sql)
-    assert len(sql) == 5 + once(sql)
+    assert kinds(counted(sql)) == ["INSERT", "SELECT", "SELECT", "UPDATE", "UPDATE"], "\n".join(sql)
+    assert counted(sql)[2].startswith("SELECT DTLID FROM T_COST_PINGGU_DTL") and "FOR UPDATE" in counted(sql)[2]
+    assert len(sql) == 6 + once(sql)
     master_after, details_after = document(dcg, DOCID)
     assert master_after == {**master_before, "memo": "G5 联调备注"}
     assert details_after == details_before
 
-    # 提交的值与当前值相同：WP-10 的 2 条（插入命令记录、加锁读取，然后回滚），加冻结查询 1 条
+    # 提交的值与当前值相同：WP-10 的 2 条（插入命令记录、加锁读取，然后回滚）和锁明细 1 条，加冻结查询 1 条
     key, result = save(admin, cleanup, [master_memo("2550", "G5 联调备注")])
     assert result["outcome"] == "unchanged"
     sql = sql_of(admin, key, "提交相同的值")
-    assert len(sql) == 3 and sum(map(is_freeze_query, sql)) == 1, "\n".join(sql)
-    assert kinds(counted(sql)) == ["INSERT", "SELECT"], "\n".join(sql)
+    assert len(sql) == 4 and sum(map(is_freeze_query, sql)) == 1, "\n".join(sql)
+    assert kinds(counted(sql)) == ["INSERT", "SELECT", "SELECT"], "\n".join(sql)
     assert rows(dcg, "SELECT 1 FROM pf_command WHERE request_key = :k", k=key) == []
 
     _, result = save(admin, cleanup, [master_memo("2550", memo)])
     assert result["outcome"] == "saved"
     assert document(dcg, DOCID) == (master_before, details_before)
 
-    # 改一条明细并重算汇总：WP-10 的 6 条，加冻结查询 1 条、COST_TO_GOODS 对这一行的入口条件 1 条
+    # 改一条明细并重算汇总：WP-10 的 6 条和锁明细 1 条，加冻结查询 1 条、COST_TO_GOODS 对这一行的入口条件 1 条
     key, result = save(admin, cleanup, [detail_change("2550", "COST_MATERIAL", PREGEL, {"PER_HL": "16"})])
     assert result["outcome"] == "saved"
     sql = sql_of(admin, key, "改一条明细并重算汇总（206324 每片含量 15→16）")
     core = counted(sql)
     assert sum(map(is_freeze_query, sql)) == 1 and sum(map(is_entry_condition, sql)) == 1, "\n".join(sql)
     assert sum(map(is_schema_query, sql)) <= 1, "\n".join(sql)
-    assert kinds(core) == ["INSERT", "SELECT", "SELECT", "UPDATE", "UPDATE", "UPDATE"], "\n".join(sql)
-    assert "FOR UPDATE" in core[1].upper() and "UNION ALL" in core[2].upper(), "\n".join(sql)
-    assert len(sql) == 8 + once(sql)
+    assert kinds(core) == ["INSERT", "SELECT", "SELECT", "SELECT", "UPDATE", "UPDATE", "UPDATE"], "\n".join(sql)
+    assert "FOR UPDATE" in core[1].upper() and "FOR UPDATE" in core[2].upper(), "\n".join(sql)
+    assert "UNION ALL" in core[3].upper(), "\n".join(sql)
+    assert len(sql) == 9 + once(sql)
 
     master_after, details_after = document(dcg, DOCID)
     changed = by_key(details_after, PREGEL)

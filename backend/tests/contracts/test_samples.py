@@ -85,6 +85,7 @@ SAMPLES: list[tuple[str, Any, Any]] = [
                              "details": [{"entity": "COST_MATERIAL", "op": "modify", "rowKey": "5001", "changes": {"PRICE": None}}]}), t.Command),
     ("C02 已写入", _json("C02", 2), t.CommandResult),
     ("C02 已提交审批", _json("C02", 3), t.CommandResult),
+    ("C02 按单据提交，一张没成功", _json("C02", 4), t.CommandResult),
     ("C02 新增行的提示", {"requestKey": _UUID, "outcome": "saved", "rows": [], "idMap": {}, "prompts": [
         {"rule": "R_PRICE_LOW", "message": "单价偏低", "entity": "COST_MATERIAL", "clientRowId": _TMP, "field": "PRICE"}],
         "skipped": [], "approvals": []}, t.CommandResult),

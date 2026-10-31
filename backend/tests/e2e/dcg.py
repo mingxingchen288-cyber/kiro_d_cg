@@ -15,6 +15,7 @@ from sqlalchemy import Engine, bindparam, text
 
 from cost_platform.assembly.settings import Settings
 from cost_platform.db_core.engine import create_oracle_engine
+from cost_platform.orchestration.split import sub_request_key
 
 PAGE = "COST_PINGGU"
 SAVE = "COST_PINGGU.save"
@@ -70,6 +71,17 @@ class Cleanup:
         key = str(uuid.uuid4())
         self.request_keys.append(key)
         return key
+
+    def split(self, command: dict[str, Any]) -> dict[str, Any]:
+        """按单据提交（C02 v10 第 1 节）的命令记录按各张单据的子请求键记：把命令中每张单据、每个选中行的子请求键记下来
+        （不拆的命令没有这些记录，删除时找不到，不影响）。"""
+        key = command["requestKey"]
+        for document in command.get("documents", []):
+            master = document["master"]
+            self.request_keys.append(sub_request_key(key, document["entity"], master.get("rowKey") or master["clientRowId"]))
+        for row in (command.get("params") or {}).get("selectedRows") or []:
+            self.request_keys.append(sub_request_key(key, row["entity"], row["rowKey"]))
+        return command
 
     def result(self, result: dict[str, Any]) -> dict[str, Any]:
         """命令结果中提交的审批记下来。"""

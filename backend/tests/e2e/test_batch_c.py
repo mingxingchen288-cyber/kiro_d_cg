@@ -225,13 +225,14 @@ def test_save_to_final_approval_or_sign_at_once_and_replay(admin: Browser, accou
     assert listed["key"] == "goods" and cells(listed, "单价") == [("75.00", "90.00")]
     assert detail["actions"]["canPass"] is True
 
-    # 冻结期间的普通保存：加锁读取之后的冻结查询（可冻结业务多出的 1 条）查到本审批，整笔拒绝
+    # 冻结期间的普通保存：加锁读取（主表行、明细各 1 条）之后的冻结查询（可冻结业务多出的 1 条）查到本审批，整笔拒绝
     key = cleanup.key()
     frozen = admin.post("/api/commands", save_command(key, memo(doc, "G5 冻结中")))
     assert frozen.status_code == 409 and frozen.json()["code"] == "FROZEN_BY_APPROVAL", frozen.text
     assert frozen.json()["details"][0]["approvalId"] == approval_id
     sql = review_sql(admin, key)
-    assert [s.split(" ")[0] for s in sql] == ["INSERT", "SELECT", "SELECT"] and "PF_APPROVAL_FREEZE" in sql[2].upper()
+    assert [s.split(" ")[0] for s in sql] == ["INSERT", "SELECT", "SELECT", "SELECT"], sql
+    assert "FOR UPDATE" in sql[2].upper() and "PF_APPROVAL_FREEZE" in sql[3].upper(), sql
 
     # 或签：两名审批人同时通过，只有一个生效
     approvers = [admin, second_approver]

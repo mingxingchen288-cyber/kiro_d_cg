@@ -33,7 +33,7 @@ import type { ShellApi } from '../../contracts/shell';
 import { type CopySelection, copyDetailRows, copyMaster, copyableFields, defaultMasterSelection } from './copy';
 import type { RowId } from './edit-buffer';
 import { MASTER_GRID, fieldOf, newRowValues, regionKey } from './fields';
-import { failureText } from './failure';
+import { documentFailuresText, failureText } from './failure';
 import { canOpenLookup, fillsBack, lookupFill, lookupRequest } from './lookup';
 import { type ExportMenuItem, type ExportScope, exportMenuItems, exportRequest, fileNameOf, saveFile } from './export';
 import { columnOrder, columnsToApply, mergePersonal, personalChanges } from './personal';
@@ -891,7 +891,7 @@ export class PageRuntime {
       return null;
     }
     this.state.saving = false;
-    await this.applySaveResult(result);
+    await this.applySaveResult(result, documents.length);
     for (const port of this.ports.values()) port.refreshAll();
     return result;
   }
@@ -927,8 +927,12 @@ export class PageRuntime {
   /**
    * 保存成功：逐行比对命令结果，只更新有差异的行，按 idMap 换主键（表格行节点不变）；结果中缺的行按主键补查，
    * 补查失败时重查当前页；提交审批的单据显示正式数据（新增行移除、删除和修改恢复）。最后清空编辑缓冲。
+   *
+   * 按单据提交（C02 v10 第 1 节）：结果的 `failed` 中的单据没有写入，这些单据的修改留在编辑缓冲中、不做上面的处理，
+   * 只丢弃其余单据的修改（同旧系统只对成功和送审的单据 clearRowChanges）；没成功的原因见 `reportFailures`。
+   * `total` 为命令中的单据张数。
    */
-  private async applySaveResult(result: CommandResult) {
+  private async applySaveResult(result: CommandResult, total: number) {
     this.resultGeneration += 1;
     const view = this.view.value!;
     const master = view.master.entity;
@@ -936,8 +940,11 @@ export class PageRuntime {
     const submitted = new Set(
       result.approvals.filter(a => a.document.entity === master).map(a => a.document.recordKey)
     );
-    const pendingRows = buffer.dirtyRows();
-    const recordIds = buffer.dirtyRecords();
+    const failedIds = new Set(
+      (result.failed ?? []).filter(f => f.entity === master).map(f => (f.rowKey ?? f.clientRowId)!)
+    );
+    const pendingRows = buffer.dirtyRows().filter(r => !failedIds.has(buffer.recordOf(r.entity, r.id)!));
+    const recordIds = buffer.dirtyRecords().filter(id => !failedIds.has(id));
     const orders = this.model.captureOrders(recordIds);
     // 提交审批的单据：idMap 中的主键是提交时取得的，审批通过后才写入
     const submittedIds = new Set(recordIds.filter(id => submitted.has(result.idMap[id] ?? id)));
@@ -996,7 +1003,8 @@ export class PageRuntime {
       missing.set(row.entity, [...(missing.get(row.entity) ?? []), row.id]);
     }
     this.model.clearPreview(pendingRows);
-    buffer.clear();
+    if (failedIds.size) buffer.discard(pendingRows);
+    else buffer.clear();
     this.model.restoreOrders(orders, result.idMap);
     for (const approval of result.approvals) {
       if (approval.document.entity !== master || approval.status !== 'pending') continue;
@@ -1051,6 +1059,41 @@ export class PageRuntime {
     const saved = result.rows.filter(r => !('deleted' in r) && r.entity === master).map(r => r.rowKey);
     void this.display([...recordIds.map(id => result.idMap[id] ?? id), ...saved]);
     await this.refreshAggregates();
+    await this.reportFailures(result, total, null);
+  }
+
+  /**
+   * 按单据提交（C02 v10 第 1 节）时没成功的单据：错误明细定位到行和字段（同只保存一张单据失败时），一条提示列出张数和
+   * 每张的原因（`documentFailuresText`）；被审批冻结的弹出这些审批的进度（FP-16）。`action` 为 null 时是保存，否则为
+   * 按钮名称；`total` 为命令涉及的单据张数。
+   */
+  private async reportFailures(result: CommandResult, total: number, action: string | null) {
+    const failed = result.failed ?? [];
+    const view = this.view.value;
+    if (!failed.length || !view) return;
+    const located = failed.flatMap(f =>
+      f.error.details
+        .filter(d => d.entity && (d.rowKey || d.clientRowId))
+        .map(d => ({
+          entity: d.entity!,
+          id: (d.rowKey ?? d.clientRowId)!,
+          field: d.field,
+          message: d.message ?? f.error.message
+        }))
+    );
+    this.refreshRows(this.model.setErrors(located));
+    const submitted = new Set(
+      result.approvals.filter(a => a.document.entity === view.master.entity).map(a => a.document.recordKey)
+    ).size;
+    const done = Math.max(total - failed.length - submitted, 0);
+    this.deps.message.error(
+      documentFailuresText(view, failed, { done, submitted }, (entity, id) => this.model.values(entity, id), action)
+    );
+    const frozenBy = failed
+      .filter(f => f.error.code === 'FROZEN_BY_APPROVAL')
+      .flatMap(f => f.error.details.map(d => d.approvalId))
+      .filter((id): id is string => Boolean(id));
+    if (frozenBy.length) await this.showApprovals([...new Set(frozenBy)]);
   }
 
   /** 命令结果中的行属于哪张单据 */
@@ -1072,7 +1115,9 @@ export class PageRuntime {
    */
   private announce(result: CommandResult, savedText: string, unchangedText = '没有需要保存的修改') {
     const message = this.deps.message;
-    if (result.outcome === 'unchanged') message.success(unchangedText);
+    if (result.failed?.length) {
+      // 有单据没成功：成功、提交审批和失败的张数一起由 reportFailures 提示
+    } else if (result.outcome === 'unchanged') message.success(unchangedText);
     else if (result.outcome === 'approvalSubmitted') {
       const keys = result.approvals.map(a => a.document.recordKey).join('、');
       message.warning(`单据 ${keys} 已提交审批，审批结束前显示正式数据`);
@@ -1089,6 +1134,7 @@ export class PageRuntime {
    * `requiresSelection` 为 false 的按钮（例如"同步采购价"）没有选中行也能点，selectedRows 为空数组。
    * 成功后结果中的行显示后端返回的值，这些行没保存的修改丢弃；其他行没保存的修改保留。按钮新增、删除的明细行
    * （例如"由BOM生成明细"）在明细区显示的单据中随之出现、去掉。失败时编辑缓冲不变。
+   * 主表选中几张单据时后端按单据提交（C02 v10 第 1 节）：成功的照上面显示，没成功的单据列在提示中（`reportFailures`）。
    */
   async runOperation(region: ViewRegion, button: ViewButton): Promise<CommandResult | null> {
     const view = this.view.value;
@@ -1153,6 +1199,8 @@ export class PageRuntime {
     );
     this.announce(result, `${button.label}已完成`, `${button.label}：没有需要修改的数据`);
     await this.refreshAggregates();
+    // 主表选中几张单据时按单据提交（C02 v10），没成功的单据提示原因
+    await this.reportFailures(result, selectedRows.length, button.label);
     return result;
   }
 

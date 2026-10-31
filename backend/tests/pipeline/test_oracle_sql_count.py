@@ -1,10 +1,10 @@
 """T-WP-4：WP-10 的 SQL 条数，用 SQL 追踪统计（一次 execute 或 executemany 计 1 条，提交、回滚和连接池探活不计）。
 
-目标：改主表一个字段 4 条；提交的值与当前值相同 2 条；改一条明细并重算汇总 6 条。
+目标：改主表一个字段 4 条；提交的值与当前值相同 2 条；改一条明细并重算汇总 6 条。2026-10-31 起主从单据连明细一起锁
+（用户："如果是主从保存，那么主从都要锁"，write-pipeline `locks.py` 规则 5），主从页的三个场景各多 1 条锁明细：5、3、7 条；
+单表页（物料清单）不变。
 
-已知冲突（汇报给用户决定，见 .reports/modules/write-pipeline/contract-gaps.md 第 1 条）：主从页上改主表字段时，WP-08 要求按
-整张单据求值，所以要读出明细（一条语句），`test_e01_master_detail_master_field` 实际为 5 条、
-`test_same_values_master_detail` 实际为 3 条。单表页（物料清单）上两个目标都能达到。
+只改保存时规则不读的字段（MEMO）时不读明细（用户 2026-10-29 选定，WP-08），所以主从页改主表字段的场景没有读明细的那一条。
 """
 
 from __future__ import annotations
@@ -71,22 +71,23 @@ def test_single_table_same_values_2_statements(rows: Engine) -> None:
 
 
 def test_e01_master_detail_master_field(rows: Engine) -> None:
-    """E01 的形状：成本核算主表 MEMO 改为"测试"，4 条。"""
+    """E01 的形状：成本核算主表 MEMO 改为"测试"，5 条：插入命令记录、锁主表行并读出、锁明细（不读）、改主表、完成命令记录。"""
     result, sql = run(rows, [master_modify("1001", {"MEMO": "测试"})])
     assert result.outcome == "saved"
-    assert len(sql) == 4, sql
+    assert len(sql) == 5, sql
+    assert sql[2].startswith("SELECT") and "FOR UPDATE" in sql[2] and "UNION ALL" not in sql[2]
 
 
 def test_same_values_master_detail(rows: Engine) -> None:
     result, sql = run(rows, [master_modify("1002", {"MEMO": "旧备注"})])
     assert result.outcome == "unchanged"
-    assert len(sql) == 2, sql
+    assert len(sql) == 3, sql
 
 
-def test_detail_change_with_recalculated_total_6_statements(rows: Engine) -> None:
-    """改一条明细并重算汇总：插入命令记录、锁主表行、读明细（两个明细实体一条语句）、改明细、改主表、完成命令记录。"""
+def test_detail_change_with_recalculated_total_7_statements(rows: Engine) -> None:
+    """改一条明细并重算汇总：插入命令记录、锁主表行、锁明细、读明细（两个明细实体一条语句）、改明细、改主表、完成命令记录。"""
     result, sql = run(rows, [master_none("1001", [{"entity": MATERIAL, "op": "modify", "rowKey": "5001", "changes": {"PRICE": "3.80"}}])],
                       computed=[total(DOC, "1001", "54.6")])
     assert result.outcome == "saved"
-    assert [s.split(" ")[0] for s in sql] == ["INSERT", "SELECT", "SELECT", "UPDATE", "UPDATE", "UPDATE"], sql
-    assert "UNION ALL" in sql[2] and "FOR UPDATE" in sql[1]
+    assert [s.split(" ")[0] for s in sql] == ["INSERT", "SELECT", "SELECT", "SELECT", "UPDATE", "UPDATE", "UPDATE"], sql
+    assert "FOR UPDATE" in sql[1] and "FOR UPDATE" in sql[2] and "UNION ALL" in sql[3]

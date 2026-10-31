@@ -456,6 +456,18 @@ ApprovalState = ApprovalRef
 """C08 CommandState.approvals 的元素，与命令结果中的 `approvals` 相同。"""
 
 
+class DocumentFailure(Wire):
+    """按单据提交时没有成功的一张单据（C02 v10 第 2 节）：主表实体、主键（新增的单据为 clientRowId，二者给出一个）和
+    它的错误体（C03）。这张单据的事务已回滚，其余单据照常提交。"""
+
+    entity: Code
+    row_key: Key | None = None
+    client_row_id: ClientRowId | None = None
+    error: ErrorResponse
+
+    check_row_identity = model_validator(mode="after")(_exactly_one_row_identity)
+
+
 class CommandResult(Wire):
     request_key: RequestKey
     outcome: Outcome
@@ -464,6 +476,8 @@ class CommandResult(Wire):
     prompts: list[Prompt]
     skipped: list[SkippedRow]
     approvals: list[ApprovalRef]
+    failed: list[DocumentFailure] = []
+    """按单据提交（C02 v10 第 1 节）时没有成功的单据，按提交的顺序；都成功时为空数组，输出时省略。"""
 
 
 # ============================================================ C04 执行上下文
