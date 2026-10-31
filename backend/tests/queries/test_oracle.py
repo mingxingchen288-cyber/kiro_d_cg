@@ -306,6 +306,37 @@ def test_number_cell_on_d_cg(uow: OracleUnitOfWorkFactory) -> None:
     assert (cell.kind, cell.value) == ("n", "12345678.12345678")
 
 
+def test_pgoods_export_matches_old_system_on_d_cg(uow: OracleUnitOfWorkFactory, tmp_path: Path) -> None:
+    """第 8 批 G3：seed 的"产品选择(按物料)导出"（旧 cmx T_COST_EXPORT_CONFIG 21，goods-price-pgoods-export）以管理员在
+    物料清单页按物料ID 406 筛选、导出当前，与按旧代码 CustomExportService 推出的文件逐格一致（`tests/e2e/pgoods_export.py`：
+    文件名、唯一一张工作表、HashMap 顺序的表头、每格的类型和值）。"""
+    from tests.e2e.pgoods_export import compare
+
+    page, code = "GOODS_PRICE_MANAGE", "goods-price-pgoods-export"
+    goods = _entity("COST_GOODS_PRICE")
+    view = PageView(
+        page_code=page, title="物料清单", version=1, layout="single", detail_mode="tabs", audit=False,
+        save_operation=f"{page}.save", rules_pack=PackRef(pack_id="COST_GOODS_PRICE", version=1),
+        master=ViewMaster(entity="COST_GOODS_PRICE", primary_key="GOODSID", fields=view_fields(goods, ()), buttons=[], grid=_GRID,
+                          form_layout=[]),
+        details=[], system_buttons=["save"])
+    role = RoleConfig(name="系统管理员", admin=True, pages={page: RolePage(buttons=["*"])})
+    admin = context(FakeConfigSnapshot(version=1, role_code="ADMIN", role=role, page_views={page: view},
+                                       entities={"COST_GOODS_PRICE": goods}), user_id="1")
+    config = parse_wire(ExportConfig, json.loads((SEED / f"export.{code}.json").read_text(encoding="utf-8"))["content"])
+    catalog = ItemsCatalog(exports={code: config})
+    request = {"startRow": 0, "endRow": 100, "sortModel": [],
+               "filterModel": {"GOODSID": {"filterType": "number", "type": "equals", "filter": 406}}}
+    file = Exports(uow, FakePermissionChecker(), lambda c: catalog).export(
+        admin, page, parse_wire(ExportRequest, {"mode": "config", "exportCode": code, "scope": "current", "request": request}))
+    path = tmp_path / file.file_name
+    path.write_bytes(file.content)
+    result = compare(str(path), 406)
+    assert file.file_name == result["fileName"] == "产品选择(按物料)导出.xlsx"
+    assert result["sheets"] == ["产品选择(按物料)"] and result["rows"] > 0
+    assert result["mismatches"] == [], result
+
+
 def test_default_export_matches_list_on_d_cg(uow: OracleUnitOfWorkFactory) -> None:
     query = {"startRow": 0, "endRow": 2000, "sortModel": [{"colId": "TOTAL_COST", "sort": "desc"}],
              "filterModel": {"GOODSNAME": {"filterType": "text", "type": "contains", "filter": "片"}}}

@@ -78,6 +78,7 @@
   - 保存操作的编码为 `<页面编码>.save`，页面的 `saveOperation` 引用它；`kind` 为 `save`，`propagation` 为 `continue`，`rowNotFound` 取默认的 `skip`，`impact` 为主表实体和各明细实体。
   - 保存操作的 `writableFields` 按生成的实体和页面配置逐个实体列出，不放开全部字段：只包含 `role` 为 `input`、`column` 不为 null、实体的 `fieldDefaults` 和页面都没有设为不可编辑的字段，不包含主键、主从关联字段和 `erpRow.column`；没有 `erpRow` 的实体不包含 ERP 列（C06 第 10 节）。
   - 已有实体可以从视图重新导入列：新列加入，已有列的设置不变，视图中已删除的列列出来，由管理员处理。
+- CF-18：只读页面（C06 v30 第 2、3 节，C05 v13）。页面配置的 `saveOperation` 为 null 时是只读页面：不引用保存操作，页面视图的 `saveOperation` 为 null，`systemButtons` 不给出 `save`（角色有 `*` 也一样），可写字段为空，所以字段的 `editable` 都为 false；查询、筛选、排序、高级查询、导出、保存列配置照常。实体的 `table` 可以是视图：这是只读实体，校验时视图和列必须存在、主键列在视图中，不要求序列 `<表名>_SEQ`；字段的 `column` 是视图的列。例：审计追踪页 `AUDIT_LOG`（seed `page.AUDIT_LOG.json`、`entity.AUDIT_LOG.json`）读 write-pipeline 的视图 `PF_AUDIT_LOG_V`（WP-22），只给 ADMIN（`role.ADMIN.json` 的 `AUDIT_LOG: ["*"]`）。来源：旧系统审计追踪页 auditLog 是通用页，cmx `T_COST_TABLE_METADATA` 146（QUERY_VIEW `V_COST_AUDIT_LOG`、AUDIT_ENABLED 0）、列元数据 10 列（`TABLE_METADATA_ID` 146），已删除的 COLUMN_OVERRIDE 规则 550 把全部列设为 `editable: false`；`T_COST_ROLE_PAGE` 142 只给系统管理员（`BUTTON_POLICY` 为 `["*"]`）；旧前端没有 auditLog 的专门代码。旧前端的保存按钮只看 `hasButton('save')`（`MasterDetailLayoutV3.vue` 第 74 行），系统管理员 `["*"]` 时审计页上也有保存按钮，新平台按"只读页面"做，不给保存。用户 2026-10-30 对盘点乙第 4 节回复"要"、2026-10-31 回复"开始"。
 
 ## 4. 依赖
 
